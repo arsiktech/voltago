@@ -18,7 +18,7 @@ class IntelligenceStartupCacheTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         source = json.loads((server.DATA / "free_intelligence.json").read_text())
         self.records = source["records"][:12]
         self.db = self.root / "intel.json"
