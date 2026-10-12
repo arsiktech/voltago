@@ -7,6 +7,7 @@ dependencies; callers keep orchestration and localized presentation on their sur
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -149,9 +150,129 @@ def classify_source_resource(source: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# These parser-owned identities prove an operator feed record, not an exact page.
+# Keep this allowlist separate from URL classification: a map link alone proves nothing.
+_OPERATOR_MAP_RECORD_SOURCES = {
+    "Etecnic EVcharge public charger map": (
+        "etecnic_charger_id", int, "https://etecnic.es/mapa-de-recarga/",
+    ),
+    "Atlante public charger map": (
+        "atlante_location_id", str, "https://map.atlante.energy/",
+    ),
+    "Zunder public charger map": (
+        "zunder_location_id", str, "https://www.zunder.com/mapa-de-ubicaciones/",
+    ),
+    "Repsol public charging point finder": (
+        "repsol_point_id", str, "https://www.repsol.es/buscador-eess-y-puntos-de-recarga/",
+    ),
+}
+
+
+def telpark_parking_detail_url(url: Any) -> bool:
+    """Observed Spanish parking-detail shape, not a host-wide URL allowlist."""
+    return isinstance(url, str) and re.fullmatch(
+        r"https://www\.telpark\.com/es/ciudades/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*/", url,
+    ) is not None
+
+
+def _telpark_record_source(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    name = "Telpark public parking pages"
+    if item.get("source") != name:
+        return None
+    raw = item.get("raw")
+    url = item.get("source_url")
+    if not isinstance(raw, dict) or not telpark_parking_detail_url(url):
+        return None
+    stable_id = raw.get("telpark_parking_id")
+    if (type(stable_id) is not str or re.fullmatch(r"[1-9][0-9]*", stable_id) is None
+            or raw.get("telpark_detail_url") != url or raw.get("ev_charging") is not True
+            or raw.get("ev_flag_source") != "detail_jsonld_amenityFeature"
+            or raw.get("coordinate_source") != "telpark_detail_jsonld_geo" or raw.get("country") != "ES"):
+        return None
+    coordinates = []
+    for field, limit in (("lat", 90), ("lon", 180)):
+        value = item.get(field)
+        if isinstance(value, bool):
+            return None
+        try:
+            value = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(value) or not -limit <= value <= limit:
+            return None
+        coordinates.append(value)
+    if coordinates == [0, 0]:
+        return None
+    return {
+        "name": name, "url": url,
+        "evidence": "Telpark parking page advertises EV charging; exact bays and plugs are unknown.",
+        "kind": "official_data", "label": "Parking with EV charging", "quality": "official",
+        "action": "Open Telpark parking page", "score": 78,
+        "warning": "Parking location only, not an exact charging bay or station start page. Plugs, power, tariff and availability need checking.",
+    }
+
+
+def _operator_record_source(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Admit only a located operator record with its own matching raw identity.
+
+    Child evidence cannot supply the missing primary provenance. The existing
+    official_data token describes coordinate evidence, not live or price authority.
+    """
+    if item.get("source") == "Telpark public parking pages":
+        return _telpark_record_source(item)
+    name = item.get("source")
+    proof = _OPERATOR_MAP_RECORD_SOURCES.get(name) if isinstance(name, str) else None
+    if proof is None:
+        return None
+    id_field, id_type, url = proof
+    raw = item.get("raw")
+    if not isinstance(raw, dict) or item.get("source_url") != url:
+        return None
+    stable_id = raw.get(id_field)
+    if type(stable_id) is not id_type:
+        return None
+    if isinstance(stable_id, str) and not stable_id.strip():
+        return None
+    if isinstance(stable_id, int) and stable_id <= 0:
+        return None
+    for field, limit in (("lat", 90), ("lon", 180)):
+        value = item.get(field)
+        if isinstance(value, bool):
+            return None
+        try:
+            coordinate = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(coordinate) or not -limit <= coordinate <= limit:
+            return None
+
+    evidence = next(
+        (str(source.get("evidence") or "") for source in item.get("sources") or []
+         if isinstance(source, dict) and source.get("name") == name and source.get("url") == url),
+        "",
+    )
+    return {
+        "name": name,
+        "url": url,
+        "evidence": evidence,
+        "kind": "official_data",
+        "label": "Operator map",
+        "quality": "official",
+        "action": "Open operator map",
+        "score": 78,  # Existing official_data score; station/start pages still win.
+        "warning": (
+            "This link opens the operator map, not an exact station/start page. "
+            "Availability and tariff still need checking."
+        ),
+    }
+
+
 def primary_source_for(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Choose the strongest exact source, preferring richer evidence on score ties."""
+    """Choose the strongest source, preferring exact pages and richer tied evidence."""
     ranked = [classify_source_resource(source) for source in source_candidates(item)]
+    operator_record = _operator_record_source(item)
+    if operator_record is not None:
+        ranked.append(operator_record)
     if not ranked:
         return None
     ranked.sort(

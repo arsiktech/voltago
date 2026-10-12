@@ -375,14 +375,17 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertEqual(electromaps_health["status"], "permitted-owner-decision-snapshot")
         self.assertEqual(electromaps_health["cached_details"], 0)
 
-    def test_public_source_catalog_matches_retired_source_policy(self) -> None:
+    def test_public_source_catalog_matches_current_source_policy(self) -> None:
         catalog = server.source_catalog_payload()
         moat = " ".join(catalog["moat_intelligence"])
         covered = " ".join(catalog["covered_via_primary"])
 
-        self.assertNotIn("Electromaps public browser-map API", moat)
-        self.assertNotIn("Chargemap public browser-map API", moat)
+        self.assertIn("Electromaps and Chargemap public web maps", moat)
+        self.assertIn("owner-attested written permission", moat)
         self.assertNotIn("Consum official store locator", moat)
+        self.assertIn("not a third-party reuse licence", catalog["policy"])
+        self.assertIn("5.2.2", catalog["policy"])
+        self.assertIn("Consum locator evidence remains excluded", catalog["policy"])
         self.assertIn("Barcelona Endolla", moat)
         self.assertIn("Madrid", moat)
         self.assertIn("Zaragoza", moat)

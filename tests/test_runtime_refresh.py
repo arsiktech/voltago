@@ -171,6 +171,79 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertEqual(receipt["records"], 1)
         self.assertEqual(json.loads((self.state / "current/free_intelligence.json").read_text())["records"][0]["id"], "fixture-only")
 
+    def _run_alias_only_fixture(self, *, wrong_canary_hash=False):
+        import qa_ingestion_delta as delta
+        old = {"id": "historical", "source": "OpenStreetMap public tags",
+               "source_url": "https://www.openstreetmap.org/node/123", "sources": [],
+               "lat": 39.0, "lon": -0.5, "merged_source_identifiers": [["osm", "/node/456"]]}
+        existing = {"id": "existing", "source": "DGT National Access Point charging registry",
+                    "source_url": "https://nap.dgt.es/dataset/puntos-de-recarga-electrica-para-vehiculos",
+                    "raw": {"nap_site_id": "site-1"}, "sources": [], "lat": 39.0, "lon": -0.5}
+        target = {**existing, "merged_source_identifiers": [["osm", "/node/123"]],
+                  "collision_base_ids": ["historical"]}
+        other = {**old, "id": "split-neighbor", "source_url": "https://www.openstreetmap.org/node/456",
+                 "merged_source_identifiers": [], "collision_base_ids": ["historical"]}
+        baseline = {"records": [old, existing]}
+        baseline_path = self.root / "data/free_intelligence.json"
+        baseline_path.write_text(json.dumps(baseline))
+        checked = []
+
+        def stage(root, run, name, argv, timeout):
+            candidate = run / "free_intelligence.json"
+            if name == "build":
+                candidate.write_text(json.dumps({"records": [target, other], "generated_at": "fixture"}))
+                payload = {}
+            elif name == "delta":
+                actual = json.loads(candidate.read_text())
+                self.assertIn("historical", actual["records"][0].get("merged_ids", []))
+                checked.append(name)
+                comparison = delta.id_delta(baseline["records"], actual["records"])
+                payload = {"ok": comparison["missing_ids"] == 0, "delta": comparison}
+            else:
+                sha = shared.sha256_file(candidate)
+                checked.append(name)
+                payload = {"ok": True, "candidate_reused": True, "candidate_sha256": sha,
+                           "candidate_sha256_after": "wrong" if wrong_canary_hash else sha,
+                           "baseline_sha256": shared.sha256_file(baseline_path)}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+        def reports(**kwargs):
+            self.assertEqual(kwargs["expected_data_sha256"], shared.sha256_file(kwargs["data"]))
+            kwargs["free_report"].write_text('{}')
+            kwargs["valencia_report"].write_text('{}')
+            return {"fixture": True}
+
+        with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+             mock.patch.object(refresh, "run_stage", side_effect=stage), \
+             mock.patch.object(refresh.shared, "generate_reports", side_effect=reports):
+            result = refresh.refresh(self.root, self.state, 1)
+        return result, checked, json.loads((self.state / "last.json").read_text())
+
+    def test_alias_only_reconciliation_reaches_gates_and_published_bound_candidate(self):
+        from source_policy import recordset_sha256
+        result, checked, receipt = self._run_alias_only_fixture()
+        self.assertEqual(result, 0)
+        self.assertEqual(checked, ["delta", "canary"])
+        self.assertEqual(receipt["identity_reconciliation"]["preserved_ids"], 0)
+        self.assertEqual(receipt["identity_reconciliation"]["historical_aliases_added"], 1)
+        candidate = self.state / "current/free_intelligence.json"
+        actual = json.loads(candidate.read_text())
+        self.assertEqual(actual["records"][0]["id"], "existing")
+        self.assertEqual(actual["records"][0]["merged_ids"], ["historical"])
+        self.assertEqual(actual["recordset_sha256"], recordset_sha256(actual["records"]))
+        self.assertEqual(shared.sha256_file(candidate), receipt["candidate_sha256"])
+        self.assertEqual(receipt["canary"]["candidate_sha256_after"], receipt["candidate_sha256"])
+        self.assertTrue(receipt["promoted"])
+
+    def test_alias_only_candidate_with_unbound_canary_cannot_publish(self):
+        result, checked, receipt = self._run_alias_only_fixture(wrong_canary_hash=True)
+        self.assertEqual(result, 1)
+        self.assertEqual(checked, ["delta", "canary"])
+        self.assertEqual(receipt["stage"], "canary")
+        self.assertIn("exact candidate", receipt["error"])
+        self.assertFalse(receipt["promoted"])
+        self.assertFalse((self.state / "current").exists())
+
     def test_bundle_hash_mismatch_cannot_publish(self):
         refresh.publish_bundle(self.state, self.run)
         with self.assertRaisesRegex(RuntimeError, "changed"):

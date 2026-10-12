@@ -1,0 +1,120 @@
+section,country,name,type,url,status_2026_10_12,http,final_url,note
+EU,EU,"AFIR, Regulation (EU) 2023/1804",Official,https://eur-lex.europa.eu/eli/reg/2023/1804/oj,Verified,202,https://eur-lex.europa.eu/eli/reg/2023/1804/oj,EUR-Lex returns 202 (loads in browser)
+EU,EU,European Alternative Fuels Observatory (EAFO),Official,https://alternative-fuels-observatory.ec.europa.eu/,Verified,200,https://alternative-fuels-observatory.ec.europa.eu/,
+EU,EU,NAPCORE (directory of National Access Points),Official,https://napcore.eu/,Verified,200,https://napcore.eu/,
+National,Austria,E-Control Ladestellenverzeichnis,Official,https://www.ladestellen.at/,Verified,200,https://www.ladestellen.at/,
+National,Belgium,transportdata.be,Official,https://www.transportdata.be/,Verified,200,https://transportdata.be/,
+National,Croatia,HEP ELEN,Operator,https://elen.hep.hr/,Verified,200,https://elen.hep.hr/,Added (smaller countries)
+National,Czechia,Ministry of Industry (MPO) charging station list,Official,https://www.mpo.gov.cz/,Verified,200,https://mpo.gov.cz/,Added (smaller countries)
+National,Denmark,Vejdirektoratet NAP (du-portal),Official,https://du-portal-ui.dataudveksler.app.vd.dk/,Verified,200,https://du-portal-ui.dataudveksler.app.vd.dk/,Added (smaller countries)
+National,Estonia,Enefit Volt,Operator,https://www.enefit.ee/,Verified,200,https://www.enefit.ee/,Added (smaller countries)
+National,Finland,Fintraffic Digitraffic,Official,https://www.digitraffic.fi/,Verified,200,https://www.digitraffic.fi/,Added (smaller countries)
+National,France,Base nationale des IRVE (data.gouv.fr),Official,https://www.data.gouv.fr/fr/datasets/fichier-consolide-des-bornes-de-recharge-pour-vehicules-electriques/,Verified,200,https://www.data.gouv.fr/datasets/base-nationale-des-irve-data-gouv-infrastructures-de-recharge-pour-vehicules-electriques-donnees-statiques,
+National,France,transport.data.gouv.fr,Official,https://transport.data.gouv.fr/,Verified,200,https://transport.data.gouv.fr/,
+National,Germany,Bundesnetzagentur Ladesäulenregister,Official,https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/start.html,Verified,200,https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/start.html,
+National,Germany,Mobilithek,Official,https://mobilithek.info/,Verified,ERR,https://mobilithek.info/,Python TLS failed; works in curl/browser
+National,Germany,Nationale Leitstelle Ladeinfrastruktur (StandortTOOL / Ladeatlas),Official,https://nationale-leitstelle.de/,Verified,200,https://nationale-leitstelle.de/,
+National,Greece,Registry of charging points (ΜΥΦΑΗ / ΜΗΤΡΩΟ),Official,https://electrokinisi.yme.gov.gr/,Verified,200,https://electrokinisi.yme.gov.gr/public/Account/Login?ReturnUrl=%2Fpublic%2F,Added (smaller countries)
+National,Hungary,e-Mobi,Operator,https://e-mobi.hu/,Unreachable,0,https://e-mobi.hu/,Not reachable today; not confirmed; Added (smaller countries)
+National,Iceland,ON (Orka náttúrunnar),Operator,https://www.on.is/,Verified,200,https://www.on.is/,Added (smaller countries)
+National,Ireland,ESB ecars (main public network),Operator,https://esb.ie/ecars,Verified,200,https://esb.ie/what-we-do/ecars,Added (smaller countries)
+National,Ireland,National Access Point (Transport Infrastructure Ireland),Official,https://www.tii.ie/,Verified,200,https://www.tii.ie/,Added (smaller countries)
+National,Italy,"PUN, Piattaforma Unica Nazionale",Official,https://www.piattaformaunicanazionale.it/,Verified,200,https://www.piattaformaunicanazionale.it/,
+National,Latvia,Elektrum Drive,Operator,https://www.elektrum.lv/,Verified,200,https://www.elektrum.lv/,Added (smaller countries)
+National,Lithuania,Ignitis ON,Operator,https://ignitis.lt/,Verified,200,https://ignitis.lt/,Added (smaller countries)
+National,Luxembourg,Chargy (national network),Operator,https://chargy.lu/,Verified,200,https://chargy.lu/fr/,Added (smaller countries)
+National,Netherlands,NDW,Official,https://www.ndw.nu/,Verified,200,https://www.ndw.nu/,
+National,Norway/Sweden,NOBIL,Official,https://www.nobil.no/,Verified,200,https://info.nobil.no/,Moved to info.nobil.no
+National,Poland,EIPA (UDT),Official,https://eipa.udt.gov.pl/,Verified,200,https://eipa.udt.gov.pl/,
+National,Portugal,MOBI.E,Official,https://www.mobie.pt/,Verified,200,https://www.mobie.pt/,
+National,Romania,Renovatio e-charge,Operator,https://www.renovatio-e-charge.ro/,Unreachable,0,https://www.renovatio-e-charge.ro/,Not reachable today; not confirmed; Added (smaller countries)
+National,Slovakia,SAPI (Slovak electromobility association),Industry body,https://www.sapi.sk/,Verified,200,https://www.sapi.sk/,Added (smaller countries)
+National,Slovenia,NAP Slovenia,Official,https://www.ncup.si/,Verified,200,https://www.ncup.si/en,Added (smaller countries)
+National,Spain,DGT National Access Point,Official,https://nap.dgt.es/,Verified,200,https://nap.dgt.es/,
+National,Spain,MapaREVE,Official,https://www.mapareve.es/,Verified,200,https://www.mapareve.es/,
+National,Spain (Canarias),Canarias Te Recarga,Official,https://apps.apple.com/us/app/canarias-te-recarga-app/id1607076018,Verified,200,https://apps.apple.com/us/app/canarias-te-recarga-app/id1607076018,Website down (TLS error); official app works; Old address dead; corrected
+National,Sweden,Trafikverket open data,Official,https://data.trafikverket.se/,Verified,200,https://data.trafikverket.se/,Added (smaller countries)
+National,Switzerland,ich-tanke-strom.ch (SFOE),Official,https://www.ich-tanke-strom.ch/,Verified,200,https://www.uvek-gis.admin.ch/BFE/diemo/de.html,Now on uvek-gis.admin.ch (Swiss gov)
+Aggregator,Europe,ABRP (A Better Routeplanner),Aggregator,https://abetterrouteplanner.com/,Verified,200,https://abetterrouteplanner.com/,
+Aggregator,Europe,Bonnet,Aggregator,https://www.joinbonnet.com/,Verified,200,https://www.joinbonnet.com/,
+Aggregator,Europe,Chargemap,Aggregator,https://chargemap.com/,Verified,200,https://chargemap.com/en-gb,
+Aggregator,Europe,Electromaps,Aggregator,https://www.electromaps.com/,Verified,200,https://www.electromaps.com/en,
+Aggregator,Europe,Electroverse (Octopus),Aggregator,https://electroverse.octopus.energy/,Verified,200,https://electroverse.com/,Moved to electroverse.com
+Aggregator,Europe,Elli (Volkswagen),Aggregator,https://www.elli.eco/,Verified,200,https://www.elli.eco:443/de/startseite,
+Aggregator,Europe,Open Charge Map,Open,https://openchargemap.org/,Verified,ERR,https://openchargemap.org/,Python TLS failed; works in curl/browser
+Aggregator,Europe,OpenStreetMap (amenity=charging_station),Open,https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dcharging_station,Verified,200,https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dcharging_station,
+Aggregator,Europe,PlugShare,Aggregator,https://www.plugshare.com/,Verified,200,https://www.plugshare.com/,
+Aggregator,Europe,Plugsurfing,Aggregator,https://www.plugsurfing.com/,Verified,200,https://plugsurfing.com/,
+Aggregator,Europe,Shell Recharge,Aggregator,https://shellrecharge.com/,Verified,200,https://www.shell.nl/elektrisch-opladen.html,Redirects to a country page
+Aggregator,UK,Zapmap,Aggregator,https://www.zapmap.com/,Verified,200,https://www.zapmap.com/,
+Data/B2B,Europe,Eco-Movement,B2B data,https://www.eco-movement.com/,Verified,200,https://www.eco-movement.com/,
+Data/B2B,Europe,Gireve,B2B roaming hub,https://www.gireve.com/,Verified,200,https://www.gireve.com/,
+Data/B2B,Europe,Hubject,B2B roaming hub,https://www.hubject.com/,Verified,200,https://www.hubject.com/,
+Data/B2B,Europe,e-clearing.net,B2B roaming hub,https://e-clearing.net/,Verified,200,https://e-clearing.net/,
+Operator (multi),Europe,Allego,Operator,https://www.allego.eu/,Verified,200,https://www.allego.eu/,
+Operator (multi),Europe,Atlante,Operator,https://www.atlante.energy/,Verified,200,https://atlante.energy/,
+Operator (multi),Europe,Electra,Operator,https://www.go-electra.com/,Verified,200,https://www.go-electra.com/es/,
+Operator (multi),Europe,Fastned,Operator,https://www.fastnedcharging.com/,Verified,200,https://www.fastnedcharging.com/es,
+Operator (multi),Europe,Free2Move eSolutions,Operator,https://www.esolutions.free2move.com/eu/en_gb/home-charging,"Exists, blocks bots",403,https://www.esolutions.free2move.com/eu/en_gb/home-charging,Old address dead; corrected
+Operator (multi),Europe,Ionity,Operator,https://ionity.eu/,Verified,200,https://www.ionity.eu/,
+Operator (multi),Europe,Mer (Statkraft),Operator,https://mer.eco/,Verified,200,https://mer.eco/,
+Operator (multi),Europe,Powerdot,Operator,https://powerdot.eu/,Verified,200,https://www.powerdot.eu/,
+Operator (multi),Europe,Recharge,Operator,https://rechargeinfra.com/,Verified,200,https://rechargeinfra.com/,
+Operator (multi),Europe,Tesla Supercharger,Operator,https://www.tesla.com/support/charging/supercharging-other-evs,"Exists, blocks bots",403,https://www.tesla.com/support/charging/supercharging-other-evs,Old address dead; corrected
+Operator (multi),Europe,TotalEnergies charging,Operator,https://chargingservices.totalenergies.com/en/home,"Exists, blocks bots",403,https://chargingservices.totalenergies.com/en/home,Old address dead; corrected
+Operator (multi),Europe,Zunder,Operator,https://www.zunder.com/,Verified,200,https://www.zunder.com/,
+Operator (multi),Europe,bp pulse,Operator,https://www.bppulse.com/,Verified,200,https://www.bppulse.com/,
+Operator,Austria,SMATRICS EnBW,Operator,https://smatrics.com/,Verified,200,https://smatrics.com/de,Added (smaller countries)
+Operator,Austria,Wien Energie,Operator,https://www.wienenergie.at/,Verified,200,https://www.wienenergie.at/,Added (smaller countries)
+Operator,Belgium,Blue Corner,Operator,https://www.bluecorner.be/,Verified,200,https://blinkcharging.com/nl-be,Now Blink Charging (redirects); Added (smaller countries)
+Operator,Czechia,ČEZ e-mobilita,Operator,https://www.cez.cz/,Verified,200,https://www.cez.cz/,Added (smaller countries)
+Operator,Czechia/Slovakia,PRE / ZSE Drive,Operator,https://www.zsedrive.sk/,Verified,200,https://zsedrive.sk/,Added (smaller countries)
+Operator,Denmark,Clever,Operator,https://clever.dk/,Verified,200,https://clever.dk/,
+Operator,Europe,Kaufland e-charging,Operator,https://www.kaufland.de/,"Exists, blocks bots",403,https://www.kaufland.de/,Added (smaller countries)
+Operator,Europe,Lidl e-charging (DE),Operator,https://www.lidl.de/,Verified,200,https://www.lidl.de/,Added (smaller countries)
+Operator,Finland,K-Lataus,Operator,https://www.k-lataus.fi/,Verified,200,https://www.k-auto.fi/k-lataus/,Moved to k-auto.fi/k-lataus
+Operator,France,Engie Vianeo,Operator,https://engie-vianeo.com/,Verified,200,https://www.engie-vianeo.com/,Old address dead; corrected
+Operator,France,Freshmile,Operator,https://www.freshmile.com/,Verified,200,https://www.freshmile.com/en/,
+Operator,France,Izivia (EDF),Operator,https://www.izivia.com/,Verified,200,https://izivia.com/,
+Operator,Germany,Aral pulse,Operator,https://www.aral.de/de/global/retail/pulse.html,Verified,200,https://www.aral.de/de/global/retail/pulse.html,
+Operator,Germany,E.ON Drive,Operator,https://www.eon.de/de/pk/e-mobility.html,"Exists, blocks bots",403,https://www.eon.de/de/pk/e-mobility.html,Site blocks automated checks; open in browser
+Operator,Germany,EWE Go,Operator,https://www.ewe-go.de/,Verified,200,https://www.ewe-go.de/,
+Operator,Germany,EnBW mobility+,Operator,https://www.enbw.com/elektromobilitaet/,Verified,200,https://www.enbw.com/elektromobilitaet/,
+Operator,Germany,Pfalzwerke,Operator,https://www.pfalzwerke.de/,Verified,200,https://www.pfalzwerke.de/privatkunden,
+Operator,Greece,Blink Charging Hellas,Operator,https://www.blinkcharging.gr/,Verified,200,https://blinkcharging.com/el-gr,Added (smaller countries)
+Operator,Hungary,MOL Plugee,Operator,https://molplugee.hu/,Verified,200,https://molplugee.hu/hu,Added (smaller countries)
+Operator,Italy,A2A E-Moving,Operator,https://www.a2a.it/,Verified,200,https://www.a2a.it/,
+Operator,Italy,Duferco Energia,Operator,https://www.dufercoenergia.com/,Verified,200,https://dufercoenergia.com/,
+Operator,Italy,Enel X Way / Ewiva,Operator,https://www.ewiva.com/,Verified,200,https://ewiva.com/,
+Operator,Italy,Free To X,Operator,https://freeto-x.it/en,Verified,200,https://freeto-x.it/en/,Old address dead; corrected
+Operator,Netherlands,Eneco,Operator,https://www.eneco.nl/,Verified,200,https://www.eneco.nl/,
+Operator,Netherlands,Eneco eMobility,Operator,https://www.eneco-emobility.com/,Verified,200,https://www.eneco-emobility.com/nl-nl,Added (smaller countries)
+Operator,Netherlands,Vattenfall InCharge,Operator,https://incharge.vattenfall.nl/en,Verified,200,https://incharge.vattenfall.nl/en,Old address dead; corrected
+Operator,Nordics,Circle K charging,Operator,https://www.circlek.no/,Verified,200,https://www.circlek.no/,
+Operator,Norway,Eviny,Operator,https://www.eviny.no/,Verified,200,https://www.eviny.no/,Added (smaller countries)
+Operator,Poland,GreenWay,Operator,https://greenwaypolska.pl/,Verified,200,https://greenwaynetwork.com/pl/,Moved to greenwaynetwork.com
+Operator,Poland,Orlen Charge,Operator,https://www.orlen.pl/,Verified,200,https://www.orlen.pl/pl,"Homepage, not EV page"
+Operator,Portugal,Prio,Operator,https://www.prio.pt/,Verified,200,https://www.prio.pt/pt/,
+Operator,Spain,EDP,Operator,https://www.edp.com/,Verified,200,https://edp.com/en,
+Operator,Spain,Easycharger,Operator,https://www.easycharger.es/,Unreachable,ERR,https://www.easycharger.es/,Timed out today; not confirmed
+Operator,Spain,Endesa X Way,Operator,https://www.endesaxway.com/,Verified,200,https://www.endesaxway.com/es,
+Operator,Spain,Etecnic (Etecnic e-mobility),Operator,https://www.etecnic.es/,Verified,200,https://etecnic.es/,
+Operator,Spain,Feníe Energía,Operator,https://www.fenieenergia.es/,Verified,200,https://www.fenieenergia.es/es,
+Operator,Spain,Iberdrola | bp pulse,Operator,https://www.iberdrola.es/movilidad-electrica,"Exists, blocks bots",403,https://www.iberdrola.es/movilidad-electrica,Site blocks automated checks; open in browser
+Operator,Spain,Moeve (formerly Cepsa),Operator,https://www.moeveglobal.com/,Verified,200,https://www.moeveglobal.com/en,
+Operator,Spain,Plenitude (Eni),Operator,https://eniplenitude.com/,Verified,200,https://eniplenitude.com/,
+Operator,Spain,Repsol / Waylet,Operator,https://www.repsol.es/waylet/,Verified,200,https://www.repsol.es/waylet/,Moved to repsol.es/waylet
+Operator,Spain,Wenea,Operator,https://wenea.com/,Verified,200,https://wenea.com/,
+Operator,Spain (Canarias),DISA,Operator,https://www.disagrupo.es/,Verified,200,https://www.disagrupo.es/,
+Operator,Spain/Portugal,Galp Electric,Operator,https://www.galp.com/,Verified,200,https://www.galp.com/es/,
+Operator,Sweden,Vattenfall InCharge (SE),Operator,https://incharge.vattenfall.se/,Verified,200,https://incharge.vattenfall.se/,Added (smaller countries)
+Operator,Switzerland,GOFAST,Operator,https://www.gofast.swiss/,Verified,200,https://www.gofast.swiss/,Added (smaller countries)
+Operator,Switzerland,Move Mobility,Operator,https://www.move.ch/,Verified,200,https://www.move.ch/,Added (smaller countries)
+Operator,UK,Be.EV,Operator,https://be-ev.co.uk/,Verified,200,https://be-ev.co.uk/,Old address dead; corrected
+Operator,UK,Connected Kerb,Operator,https://www.connectedkerb.com/,Verified,200,https://connectedkerb.com/,
+Operator,UK,Gridserve,Operator,https://www.gridserve.com/,Verified,200,https://www.gridserve.com/,
+Operator,UK,InstaVolt,Operator,https://instavolt.co.uk/,Verified,200,https://instavolt.co.uk/,
+Operator,UK,MFG EV Power,Operator,https://www.mfgevpower.co.uk/,Verified,200,https://www.mfgevpower.co.uk/,
+Operator,UK,Osprey,Operator,https://www.ospreycharging.co.uk/,Verified,200,https://www.ospreycharging.co.uk/,
+Operator,UK,Pod Point,Operator,https://pod-point.com/,Verified,200,https://podenergy.com/,Now Pod Energy (redirects)
+Operator,UK,char.gy,Operator,https://char.gy/,Verified,200,https://char.gy/,

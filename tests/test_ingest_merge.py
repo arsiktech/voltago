@@ -772,8 +772,9 @@ class CrossSourceMergeTests(unittest.TestCase):
 
         merged = ing.dedupe([casino, road])
 
-        self.assertEqual([row["id"] for row in merged], ["ocm-casino"])
-        self.assertEqual(merged[0]["merged_ids"], ["ocm-road"])
+        self.assertEqual([row["id"] for row in merged], ["ocm-casino", "ocm-road"])
+        self.assertEqual({key for row in merged for key in ing.identity_keys(row)},
+                         {("ocm-station", "100396"), ("ocm-station", "163968")})
 
     def test_same_family_rows_never_merge_through_a_third_source(self) -> None:
         # Two operators in one car park, both in the national registry, plus one map pin

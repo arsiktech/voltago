@@ -7,6 +7,7 @@ source evidence and confidence instead of pretending that every directory is liv
 from __future__ import annotations
 
 import gzip
+import hashlib
 import html
 import http.cookiejar
 import argparse
@@ -38,7 +39,7 @@ try:
         value_is_excluded,
     )
     from .source_transport import SourcePolicyBlocked, policy_urlopen
-    from .station_identity import identity_keys
+    from .station_identity import identity_keys, primary_identity_keys
     from .spain_geography import point_in_spain
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_policy import (
@@ -49,7 +50,7 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
         value_is_excluded,
     )
     from source_transport import SourcePolicyBlocked, policy_urlopen
-    from station_identity import identity_keys
+    from station_identity import identity_keys, primary_identity_keys
     from spain_geography import point_in_spain
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -369,8 +370,12 @@ def fetch_json(url: str, *, headers: Optional[Dict[str, str]] = None, timeout: i
     return json.loads(fetch(url, headers=headers or {"Accept": "application/json"}, timeout=timeout).decode("utf-8", "replace"))
 
 
-def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, **kw: Any) -> FetchArtifact:
+def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, *, fetcher=None, cache_only: bool = False, **kw: Any) -> FetchArtifact:
     path = CACHE / cache_name
+    if cache_only:
+        if not path.exists():
+            raise FileNotFoundError(cache_name)
+        return cache_file_artifact(path, url=url, cache_name=cache_name, ttl_hours=ttl_hours)
     checked_at = time.time()
     if path.exists() and checked_at - path.stat().st_mtime < ttl_hours * 3600:
         return cache_file_artifact(
@@ -381,7 +386,7 @@ def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, **kw: Any) ->
             now=checked_at,
         )
     try:
-        body = fetch(url, **kw)
+        body = (fetcher or fetch)(url, **kw)
     except Exception as exc:
         if path.exists():
             return cache_file_artifact(
@@ -1387,26 +1392,35 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
     records.append(rec)
 
 
-DIRECTORY_INACTIVE_NAME_RE = re.compile(
-    r"\b(?:n\s*['’]?\s*existe\s+pas|nexiste\s+pas|no\s+existe|does\s+not\s+exist|"
-    r"nonexistent|removed|inexistant|supprimee?|demontee?|doublon|duplicate)\b", re.I
-)
+
+
+def directory_history_only(row: Dict[str, Any]) -> bool:
+    """Removed directory identities are history, not facts about an active pin."""
+    flag = row.get("source_reported_unavailable") or {}
+    return flag.get("source") in {"Electromaps public web map", "Chargemap public web map"} and (
+        flag.get("field") in {"name", "detail_name", "slug"}
+        or str(flag.get("value") or "").upper() in {"REMOVED", "CLOSED", "PLANNED", "UNDER_CONSTRUCTION"}
+    )
 
 
 def apply_directory_lifecycle(row: Dict[str, Any]) -> None:
-    """Retain dead listings as non-actionable history, never as free recommendations."""
+    """Retain inactive directory identities with their original removal evidence."""
     source = row.get("source")
     if source not in {"Electromaps public web map", "Chargemap public web map"}:
         return
     raw = row.get("raw") or {}
     field, value = None, None
-    if DIRECTORY_INACTIVE_NAME_RE.search(normalized_identity_text(row.get("name"))):
-        field, value = "name", row.get("name")
-    elif source == "Chargemap public web map" and raw.get("operational_status") in {
+    for name_field, name in (("name", row.get("name")), ("detail_name", raw.get("detail_name"))):
+        if BAD_STATION_NAME_RE.search(normalized_identity_text(name)):
+            field, value = name_field, name
+            break
+    if field is None and source == "Chargemap public web map" and str(raw.get("slug") or "").lower() in DEAD_CHARGEMAP_SLUGS:
+        field, value = "slug", raw["slug"]
+    if field is None and source == "Chargemap public web map" and str(raw.get("operational_status") or "").upper() in {
         "OUT_OF_ORDER", "REMOVED", "CLOSED", "PLANNED", "UNDER_CONSTRUCTION",
     }:
         field, value = "operational_status", raw["operational_status"]
-    elif source == "Electromaps public web map" and raw.get("offline_status") in {
+    elif field is None and source == "Electromaps public web map" and str(raw.get("offline_status") or "").upper() in {
         "NOT_WORKING", "ALL_SOCKETS_NOT_WORK", "REMOVED",
     }:
         field, value = "offline_status", raw["offline_status"]
@@ -3610,11 +3624,17 @@ def merge_media(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
 def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> None:
     """Keep the ids of rows folded into this pin, so a refresh can show where they went."""
-    # Carry every represented family across stages, even when sources are truncated.
     items = list(items)
-    base["merged_source_families"] = sorted(set().union(
-        represented_source_families(base), *(represented_source_families(item) for item in items)
-    ))
+    base["merged_source_families"] = sorted(set().union(record_source_families(base), *(record_source_families(item) for item in items)))
+    # Split ancestry is identity evidence, not a claim that all split stations are
+    # aliases of this pin. Keep it even when another source wins a later merge.
+    collision_ids = set(base.get("collision_base_ids") or [])
+    for item in items:
+        collision_ids.update(item.get("collision_base_ids") or [])
+        if item.get("collision_base_id"):
+            collision_ids.add(item["collision_base_id"])
+    if collision_ids:
+        base["collision_base_ids"] = sorted(collision_ids)
     merged_ids = set(base.get("merged_ids") or [])
     for item in items:
         merged_ids.update(item.get("merged_ids") or [])
@@ -3650,13 +3670,48 @@ def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> 
 
 def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     records = reject_suspicious_openchargemap_coordinate_clusters(records)
+    # Name + rounded location IDs can collide for distinct upstream stations. Only
+    # stable source identifiers may disambiguate them; never claim the ambiguous ID
+    # as a merged alias on several pins. Historical IDs are reconciled after build.
+    id_keys: Dict[str, set] = defaultdict(set)
+    for row in records:
+        id_keys[row["id"]].add(tuple(sorted(primary_identity_keys(row))))
+    unique_records = []
+    for row in records:
+        keys = tuple(sorted(primary_identity_keys(row)))
+        if len(id_keys[row["id"]]) > 1 and keys:
+            digest = hashlib.sha256(json.dumps(keys, separators=(",", ":")).encode()).hexdigest()[:16]
+            row = dict(row, id=f"{row['id']}_station_{digest}", collision_base_id=row["id"])
+        unique_records.append(row)
+    records = unique_records
     groups: Dict[Tuple[int, int], List[Dict[str, Any]]] = defaultdict(list)
     for r in records:
         groups[(round(r["lat"] * 10000), round(r["lon"] * 10000))].append(r)
     merged = []
     rank = RELIABILITY_RANK
     parking_rank = PARKING_KIND_RANK
-    for _, items in groups.items():
+    # A rounded coordinate is a search bucket, not a station identity. Partition each
+    # bucket before merging, retaining every absorbed family for the next build stage.
+    station_groups: List[List[Dict[str, Any]]] = []
+    for items in groups.values():
+        clusters: List[List[Dict[str, Any]]] = []
+        for item in items:
+            incoming = record_source_families(item)
+            for cluster in clusters:
+                # History may retain identity, but cannot donate facts to an active pin.
+                if any(directory_history_only(row) != directory_history_only(item) for row in cluster):
+                    continue
+                existing = set().union(*(record_source_families(row) for row in cluster))
+                if not (incoming & existing) or (
+                    incoming == existing and len(incoming) == 1
+                    and all(same_stable_station(item, row) for row in cluster)
+                ):
+                    cluster.append(item)
+                    break
+            else:
+                clusters.append([item])
+        station_groups.extend(clusters)
+    for items in station_groups:
         items.sort(key=lambda r: (rank.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, -len(r.get("sources", []))), reverse=True)
         base = dict(items[0])
         sources = []
@@ -3745,13 +3800,21 @@ def record_source_family(r: Dict[str, Any]) -> str:
     return blob[:16]
 
 
-def represented_source_families(row: Dict[str, Any]) -> set:
-    families = set(row.get("merged_source_families") or [])
-    families.add(record_source_family(row))
-    for source in row.get("sources") or []:
-        if source.get("name") or source.get("url"):
+def record_source_families(r: Dict[str, Any]) -> set:
+    """Families of all station rows in a pin, independent of display-truncated sources."""
+    families = {record_source_family(r), *(r.get("merged_source_families") or [])}
+    for source in r.get("sources") or []:
+        if isinstance(source, dict) and (source.get("name") or source.get("url")):
             families.add(record_source_family({"source": source.get("name"), "source_url": source.get("url")}))
     return families
+
+
+def same_stable_station(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    """Duplicate copies need identical stable keys, not just a shared name or coordinate."""
+    a_keys, b_keys = identity_keys(a), identity_keys(b)
+    if a_keys or b_keys:
+        return bool(a_keys) and a_keys == b_keys
+    return bool(a.get("id")) and a.get("id") == b.get("id")
 
 
 def _dist_km(a: Dict[str, Any], b: Dict[str, Any]) -> float:
@@ -4043,11 +4106,13 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
 
     # Same-family rows never merge, including through a third row: one registry listing two
     # nearby sites (for example two operators in one car park) keeps two pins.
-    families = [represented_source_families(r) for r in records]
+    families = [record_source_families(r) for r in records]
 
     def union(x: int, y: int) -> None:
         rx, ry = find(x), find(y)
         if rx == ry or families[rx] & families[ry]:
+            return
+        if directory_history_only(records[rx]) != directory_history_only(records[ry]):
             return
         parent[ry] = rx
         families[rx] |= families[ry]
@@ -4280,7 +4345,7 @@ def apply_source_policy_exclusions_to_payload(
         if not metadata_is_excluded(note)
     ]
     cleaned["license_notes"].append(
-        "Rights-blocked commercial map/locator evidence was removed by structured source policy; conventional link-only decisions are documented outside this data artifact."
+        "Evidence from sources still excluded by structured source policy is removed; enabled directory snapshots remain subject to their recorded owner decisions and unresolved third-party rights."
     )
     if any(value_is_excluded(row, SOURCE_POLICY_EXCLUSIONS) for row in cleaned["records"]):
         raise RuntimeError("source-policy terms remain outside filtered records")
@@ -5046,7 +5111,7 @@ def etecnic_network(name: str) -> str:
     """Network membership only when the row's own name says so; region never implies it."""
     if re.search(r"\bMELIB\b", name or "", re.I):
         return "MELIB (Govern de les Illes Balears), Etecnic platform"
-    return "Etecnic platform (operator not stated)"
+    return "Etecnic platform (operator not established)"
 
 
 def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
@@ -5303,13 +5368,6 @@ REPSOL_SEARCH_URL = "https://www.repsol.es/bin/repsol/searchmiddleware/station-s
 REPSOL_MIN_ROWS = 2000
 
 
-def repsol_station_url(item: Dict[str, Any]) -> str:
-    parts = [str(item.get(key) or "").strip("/") for key in ("provinceFormated", "locationFormated", "directionFormated")]
-    if all(re.fullmatch(r"[a-z0-9-]+", part) for part in parts):
-        return REPSOL_FINDER_URL + "/".join(parts) + "/"
-    return REPSOL_FINDER_URL
-
-
 def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
     parsed: List[Dict[str, Any]] = []
     skipped: Dict[str, int] = defaultdict(int)
@@ -5329,7 +5387,7 @@ def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[
         add_record(
             parsed,
             source=REPSOL_SOURCE,
-            source_url=repsol_station_url(item),
+            source_url=REPSOL_FINDER_URL,
             name=str(item.get("nombre") or "Repsol charging point").strip(),
             address=address,
             city=str(item.get("localidad") or ""),
@@ -5438,6 +5496,15 @@ def electromaps_price(text: str) -> Optional[float]:
     return fnum(match.group(1).replace(",", ".")) if match else None
 
 
+def valid_electromaps_detail(detail: Any) -> bool:
+    return (
+        isinstance(detail, dict)
+        and (detail.get("address") is None or isinstance(detail["address"], dict))
+        and (detail.get("connectors") is None or isinstance(detail["connectors"], list))
+        and not detail.get("error")
+    )
+
+
 def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, Any]], *,
                                source_artifact: Optional[FetchArtifact] = None,
                                detail_artifact: Optional[FetchArtifact] = None,
@@ -5450,7 +5517,7 @@ def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, 
     out = out if out is not None else []
     location_id = item.get("id")
     lat, lon = fnum(item.get("latitude")), fnum(item.get("longitude"))
-    detail = detail if isinstance(detail, dict) else {}
+    detail = detail if valid_electromaps_detail(detail) else {}
     address = detail.get("address") or {}
     # A detail's own country code is authoritative; with none, geometry decides.
     if location_id in (None, "") or not point_in_declared_spain(lat, lon, address.get("country_code") if detail else None):
@@ -5483,6 +5550,7 @@ def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, 
     else:
         reliability = "directory-page"
     parking_text = str(detail.get("parking_price") or "").strip()
+    before = len(out)
     add_record(
         out,
         source=ELECTROMAPS_NATIONAL_SOURCE,
@@ -5519,30 +5587,66 @@ def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, 
             "charge_price_text": charge_text or None,
             "parking_price_text": parking_text or None,
             "offline_status": detail.get("offline_status"),
+            "detail_name": detail.get("name"),
             "only_tesla": detail.get("only_tesla"),
             "postal_code": address.get("postal_code"),
             "updated_at": detail.get("updated_at"),
             "source": "electromaps-public-web-map",
+            "list_fetch": source_artifact.as_evidence() if source_artifact else None,
+            "detail_fetch": detail_artifact.as_evidence() if detail_artifact else None,
         },
         connectors=connectors,
         port_count=len(connectors) or None,
         source_artifact=used_detail_artifact or source_artifact,
     )
+    if len(out) == before:
+        return out
+    row = out[-1]
+    if source_artifact:
+        row["sources"][0]["source_fetched_at"] = source_artifact.fetched_at
+        row["location_claim"]["source_fetched_at"] = source_artifact.fetched_at
+    if detail and detail_artifact:
+        row["sources"].append({
+            "name": ELECTROMAPS_NATIONAL_SOURCE + " detail",
+            "url": electromaps_station_url(location_id),
+            "source_fetched_at": detail_artifact.fetched_at,
+            "evidence": "Cached community tariff, hardware and parking detail; never live availability.",
+        })
+        for claim in ("charge_claim", "hardware_claim", "parking_claim"):
+            row[claim]["source_fetched_at"] = detail_artifact.fetched_at
+    # A newly acquired list must not make an older cached detail appear fresh.
+    row["source_fetched_at"] = oldest_contributing_source_timestamp([row]) or row.get("source_fetched_at")
     return out
 
 
-def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Optional[Tuple[Dict[str, Any], FetchArtifact]]:
+def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Tuple[Optional[Dict[str, Any]], Optional[FetchArtifact]]:
+    url = f"{ELECTROMAPS_API}/locations/{location_id}?skipAuthTokenValidation=true"
+    cache_name = f"electromaps_location_{location_id}.json"
+    evidence_start = len(FETCH_EVIDENCE)
+    artifact = None
     try:
         result = budgeted_cached_json(
-            f"{ELECTROMAPS_API}/locations/{location_id}?skipAuthTokenValidation=true",
-            f"electromaps_location_{location_id}.json", ttl_hours=ELECTROMAPS_DETAIL_TTL_HOURS,
+            url, cache_name, ttl_hours=ELECTROMAPS_DETAIL_TTL_HOURS,
             budget=budget, headers=ELECTROMAPS_HEADERS, timeout=30,
         )
-    except Exception:
-        return None
-    if not result or not isinstance(result[0], dict):
-        return None
-    return result[0], result[1]
+        if result is None:
+            return None, None
+        detail, artifact = result
+        if not valid_electromaps_detail(detail):
+            raise ValueError("Malformed Electromaps detail")
+        return detail, artifact
+    except Exception as exc:
+        # Keep failed acquisition/parsing visible without inventing a fetch date.
+        evidence = next((entry for entry in reversed(FETCH_EVIDENCE[evidence_start:])
+                         if entry.get("cache_name") == cache_name), None)
+        if evidence is None:
+            FETCH_EVIDENCE.append({
+                "url": url, "cache_name": cache_name, "error": type(exc).__name__,
+                "cache": {"hit": False, "fallback": False, "stale": False},
+            })
+        else:
+            evidence["parse_error"] = type(exc).__name__
+        return None, artifact
 
 
 def electromaps_detail_priority(key: str) -> Tuple[int, float]:
@@ -5554,17 +5658,15 @@ def electromaps_detail_priority(key: str) -> Tuple[int, float]:
 
 
 def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
-    items: Dict[str, Dict[str, Any]] = {}
-    artifact: Optional[FetchArtifact] = None
+    items: Dict[str, Tuple[Dict[str, Any], Optional[FetchArtifact]]] = {}
     for index, box in enumerate(DIRECTORY_SPAIN_LIST_BOXES):
         payload, box_artifact = unpack_json_artifact(cached_json(
             electromaps_list_url(box), f"electromaps_list_es_{index}.json", ttl_hours=12,
             headers=ELECTROMAPS_HEADERS, timeout=90, with_artifact=True,
         ))
-        artifact = artifact or box_artifact
         for item in payload if isinstance(payload, list) else []:
             if isinstance(item, dict) and item.get("id") is not None:
-                items[str(item["id"])] = item
+                items[str(item["id"])] = (item, box_artifact)
     if len(items) < ELECTROMAPS_MIN_ROWS:
         raise RuntimeError(f"Electromaps list shrank to {len(items)} locations (<{ELECTROMAPS_MIN_ROWS})")
     # Details enrich a rolling subset: cached details are reused for 30 days, and only a
@@ -5574,20 +5676,21 @@ def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
     budget = [budget_start]
     candidates = [
         key for key in items
-        if likely_in_spain(fnum(items[key].get("latitude")), fnum(items[key].get("longitude")))
+        if in_bbox(fnum(items[key][0].get("latitude")), fnum(items[key][0].get("longitude")), SPAIN_BBOX)
     ]
     # Spend the budget where it matters: listings with no detail (newest first), then the
     # oldest cached details. Ascending id order starved every new listing.
-    details: Dict[str, Tuple[Dict[str, Any], FetchArtifact]] = {}
+    details: Dict[str, Tuple[Optional[Dict[str, Any]], Optional[FetchArtifact]]] = {}
     for key in sorted(candidates, key=electromaps_detail_priority):
         result = electromaps_cached_detail(key, budget)
         if result:
             details[key] = result
     parsed: List[Dict[str, Any]] = []
     for key in sorted(candidates, key=lambda k: int(k) if k.isdigit() else 0):
+        item, list_artifact = items[key]
         detail, detail_artifact = details.get(key, (None, None))
-        parse_electromaps_location(items[key], detail, source_artifact=artifact,
-                                   detail_artifact=detail_artifact, out=parsed)
+        parse_electromaps_location(item, detail, source_artifact=list_artifact,
+                                  detail_artifact=detail_artifact, out=parsed)
     with_detail = sum(1 for row in parsed if row["raw"].get("detail_fetched"))
     stale_detail = sum(1 for row in parsed if row["raw"].get("detail_stale"))
     ADAPTER_STATUS["source_electromaps_national"] = {
@@ -5647,6 +5750,7 @@ def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[Fetc
     is_free = pool.get("is_free") is True
     address = " ".join(p for p in (str(pool.get("street_name") or "").strip(), str(pool.get("number") or "").strip()) if p)
     address = ", ".join(p for p in (address, str(pool.get("postal_code") or "").strip(), str(pool.get("city") or "").strip()) if p)
+    before = len(out)
     add_record(
         out,
         source=CHARGEMAP_NATIONAL_SOURCE,
@@ -5686,6 +5790,15 @@ def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[Fetc
         port_count=sum(count_int(c.get("count")) for c in connectors) or None,
         source_artifact=source_artifact,
     )
+    # Operational outage describes the station; occupancy UNAVAILABLE does not.
+    # Keep an out-of-order listing and its identity, but never offer it as usable.
+    if len(out) > before and str(pool.get("operational_status") or "").upper() == "OUT_OF_ORDER":
+        out[-1]["source_reported_unavailable"] = {
+            "source": CHARGEMAP_NATIONAL_SOURCE,
+            "field": "operational_status",
+            "value": pool["operational_status"],
+            "summary": "Chargemap reports this station out of order; verify restoration with the operator.",
+        }
     return out
 
 
@@ -5786,6 +5899,28 @@ def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
     records.extend(parsed)
 
 
+TELPARK_STATUS: Dict[str, Any] = {}
+
+
+def source_telpark(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Spain parking pages with their own EV flag; no live or tariff authority."""
+    try:
+        from .ingest_telpark import collect_telpark
+    except ImportError:
+        from ingest_telpark import collect_telpark
+    parsed, status = collect_telpark(cached_fetch, add_record)
+    TELPARK_STATUS.clear()
+    TELPARK_STATUS.update(status)
+    # The source-health integration may provide this shared status dictionary.
+    adapter_status = globals().get("ADAPTER_STATUS")
+    if isinstance(adapter_status, dict):
+        adapter_status["source_telpark"] = dict(status)
+    if not status["ready"]:
+        raise RuntimeError("Telpark intake failed closed: " + json.dumps(status, sort_keys=True))
+    records.extend(parsed)
+    return status
+
+
 ACTIVE_SOURCE_ADAPTERS = (
     source_valencia_municipal,
     source_lidl,
@@ -5805,6 +5940,7 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_repsol,
     source_electromaps_national,
     source_chargemap_national,
+    source_telpark,
 )
 
 
@@ -5845,7 +5981,8 @@ def build_payload() -> Dict[str, Any]:
             "OSM/Overpass data is ODbL; keep attribution and share-alike obligations in mind.",
             "Barcelona Endolla and Madrid official datasets are reused under CC BY 4.0; Zaragoza municipal facts follow its published reuse conditions. Preserve source/update attribution.",
             "Red MOVEM's €0.25/kWh regulation is attached only to unambiguous OSM locations at or below 22 kW; Moraleja Green is a single static Verify-first official-policy lead.",
-            "Rights-blocked commercial map/locator station ingestion is retired by structured source policy pending express reuse permission; retain only conventional homepage links, never copied station evidence.",
+            "Electromaps and Chargemap anonymous public-map snapshots are enabled by owner decision 2026-10-12; that product policy is not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission.",
+            "Feníe snapshots retain owner-attested written redistribution permission and the narrow read-only marker-list POST exception; neither establishes independent legal certification.",
             "Provider apps/onsite signs override every cached intelligence record.",
         ],
         "records": merged,

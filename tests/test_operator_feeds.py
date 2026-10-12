@@ -116,7 +116,7 @@ class EtecnicTests(unittest.TestCase):
         self.assertEqual(first["connector_labels"], [], "Etecnic connector ids have no public legend: never guess Type 2")
         self.assertIsNone(first["tesla_ok"], "unknown connectors are unknown, not Tesla-compatible or incompatible")
         self.assertEqual(first["total_evse"], 2)
-        self.assertEqual(first["raw"]["network"], "Etecnic platform (operator not stated)")
+        self.assertEqual(first["raw"]["network"], "Etecnic platform (operator not established)")
         self.assertIn("MELIB", melib["raw"]["network"], "MELIB only because the row name says so")
         self.assertEqual(melib["connector_labels"], [])
         self.assertEqual({c["label"] for c in melib["connectors"]}, {"Unknown connector"})
@@ -188,17 +188,20 @@ class ZunderTests(unittest.TestCase):
 
 
 class RepsolTests(unittest.TestCase):
-    def test_spanish_points_with_station_pages_and_speed_class(self):
+    def test_spanish_points_keep_feed_provenance_without_invented_station_urls(self):
         rows = ing.parse_repsol_charging_points(REPSOL_ITEMS)
         self.assertEqual([r["raw"]["repsol_point_id"] for r in rows], ["10005", "10007"])
         fast, slow = rows
-        self.assertEqual(fast["source_url"], "https://www.repsol.es/buscador-eess-y-puntos-de-recarga/madrid/madrid/avenida-de-canillejas-a-vicalvaro-147/")
-        self.assertIsNone(fast["max_power_kw"], "a speed class is not a kW figure")
-        self.assertFalse(fast["fast"], "fast needs a published power, not an inferred 50 kW")
+        self.assertEqual(fast["source_url"], ing.REPSOL_FINDER_URL)
+        self.assertEqual(fast["primary_source"]["kind"], "official_data")
+        self.assertIn("not an exact station/start page", fast["primary_source"]["warning"])
+        self.assertFalse(fast["fast"], "a qualitative speed class cannot establish numeric power")
+        self.assertIsNone(fast["max_power_kw"])
         self.assertEqual(fast["raw"]["speed_classes"], ["Rápida"])
         self.assertIn("Rápida", fast["sources"][0]["evidence"])
         self.assertFalse(slow["fast"])
-        self.assertEqual(slow["source_url"], ing.REPSOL_FINDER_URL, "unsafe slug parts fall back to the finder page")
+        self.assertIsNone(slow["max_power_kw"])
+        self.assertEqual(slow["source_url"], ing.REPSOL_FINDER_URL, "the feed does not supply a verified station-page URL")
         self.assertEqual(fast["connector_labels"], [])
         self.assertIsNone(fast["price_min"])
 

@@ -52,7 +52,7 @@ Volta never starts a charging session, reserves a bay, makes a provider payment,
 
 Volta uses MapKit and hands routes to Apple Maps. Station detail may load a charger photo from its attributed public source host. Place searches go to the Volta Service and are relayed to Nominatim. The Privacy page explains these flows, ordinary server IP logging, and server caches. The app contains no advertising or third-party analytics SDK.
 
-Feníe is attribution/link-only. Its POST-backed public-map listing is outside Volta's GET-only collection boundary, so this build contains no Feníe-origin station evidence or media.
+Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps and Chargemap anonymous public-map snapshots are directory leads enabled by owner decision, not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission. Consum locator evidence remains excluded. Source-rights certification is required before submission.
 
 Volta Plus is disabled in this build. All charger functionality is available without purchase. StoreKit subscriptions are not an active purchase path, and the product-page metadata/screenshots make no subscription or trial claim.
 ```
@@ -85,7 +85,7 @@ Volta never starts charging, reserves a bay, pays a provider, bypasses login, us
 
 Volta uses MapKit and Apple Maps route handoff. Detail may load a photo from its attributed public host. Place searches go through the Service to Nominatim. Privacy explains these flows and server IP logs/caches. There are no advertising or third-party analytics SDKs.
 
-Feníe is attribution/link-only. Its POST-backed public-map listing is outside Volta's GET-only collection boundary, so this build contains no Feníe-origin station evidence or media.
+Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps and Chargemap anonymous public-map snapshots are directory leads enabled by owner decision, not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission. Consum locator evidence remains excluded. Source-rights certification is required before submission.
 
 Volta Plus has two auto-renewable products in one group: volta.plus.monthly (one month) and volta.plus.yearly (one year). StoreKit supplies localized price, period, offer eligibility, and duration; production prices are not hardcoded. The paywall includes Restore Purchases, Terms, Privacy, and renewal/cancellation disclosure. Entitlement follows the purchasing Apple ID. If it changes during a route, that route remains usable until the next cold launch to avoid stranding the driver.
 ```
@@ -110,16 +110,16 @@ differences or reviewer-specific additions:
 
 | Exact assembly after substitutions | UTF-8 bytes | Byte headroom below 4,000 |
 |---|---:|---:|
-| A — paywall disabled | 3,076 | 924 |
-| B — paywall enabled | 3,188 | 812 |
+| A — paywall disabled | 3,340 | 660 |
+| B — paywall enabled | 3,482 | 518 |
 
-### Feníe link-only — current implementation state
+### Feníe snapshot — current implementation state
 
-Feníe's station listing requires a POST-backed anonymous web session, so it is outside Volta's
-GET-only collection boundary. The executable adapter is retired and direct or nested
-Feníe-origin station evidence is excluded. The owner-attested 2026-07-18 redistribution grant
-remains recorded as historical rights evidence, but it does not waive the collection-method
-gate. Feníe remains conventionally attributed and linked; no Feníe media is copied.
+Feníe's station listing uses an anonymous public-map session and the narrow read-only
+marker-list POST exception approved on 2026-10-06. Its adapter is active. The recorded
+owner-attested written redistribution permission of 2026-07-18 is retained off-repo and
+not independently verified here; it remains the source-policy revocation gate. Records
+are cached snapshots, never live availability. No Feníe media is copied.
 
 ## Public-source provenance summary
 
@@ -136,9 +136,12 @@ The engineering boundary and the rights boundary are separate:
   needed, or remove/link-only the affected content before submission.
 
 Active source families include MapaREVE public OCPI, Gaia public pages, DGT NAP corroboration,
-OpenChargeMap, OpenStreetMap, València and
-other municipal open data, and narrow official retailer/policy material. Electromaps and
-Consum remain link-only; Feníe is link-only and method-blocked; Chargemap is removed. The app provides source links and keeps
+OpenChargeMap, OpenStreetMap, València and other municipal open data, and narrow official
+retailer/policy material. Feníe snapshots are enabled under the recorded owner-attested
+permission and narrow POST exception. Electromaps and Chargemap anonymous public-map
+snapshots are enabled by owner decision dated 2026-10-12 as non-live directory leads.
+Consum locator evidence remains excluded. The owner decision does not establish third-party
+reuse rights or Apple Guideline 5.2.2 permission. The app provides source links and keeps
 provider/onsite information authoritative.
 
 ## Review attachments checklist
@@ -151,8 +154,10 @@ provider/onsite information authoritative.
       installed Settings Privacy/Terms/Support and, if enabled, paywall Terms/Privacy
       were all tapped and opened their matching public 200/no-login/no-placeholder
       destinations.
-- [ ] Feníe remains attribution/link-only and the exact bundled database contains zero direct
-      or nested Feníe-origin station evidence.
+- [ ] Feníe's exact bundled/served snapshot matches the recorded permission and narrow POST
+      exception; it is not presented as live and contains no copied Feníe media.
+- [ ] Electromaps/Chargemap source-rights gaps, including Apple 5.2.2 permission, are resolved
+      for the exact submitted revision; owner collection policy is not third-party permission.
 - [ ] Source-rights owner certification is complete and retained internally.
 - [ ] Correct complete assembly pasted; the other assembly omitted.
 - [ ] If enabled, both IAPs are attached to the submission with localizations and a real

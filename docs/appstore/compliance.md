@@ -128,12 +128,18 @@ Public technical access is not a redistribution license. The owner must complete
 photos, before selecting a paid model or submitting. A rights gap is a release blocker,
 not merely a review-notes issue.
 
-Feníe is attribution/link-only in the submitted architecture. Its public station listing
-requires a POST-backed web session, so the executable adapter and all direct or nested
-Feníe-origin station evidence are excluded even though the owner previously attested to a
-written redistribution permission. Rights permission and collection-method permission are
-separate gates: Feníe data may return only after a compliant public GET surface and the retained
-rights evidence are both reviewed. No Feníe media is copied.
+The current source policy enables Electromaps and Chargemap anonymous public web-map
+snapshots as directory leads by owner decision dated 2026-10-12. The decision authorizes
+collection as product policy; it does not create a third-party reuse licence or establish
+Apple App Review Guideline 5.2.2 permission. Resolve the rights gap against the exact
+submitted source/data revision before submission. Consum locator evidence remains excluded.
+
+Feníe's snapshot adapter is enabled under the narrow read-only marker-list POST exception
+approved on 2026-10-06 and the recorded owner-attested written redistribution permission
+of 2026-07-18. The written permission is retained off-repo and is not independently verified
+here. Rights permission and collection-method permission remain separate gates. Feníe's
+cached status is never live authority, and no Feníe media is copied. These engineering
+changes do not authorize App Store submission.
 
 ## Agreements, tax, banking, pricing, and territories
 
