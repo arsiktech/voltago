@@ -31,7 +31,8 @@ deployment details in [DEPLOY.md](../../DEPLOY.md) and frontend details in
 - **Public sources only** - integrations are GET public pages/APIs or documented open
   datasets, plus two owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe
   marker list) enforced in `scripts/source_transport.py`; private app/session scraping is
-  out of bounds.
+  out of bounds. Candidate sources across Europe (discovery only, not a reuse licence):
+  [source catalog](../source-catalog-europe-2026-10-12.md).
 
 ## Entry Points
 
