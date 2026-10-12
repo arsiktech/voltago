@@ -5317,6 +5317,334 @@ def source_repsol(records: List[Dict[str, Any]]) -> None:
     records.extend(parsed)
 
 
+# --- Directory web maps, national (owner decision 2026-10-12) ----------------------------
+# Electromaps and Chargemap web maps answer anonymous GETs. The owner decided on
+# 2026-10-12 to collect their public station data despite their terms. Both are community
+# directories: their price text and free flags are directory claims, never official
+# tariffs, and their availability fields stay in `raw` (never live authority).
+DIRECTORY_SPAIN_LIST_BOXES: Tuple[Tuple[float, float, float, float], ...] = (
+    (35.2, -9.6, 43.9, 4.4),     # mainland, Balearics, Ceuta, Melilla (south, west, north, east)
+    (27.5, -18.3, 29.5, -13.3),  # Canaries
+)
+DIRECTORY_PARKING_NOTE = "Parking detail comes from a community directory; check the signs onsite."
+
+
+def budgeted_cached_json(url: str, cache_name: str, *, ttl_hours: float, budget: List[int], **kw: Any) -> Optional[Tuple[Any, FetchArtifact]]:
+    """Cached JSON where only network fetches spend the per-run budget.
+
+    A fresh cache is used as is. A stale cache is refreshed while budget remains and is
+    otherwise reused, so a row never disappears just because this run ran out of budget
+    (the delta gate requires every baseline id to survive). Missing caches are fetched
+    only while budget remains; otherwise None.
+    """
+    path = CACHE / cache_name
+    if path.exists():
+        fresh = time.time() - path.stat().st_mtime < ttl_hours * 3600
+        if fresh or budget[0] <= 0:
+            artifact = cache_file_artifact(path, url=url, cache_name=cache_name, ttl_hours=ttl_hours)
+            return json.loads(artifact.decode("utf-8", "replace")), artifact
+    elif budget[0] <= 0:
+        return None
+    budget[0] -= 1
+    payload, artifact = unpack_json_artifact(cached_json(url, cache_name, ttl_hours=ttl_hours, with_artifact=True, **kw))
+    return payload, artifact
+
+ELECTROMAPS_NATIONAL_SOURCE = "Electromaps public web map"
+ELECTROMAPS_API = "https://www.electromaps.com/mapi/v2"
+ELECTROMAPS_HEADERS = {"Accept": "application/json", "App-platform": "web", "Referer": "https://map.electromaps.com/es/"}
+ELECTROMAPS_LIST_TYPES = "ON_STREET,PARKING,AIRPORT,CAMPING,HOTEL,RESTAURANT,SHOP,WORKSHOP,FUEL_STATION,CAR_DEALER,MALL,TAXI"
+ELECTROMAPS_MIN_ROWS = 20000
+ELECTROMAPS_DETAIL_TTL_HOURS = 24 * 30
+ELECTROMAPS_KWH_RE = re.compile(r"(\d+(?:[.,]\d{1,3})?)\s*€?\s*/\s*kwh", re.I)
+ELECTROMAPS_FREE_RE = re.compile(r"^\s*(gratis|gratuito|free)\s*\.?\s*$", re.I)
+
+
+def electromaps_station_url(location_id: Any) -> str:
+    return f"https://map.electromaps.com/es/p/{location_id}"
+
+
+def electromaps_list_url(box: Tuple[float, float, float, float]) -> str:
+    south, west, north, east = box
+    params = urllib.parse.urlencode({
+        "latNE": north, "lngNE": east, "latSW": south, "lngSW": west,
+        "realtime": "false", "connectors": "", "types": ELECTROMAPS_LIST_TYPES, "power": "3",
+        "app": "false", "rfid": "false", "favorites": "false", "skipAuthTokenValidation": "true",
+    })
+    return f"{ELECTROMAPS_API}/locations?{params}"
+
+
+def electromaps_price(text: str) -> Optional[float]:
+    """A plain "Gratis" is 0.0; one explicit €/kWh figure is that price; anything else is unknown."""
+    if not text:
+        return None
+    if ELECTROMAPS_FREE_RE.match(text):
+        return 0.0
+    prices = {fnum(m.group(1).replace(",", ".")) for m in ELECTROMAPS_KWH_RE.finditer(text)}
+    prices.discard(None)
+    return min(prices) if len(prices) == 1 else None
+
+
+def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, Any]], *,
+                               source_artifact: Optional[FetchArtifact] = None,
+                               out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    out = out if out is not None else []
+    location_id = item.get("id")
+    lat, lon = fnum(item.get("latitude")), fnum(item.get("longitude"))
+    if location_id in (None, "") or not likely_in_spain(lat, lon):
+        return out
+    detail = detail if isinstance(detail, dict) else {}
+    address = detail.get("address") or {}
+    if detail and str(address.get("country_code") or "ES").upper() not in {"ES", "IC", "EA"}:
+        return out
+    connectors: List[Dict[str, Any]] = []
+    powers: List[float] = []
+    for connector in detail.get("connectors") or []:
+        if not isinstance(connector, dict):
+            continue
+        power = fnum(connector.get("kw")) or None
+        if power:
+            powers.append(power)
+        connectors.append(connector_ref(
+            connector_label_from_token(str(connector.get("type") or "")) or "Unknown connector",
+            power_kw=power,
+            status="UNKNOWN",
+            source_url=electromaps_station_url(location_id),
+            connector_id=connector.get("id"),
+            raw={"type": connector.get("type"), "directory_status": connector.get("status"), "power_type": connector.get("power_type")},
+        ))
+    charge_text = str(detail.get("charge_price") or "").strip()
+    price = electromaps_price(charge_text)
+    if price == 0:
+        reliability = "directory-map-free"
+    elif price is not None and price <= 0.25:
+        reliability = "directory-map-cheap"
+    else:
+        reliability = "directory-page"
+    parking_text = str(detail.get("parking_price") or "").strip()
+    add_record(
+        out,
+        source=ELECTROMAPS_NATIONAL_SOURCE,
+        source_url=electromaps_station_url(location_id),
+        # The list name, not the detail name: a detail arriving later must not change the row id.
+        name=str(item.get("name") or "Electromaps charger").strip(),
+        address=str(address.get("address") or ""),
+        city=str(address.get("city") or ""),
+        lat=lat,
+        lon=lon,
+        price_min=price,
+        free_condition=(
+            f"Electromaps community listing says \"{charge_text}\". Directory claim, not an official tariff; check onsite."
+            if charge_text else "Electromaps publishes no price for this listing; check the operator app."
+        ),
+        connector_labels=None if connectors else [],
+        max_power_kw=max(powers) if powers else None,
+        status="VERIFY",
+        reliability=reliability,
+        evidence=(
+            f"Electromaps public web map listing {location_id}"
+            + (f"; community rating {detail.get('rating')} from {detail.get('count_ratings')} ratings" if detail.get("count_ratings") else "")
+            + ". Directory data; availability is never treated as live."
+        ),
+        parking_kind="free_parking" if ELECTROMAPS_FREE_RE.match(parking_text or "-") else "unknown",
+        parking_note=(f"Electromaps community listing: parking \"{parking_text}\". " if parking_text else "") + DIRECTORY_PARKING_NOTE,
+        raw={
+            "electromaps_location_id": str(location_id),
+            "marker": item.get("marker"),
+            "detail_fetched": bool(detail),
+            "charge_price_text": charge_text or None,
+            "parking_price_text": parking_text or None,
+            "offline_status": detail.get("offline_status"),
+            "only_tesla": detail.get("only_tesla"),
+            "postal_code": address.get("postal_code"),
+            "updated_at": detail.get("updated_at"),
+            "source": "electromaps-public-web-map",
+        },
+        connectors=connectors,
+        port_count=len(connectors) or None,
+        source_artifact=source_artifact,
+    )
+    return out
+
+
+def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Optional[Dict[str, Any]]:
+    try:
+        result = budgeted_cached_json(
+            f"{ELECTROMAPS_API}/locations/{location_id}?skipAuthTokenValidation=true",
+            f"electromaps_location_{location_id}.json", ttl_hours=ELECTROMAPS_DETAIL_TTL_HOURS,
+            budget=budget, headers=ELECTROMAPS_HEADERS, timeout=30,
+        )
+    except Exception:
+        return None
+    detail = result[0] if result else None
+    return detail if isinstance(detail, dict) else None
+
+
+def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
+    items: Dict[str, Dict[str, Any]] = {}
+    artifact: Optional[FetchArtifact] = None
+    for index, box in enumerate(DIRECTORY_SPAIN_LIST_BOXES):
+        payload, box_artifact = unpack_json_artifact(cached_json(
+            electromaps_list_url(box), f"electromaps_list_es_{index}.json", ttl_hours=12,
+            headers=ELECTROMAPS_HEADERS, timeout=90, with_artifact=True,
+        ))
+        artifact = artifact or box_artifact
+        for item in payload if isinstance(payload, list) else []:
+            if isinstance(item, dict) and item.get("id") is not None:
+                items[str(item["id"])] = item
+    if len(items) < ELECTROMAPS_MIN_ROWS:
+        raise RuntimeError(f"Electromaps list shrank to {len(items)} locations (<{ELECTROMAPS_MIN_ROWS})")
+    # Details enrich a rolling subset: cached details are reused for 30 days, and only a
+    # bounded number of missing ones are fetched per run, so full coverage builds up over
+    # successive refreshes instead of hammering the upstream in one build.
+    budget = [int(os.environ.get("VOLTA_ELECTROMAPS_DETAIL_BUDGET", "400"))]
+    parsed: List[Dict[str, Any]] = []
+    for key in sorted(items, key=lambda k: int(k) if k.isdigit() else 0):
+        item = items[key]
+        if not likely_in_spain(fnum(item.get("latitude")), fnum(item.get("longitude"))):
+            continue
+        parse_electromaps_location(item, electromaps_cached_detail(key, budget), source_artifact=artifact, out=parsed)
+    with_detail = sum(1 for row in parsed if row["raw"].get("detail_fetched"))
+    print(f"electromaps_national: {len(parsed)} Spanish rows from {len(items)} listings ({with_detail} with details)")
+    records.extend(parsed)
+
+
+CHARGEMAP_NATIONAL_SOURCE = "Chargemap public web map"
+CHARGEMAP_POOLS_URL = "https://map.chargemap.com/mappy/charging_pools.json"
+CHARGEMAP_HEADERS = {"Accept": "application/json", "Referer": "https://chargemap.com/en-gb/map"}
+CHARGEMAP_BOX_TTL_HOURS = 24 * 7
+CHARGEMAP_MAX_DEPTH = 10
+
+
+def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[FetchArtifact] = None,
+                         out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    out = out if out is not None else []
+    if str(pool.get("country_code") or "").upper() not in {"ES", "IC", "EA"}:
+        return out
+    coords = pool.get("gps_coordinates") or {}
+    lat, lon = fnum(coords.get("lat")), fnum(coords.get("lon"))
+    if not likely_in_spain(lat, lon) or pool.get("id") in (None, ""):
+        return out
+    slug_value = str(pool.get("slug") or pool.get("id"))
+    url = f"https://chargemap.com/{slug_value}.html"
+    connectors: List[Dict[str, Any]] = []
+    powers: List[float] = []
+    for connector in pool.get("charging_connectors") or []:
+        if not isinstance(connector, dict):
+            continue
+        power = fnum(connector.get("power_max")) or None
+        if power:
+            powers.append(power)
+        connectors.append(connector_ref(
+            connector_label_from_token(str(connector.get("type") or "")) or "Unknown connector",
+            count=count_int(connector.get("count")),
+            power_kw=power,
+            status="UNKNOWN",
+            source_url=url,
+            connector_id=(connector.get("connector_type") or {}).get("id"),
+            raw={"type": connector.get("type"), "available_count": connector.get("available_count"), "evse_ids": connector.get("evse_ids")},
+        ))
+    is_free = pool.get("is_free") is True
+    address = " ".join(p for p in (str(pool.get("street_name") or "").strip(), str(pool.get("number") or "").strip()) if p)
+    address = ", ".join(p for p in (address, str(pool.get("postal_code") or "").strip(), str(pool.get("city") or "").strip()) if p)
+    add_record(
+        out,
+        source=CHARGEMAP_NATIONAL_SOURCE,
+        source_url=url,
+        name=str(pool.get("name") or "Chargemap charger").strip(),
+        address=address,
+        city=str(pool.get("city") or ""),
+        lat=lat,
+        lon=lon,
+        price_min=0.0 if is_free else None,
+        free_condition=(
+            "Chargemap's community listing marks this station free. Directory claim, not an official tariff; check onsite."
+            if is_free else "Chargemap publishes no price in its map listing; check the operator app."
+        ),
+        connector_labels=None if connectors else [],
+        max_power_kw=max(powers) if powers else None,
+        status="VERIFY",
+        reliability="directory-map-free" if is_free else "directory-page",
+        evidence=(
+            f"Chargemap public web map pool {pool.get('id')} ({pool.get('location_type_slug') or 'location type unknown'}); "
+            f"operational status {pool.get('operational_status') or 'unknown'}. Directory data; availability is never treated as live."
+        ),
+        parking_kind="unknown",
+        parking_note=DIRECTORY_PARKING_NOTE,
+        raw={
+            "chargemap_pool_id": str(pool.get("id")),
+            "slug": slug_value,
+            "postal_code": pool.get("postal_code"),
+            "operational_status": pool.get("operational_status"),
+            "availability_status": pool.get("availability_status"),
+            "is_tesla": pool.get("is_tesla"),
+            "evse_emi3_ids": (pool.get("evse_emi3_ids") or [])[:12],
+            "last_used_time": pool.get("last_used_time"),
+            "source": "chargemap-public-web-map",
+        },
+        connectors=connectors,
+        port_count=sum(count_int(c.get("count")) for c in connectors) or None,
+        source_artifact=source_artifact,
+    )
+    return out
+
+
+def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
+    """Quadtree walk of the public pool endpoint over Spain.
+
+    Boxes that return clusters are split until they return pools. Each box response is
+    cached for 7 days and only uncached boxes count against the per-run network budget, so
+    a national pass completes over a few refreshes without a burst of thousands of calls.
+    """
+    budget = [int(os.environ.get("VOLTA_CHARGEMAP_NETWORK_BUDGET", "1200"))]
+    pools: Dict[str, Tuple[Dict[str, Any], Optional[FetchArtifact]]] = {}
+    incomplete = [0]
+
+    def fetch_box(north: float, west: float, south: float, east: float) -> Optional[Tuple[List[Dict[str, Any]], Optional[FetchArtifact]]]:
+        key = f"{north:.4f}_{west:.4f}_{south:.4f}_{east:.4f}".replace("-", "m").replace(".", "p")
+        query = urllib.parse.urlencode({"NW": f"{north};{west}", "SE": f"{south};{east}"})
+        result = budgeted_cached_json(
+            f"{CHARGEMAP_POOLS_URL}?{query}", f"chargemap_es_{key}.json", ttl_hours=CHARGEMAP_BOX_TTL_HOURS,
+            budget=budget, headers=CHARGEMAP_HEADERS, timeout=40,
+        )
+        if result is None:
+            return None
+        data, artifact = result
+        return ((data.get("response") or {}).get("content") or {}).get("items") or [], artifact
+
+    def walk(north: float, west: float, south: float, east: float, depth: int) -> None:
+        try:
+            result = fetch_box(north, west, south, east)
+        except Exception:
+            incomplete[0] += 1
+            return
+        if result is None:
+            incomplete[0] += 1
+            return
+        items, artifact = result
+        has_cluster = False
+        for item in items:
+            pool = item.get("pool") if isinstance(item, dict) else None
+            if isinstance(pool, dict) and pool.get("id") is not None:
+                pools[str(pool["id"])] = (pool, artifact)
+            elif isinstance(item, dict) and item.get("type") == "cluster":
+                has_cluster = True
+        if has_cluster and depth < CHARGEMAP_MAX_DEPTH:
+            mid_lat, mid_lon = (north + south) / 2, (west + east) / 2
+            for box in ((north, west, mid_lat, mid_lon), (north, mid_lon, mid_lat, east),
+                        (mid_lat, west, south, mid_lon), (mid_lat, mid_lon, south, east)):
+                walk(*box, depth + 1)
+
+    for south, west, north, east in DIRECTORY_SPAIN_LIST_BOXES:
+        walk(north, west, south, east, 0)
+    parsed: List[Dict[str, Any]] = []
+    for pool, artifact in pools.values():
+        parse_chargemap_pool(pool, source_artifact=artifact, out=parsed)
+    print(f"chargemap_national: {len(parsed)} Spanish rows from {len(pools)} pools; {incomplete[0]} boxes left for later runs")
+    if not parsed:
+        raise RuntimeError("Chargemap walk returned no Spanish pools")
+    records.extend(parsed)
+
+
 ACTIVE_SOURCE_ADAPTERS = (
     source_valencia_municipal,
     source_lidl,
@@ -5334,6 +5662,8 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_atlante,
     source_zunder,
     source_repsol,
+    source_electromaps_national,
+    source_chargemap_national,
 )
 
 

@@ -80,7 +80,7 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
 
     def test_intentional_exclusion_is_removed_from_baseline_before_delta(self) -> None:
         safe = row("safe", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
-        excluded = row("blocked", "Electromaps web-map API", "https://www.electromaps.com/es/punto-de-carga/1")
+        excluded = row("blocked", "Consum store locator", "https://www.consum.es/supermercados/punto/1")
         run, result = self._run(
             {"records": [safe, excluded], "errors": []},
             {"records": [safe], "errors": []},
@@ -95,7 +95,7 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
 
     def test_rebuilt_candidate_with_excluded_origin_fails_closed(self) -> None:
         safe = row("safe", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
-        excluded = row("blocked", "Directory", "https://www.electromaps.com/es/punto-de-carga/1")
+        excluded = row("blocked", "Directory", "https://www.consum.es/supermercados/punto/1")
         run, result = self._run(
             {"records": [safe], "errors": []},
             {"records": [safe, excluded], "errors": []},

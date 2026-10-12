@@ -28,6 +28,8 @@ def identity_keys(row: dict) -> set[tuple]:
         "Atlante public charger map": ("atlante_location_id",),
         "Zunder public charger map": ("zunder_location_id",),
         "Repsol public charging point finder": ("repsol_point_id",),
+        "Electromaps public web map": ("electromaps_location_id",),
+        "Chargemap public web map": ("chargemap_pool_id",),
     }
     for field in typed_fields.get(family, ()):
         value = raw.get(field)
