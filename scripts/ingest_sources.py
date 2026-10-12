@@ -38,7 +38,14 @@ try:
         recordset_sha256,
         value_is_excluded,
     )
-    from .source_transport import SourcePolicyBlocked, policy_urlopen
+    from .source_transport import (
+        PLACETOPLUG_MAX_LIMIT,
+        PLACETOPLUG_OPERATION,
+        PLACETOPLUG_QUERY,
+        PLACETOPLUG_URL,
+        SourcePolicyBlocked,
+        policy_urlopen,
+    )
     from .station_identity import identity_keys, primary_identity_keys
     from .spain_geography import point_in_spain
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
@@ -49,7 +56,14 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
         recordset_sha256,
         value_is_excluded,
     )
-    from source_transport import SourcePolicyBlocked, policy_urlopen
+    from source_transport import (
+        PLACETOPLUG_MAX_LIMIT,
+        PLACETOPLUG_OPERATION,
+        PLACETOPLUG_QUERY,
+        PLACETOPLUG_URL,
+        SourcePolicyBlocked,
+        policy_urlopen,
+    )
     from station_identity import identity_keys, primary_identity_keys
     from spain_geography import point_in_spain
 
@@ -359,7 +373,7 @@ def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str,
         h.update(headers)
     # Method is explicit: no body means GET. A body is a POST that only
     # scripts/source_transport.py's reviewed read-only query exceptions (MapaREVE bbox
-    # query, Feníe marker list) may send; any other POST raises SourcePolicyBlocked
+    # query, Feníe marker list, Repsol list, Place to Plug zone query) may send; any other POST raises SourcePolicyBlocked
     # before a socket opens, and exception POSTs never follow redirects.
     req = urllib.request.Request(url, data=data, headers=h, method="POST" if data is not None else "GET")
     with policy_urlopen(req, timeout=timeout) as r:
@@ -1406,7 +1420,10 @@ def directory_history_only(row: Dict[str, Any]) -> bool:
 def apply_directory_lifecycle(row: Dict[str, Any]) -> None:
     """Retain inactive directory identities with their original removal evidence."""
     source = row.get("source")
-    if source not in {"Electromaps public web map", "Chargemap public web map"}:
+    if source not in {
+        "Electromaps public web map", "Chargemap public web map",
+        PTP_SOURCE, PLUGSHARE_SOURCE, MOT_TARRAGONA_SOURCE,
+    }:
         return
     raw = row.get("raw") or {}
     field, value = None, None
@@ -1424,6 +1441,12 @@ def apply_directory_lifecycle(row: Dict[str, Any]) -> None:
         "NOT_WORKING", "ALL_SOCKETS_NOT_WORK", "REMOVED",
     }:
         field, value = "offline_status", raw["offline_status"]
+    elif source == PTP_SOURCE and raw.get("ptp_status_raw") in PTP_OUT_OF_SERVICE_STATUSES:
+        field, value = "status", raw["ptp_status_raw"]
+    elif source == PLUGSHARE_SOURCE and raw.get("under_repair") is True:
+        field, value = "under_repair", True
+    elif source == MOT_TARRAGONA_SOURCE and str(raw.get("status_raw") or "").strip().lower() == "out of service":
+        field, value = "STATUS", raw["status_raw"]
     if field is not None:
         row["source_reported_unavailable"] = {
             "source": source, "field": field, "value": value,
@@ -5428,6 +5451,771 @@ def source_repsol(records: List[Dict[str, Any]]) -> None:
     records.extend(parsed)
 
 
+# --- Place to Plug, MOT (Reus/Tarragona), PlugShare and P-APP (owner decision 2026-10-12) ---
+# All four are public, anonymous collection: no login, no user credential, no app-traffic
+# interception, no CAPTCHA bypass. None of them is an official tariff source; their price
+# fields stay unknown unless a source says otherwise, and community "free" flags stay
+# community claims.
+
+# Place to Plug: the public web app's GraphQL list. One exact read-only POST document is
+# allowed by scripts/source_transport.py (api.placetoplug.com/v2/graphql). `coordinates` is
+# [lon, lat] (confirmed with Aranjuez [-3.619, 40.023] and L'Hospitalet [2.105, 41.352]).
+# Verified anonymously on 2026-10-12. The API silently serves only 10 rows per page above
+# limit 50, so pages are 50 zones.
+PTP_SOURCE = "Place to Plug public charging zones"
+PTP_MAP_PAGE_URL = "https://placetoplug.com/"
+PTP_PAGE_LIMIT = PLACETOPLUG_MAX_LIMIT
+PTP_TTL_HOURS = 24 * 7
+PTP_MIN_ROWS = int(os.environ.get("VOLTA_PTP_MIN_ROWS", "5000"))
+PTP_MAX_PAGES_PER_BOX = 1500
+PTP_PAGE_PAUSE_SECONDS = 0.3
+PTP_HEADERS = {"Content-Type": "application/json", "Accept": "application/json"}
+PTP_SPAIN_COUNTRIES = {"spain", "españa", "espana", "es", "esp"}
+# Only the two statuses seen with real data have a mapped meaning; anything else is unknown.
+PTP_STATUS_AVAILABILITY = {"AVAILABLE": "available", "UNKNOWN": "unknown"}
+PTP_OUT_OF_SERVICE_STATUSES = {"OUTOFORDER"}
+
+
+def ptp_request_body(box: Tuple[float, float, float, float], page: int) -> bytes:
+    south, west, north, east = box
+    return json.dumps({
+        "operationName": PLACETOPLUG_OPERATION,
+        "variables": {"query": {
+            "filters": {"bounds": {"minLat": south, "maxLat": north, "minLon": west, "maxLon": east}},
+            "params": {"location": {"latitude": round((south + north) / 2, 6), "longitude": round((west + east) / 2, 6)}},
+            "limit": PTP_PAGE_LIMIT,
+            "page": page,
+        }},
+        "query": PLACETOPLUG_QUERY,
+    }, separators=(",", ":")).encode("utf-8")
+
+
+def parse_place_to_plug_zones(zones: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for zone in zones:
+        if not isinstance(zone, dict) or zone.get("id") in (None, ""):
+            skipped["not_a_zone"] += 1
+            continue
+        coordinates = zone.get("coordinates")
+        if not isinstance(coordinates, (list, tuple)) or len(coordinates) != 2:
+            skipped["no_coordinates"] += 1
+            continue
+        lon, lat = fnum(coordinates[0]), fnum(coordinates[1])  # [lon, lat], never [lat, lon]
+        address = zone.get("address") if isinstance(zone.get("address"), dict) else {}
+        country = str(address.get("country") or "").strip()
+        if country and country.lower() not in PTP_SPAIN_COUNTRIES:
+            skipped["not_spain"] += 1
+            continue
+        if not point_in_declared_spain(lat, lon, "ES" if country else None):
+            skipped["outside_spain"] += 1
+            continue
+        power = zone.get("powerRange") if isinstance(zone.get("powerRange"), dict) else {}
+        power_min, power_max = fnum(power.get("min")), fnum(power.get("max"))
+        status_raw = str(zone.get("status") or "").strip().upper()
+        availability = PTP_STATUS_AVAILABILITY.get(status_raw, "unknown")
+        street, city = str(address.get("street") or "").strip(), str(address.get("city") or "").strip()
+        add_record(
+            parsed,
+            source=PTP_SOURCE,
+            source_url=PTP_MAP_PAGE_URL,
+            name=re.sub(r"\s+", " ", str(zone.get("name") or "Place to Plug charger")).strip(),
+            address=", ".join(p for p in (street, city) if p),
+            city=city,
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="Place to Plug's public zone list publishes no tariff; check the price in the operator app.",
+            connector_labels=[],  # the zone list names no connector types; never default to Type 2
+            max_power_kw=power_max if power_max else None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence=(
+                "Place to Plug public charging-zone list"
+                + (f": {power_min:g}-{power_max:g} kW range" if power_min and power_max else "")
+                + f"; status {status_raw or 'not stated'} is a cached snapshot, never live availability."
+            ),
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "ptp_zone_id": str(zone["id"]),
+                "power_min_kw": power_min,
+                "power_max_kw": power_max,
+                "ptp_status_raw": status_raw or None,
+                "availability": availability,
+                "country": country or None,
+                "source": "placetoplug-public-graphql",
+            },
+            source_artifact=source_artifact,
+        )
+    print(f"place_to_plug: {len(parsed)} Spanish rows from {len(zones)} zones (skipped: {dict(skipped)})")
+    return parsed
+
+
+def source_place_to_plug(records: List[Dict[str, Any]]) -> None:
+    budget_start = int(os.environ.get("VOLTA_PTP_PAGE_BUDGET", "700"))
+    budget = [budget_start]
+    zones: Dict[str, Dict[str, Any]] = {}
+    artifact: Optional[FetchArtifact] = None
+    pages = failures = boxes_complete = 0
+    for index, box in enumerate(DIRECTORY_SPAIN_LIST_BOXES):
+        for page in range(1, PTP_MAX_PAGES_PER_BOX + 1):
+            cache_name = f"ptp_zones/box{index}_p{page}.json"
+            (CACHE / cache_name).parent.mkdir(parents=True, exist_ok=True)
+            spent_before = budget[0]
+            try:
+                result = budgeted_cached_json(
+                    transport_placetoplug_url(), cache_name, ttl_hours=PTP_TTL_HOURS, budget=budget,
+                    data=ptp_request_body(box, page), headers=dict(PTP_HEADERS), timeout=45,
+                )
+            except Exception as exc:
+                failures += 1
+                print(f"place_to_plug: box {index} page {page} failed: {type(exc).__name__}: {exc}")
+                break
+            if result is None:
+                break  # no budget left and nothing cached for this page
+            if budget[0] < spent_before:
+                time.sleep(PTP_PAGE_PAUSE_SECONDS)
+            payload, page_artifact = result
+            artifact = artifact or page_artifact
+            body = (payload.get("data") or {}).get("findChargingZones") if isinstance(payload, dict) else None
+            if not isinstance(body, dict) or payload.get("errors"):
+                failures += 1
+                break
+            pages += 1
+            page_zones = [z for z in body.get("chargingZones") or [] if isinstance(z, dict) and z.get("id") not in (None, "")]
+            for zone in page_zones:
+                zones[str(zone["id"])] = zone
+            if not body.get("hasNextPage") or not page_zones:
+                boxes_complete += 1
+                break
+    parsed = parse_place_to_plug_zones(list(zones.values()), source_artifact=artifact)
+    ADAPTER_STATUS["source_place_to_plug"] = {
+        "zones": len(zones),
+        "rows": len(parsed),
+        "pages": pages,
+        "network_fetches": budget_start - budget[0],
+        "boxes_complete": boxes_complete,
+        "failed_pages": failures,
+        "complete": boxes_complete == len(DIRECTORY_SPAIN_LIST_BOXES) and failures == 0,
+    }
+    if len(parsed) < PTP_MIN_ROWS:
+        raise RuntimeError(f"Place to Plug walk yielded {len(parsed)} Spanish rows (<{PTP_MIN_ROWS}); refusing a partial walk")
+    records.extend(parsed)
+
+
+def transport_placetoplug_url() -> str:
+    return PLACETOPLUG_URL
+
+
+# MOT (Aparcar): municipal car parks that run on the MOT parking platform. Only the Reus
+# "Carregadors municipals" layer (13 points) belongs here; the combined and privats layers
+# are third-party or aggregate and are excluded. No licence is stated for the Reus GIS and
+# endolls (plug count) is all it says about hardware, so power is never invented.
+MOT_REUS_SOURCE = "MOT (Aparcar) — Ajuntament de Reus municipal GIS"
+MOT_REUS_URL = "https://geoportal.reus.cat/apps/giscube-admin/layerserver/geojsonlayers/carregadors-municipals"
+MOT_REUS_FALLBACK_PAGE = "https://www.reus.cat/serveis/vehicle-electric"
+MOT_REUS_LAYER = "Carregadors municipals"
+MOT_REUS_MIN_ROWS = 8
+MOT_TARRAGONA_SOURCE = "MOT (Aparcar) — Ajuntament de Tarragona open data"
+MOT_TARRAGONA_URL = "https://opendatafiles.tarragona.cat/03303.csv"
+MOT_TARRAGONA_MIN_ROWS = 3
+MOT_CROSSREF_RADIUS_KM = 0.04
+MOT_REUS_ENDOLLS_RE = re.compile(r"(\d+)\s*endolls?", re.I)
+
+
+def parse_mot_reus_geojson(payload: Any, *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    features = payload.get("features") if isinstance(payload, dict) else None
+    for feature in features or []:
+        props = feature.get("properties") if isinstance(feature, dict) and isinstance(feature.get("properties"), dict) else None
+        geometry = feature.get("geometry") if isinstance(feature, dict) and isinstance(feature.get("geometry"), dict) else {}
+        if props is None:
+            skipped["not_a_feature"] += 1
+            continue
+        if str(props.get("layer") or "").strip() != MOT_REUS_LAYER:
+            skipped["other_layer"] += 1  # carregadors privats and the combined layer are not MOT
+            continue
+        coords = geometry.get("coordinates")
+        if geometry.get("type") != "Point" or not isinstance(coords, (list, tuple)) or len(coords) < 2:
+            skipped["no_point"] += 1
+            continue
+        lon, lat = fnum(coords[0]), fnum(coords[1])  # GeoJSON order
+        feature_id = props.get("id") if props.get("id") not in (None, "") else feature.get("id")
+        if feature_id in (None, "") or not point_in_declared_spain(lat, lon, "ES"):
+            skipped["no_id_or_outside_spain"] += 1
+            continue
+        match = MOT_REUS_ENDOLLS_RE.search(str(props.get("info") or ""))
+        plugs = int(match.group(1)) if match else None
+        link = str(props.get("nid") or "").strip()
+        source_url = link if link.startswith("https://") else MOT_REUS_FALLBACK_PAGE
+        connectors = [connector_ref("Unknown connector", count=plugs, source_url=source_url,
+                                    raw={"reus_info": props.get("info")})] if plugs else []
+        add_record(
+            parsed,
+            source=MOT_REUS_SOURCE,
+            source_url=source_url,
+            name=re.sub(r"\s+", " ", str(props.get("name") or "Reus municipal charger")).strip(),
+            address="",
+            city="Reus",
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="The Reus municipal GIS publishes no tariff; check the price onsite or with the car park.",
+            connector_labels=[],  # only a plug count is published; never default to Type 2
+            max_power_kw=None,
+            status="VERIFY",
+            reliability="official-charger-location-price-unknown",
+            evidence=(
+                f"Reus municipal public GIS layer '{MOT_REUS_LAYER}' (MOT-activated municipal car parks)"
+                + (f": {plugs} endolls (plugs)" if plugs else "")
+                + ". Power and tariff are not published. Municipal public GIS, no licence stated."
+            ),
+            parking_kind="unknown",
+            parking_note="Municipal car park in Reus; the layer publishes no parking fee. Check the signs onsite.",
+            raw={
+                "reus_feature_id": str(feature_id),
+                "plugs": plugs,
+                "info_raw": props.get("info"),
+                "code": props.get("code"),
+                "category": props.get("category"),
+                "subcategory": props.get("subcategory"),
+                "layer": props.get("layer"),
+                "source": "reus-municipal-gis",
+            },
+            connectors=connectors,
+            port_count=plugs,
+            source_artifact=source_artifact,
+        )
+    print(f"mot_reus: {len(parsed)} rows from {len(features or [])} features (skipped: {dict(skipped)})")
+    return parsed
+
+
+def parse_mot_tarragona_csv(body: Any, *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    text = body.decode("utf-8-sig", "replace") if isinstance(body, (bytes, bytearray)) else str(body)
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for row in csv.DictReader(io.StringIO(text)):
+        nom = re.sub(r"\s+", " ", str(row.get("NOM") or "")).strip()
+        lat, lon = fnum(row.get("LATITUD")), fnum(row.get("LONGITUD"))
+        if not nom or lat is None or lon is None or not point_in_declared_spain(lat, lon, "ES"):
+            skipped["no_name_or_outside_spain"] += 1
+            continue
+        status_raw = str(row.get("STATUS") or "").strip()
+        street, postal = str(row.get("ADRECA") or "").strip(), str(row.get("CP") or "").strip()
+        add_record(
+            parsed,
+            source=MOT_TARRAGONA_SOURCE,
+            source_url=MOT_TARRAGONA_URL,
+            name=nom,
+            address=", ".join(p for p in (street, postal, "Tarragona") if p),
+            city="Tarragona",
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="The Ajuntament de Tarragona open dataset publishes no tariff; check the price in the operator app.",
+            connector_labels=[],  # AMPERATGE is amperes, not a connector type or kW
+            max_power_kw=None,
+            status="VERIFY",
+            reliability="official-charger-location-price-unknown",
+            evidence=(
+                f"Ajuntament de Tarragona open data (MOT/Aparcar): status {status_raw or 'not stated'} (snapshot, never live)"
+                f"; {row.get('AMPERATGE') or '?'} A. Power in kW and tariff are not published."
+            ),
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "tarragona_nom": nom,
+                "status_raw": status_raw or None,
+                "amperage_raw": str(row.get("AMPERATGE") or "").strip() or None,
+                "postal_code": postal or None,
+                "codi_ens": str(row.get("CODI_ENS") or "").strip() or None,
+                "nom_ens": str(row.get("NOM_ENS") or "").strip() or None,
+                "source": "tarragona-open-data-csv",
+            },
+            source_artifact=source_artifact,
+        )
+    print(f"mot_tarragona: {len(parsed)} rows (skipped: {dict(skipped)})")
+    return parsed
+
+
+def apply_mot_tarragona(records: List[Dict[str, Any]], mot_rows: List[Dict[str, Any]]) -> Tuple[int, int]:
+    """Attach MOT as a cross-reference to the Etecnic row it duplicates; add only unmatched rows.
+
+    The six Tarragona CSV rows are the same chargers Etecnic already publishes, at the same
+    coordinates. Creating a second record would draw duplicate pins, so a MOT row within
+    ``MOT_CROSSREF_RADIUS_KM`` of an Etecnic row (one-to-one, nearest first) only adds its
+    source, identity key and out-of-service flag to that row; the Etecnic id is never re-keyed.
+    Returns (rows_added, rows_cross_referenced).
+    """
+    etecnic = [r for r in records if r.get("source") == ETECNIC_SOURCE]
+    pairs = sorted(
+        (_dist_km(m, e), mi, ei)
+        for mi, m in enumerate(mot_rows) for ei, e in enumerate(etecnic)
+        if _dist_km(m, e) <= MOT_CROSSREF_RADIUS_KM
+    )
+    used_mot: Set[int] = set()
+    used_etecnic: Set[int] = set()
+    crossref = 0
+    for _distance, mi, ei in pairs:
+        if mi in used_mot or ei in used_etecnic:
+            continue
+        used_mot.add(mi)
+        used_etecnic.add(ei)
+        crossref += 1
+        mot, row = mot_rows[mi], etecnic[ei]
+        entry = {"name": MOT_TARRAGONA_SOURCE, "url": MOT_TARRAGONA_URL, "evidence": mot["sources"][0]["evidence"]}
+        if all((s.get("name"), s.get("url")) != (entry["name"], entry["url"]) for s in row.get("sources", [])):
+            row.setdefault("sources", []).append(entry)
+            row["source_count"] = len(row["sources"])
+        row["raw"]["mot_crossref"] = {
+            "nom": mot["raw"]["tarragona_nom"],
+            "status": mot["raw"]["status_raw"],
+            "amperage_raw": mot["raw"]["amperage_raw"],
+            "codi_ens": mot["raw"]["codi_ens"],
+            "source_url": MOT_TARRAGONA_URL,
+            "fetched_at": mot.get("source_fetched_at"),
+        }
+        key = [MOT_TARRAGONA_SOURCE, "tarragona_nom", mot["raw"]["tarragona_nom"]]
+        carried = [list(k) for k in row.get("merged_source_identifiers") or []]
+        if key not in carried:
+            row["merged_source_identifiers"] = sorted(carried + [key])
+        if mot.get("source_reported_unavailable") and not row.get("source_reported_unavailable"):
+            row["source_reported_unavailable"] = mot["source_reported_unavailable"]
+            row["is_free"] = False
+            row["is_cheap"] = False
+    added = 0
+    for mi, mot in enumerate(mot_rows):
+        if mi not in used_mot:
+            records.append(mot)
+            added += 1
+    return added, crossref
+
+
+def source_mot_aparcar(records: List[Dict[str, Any]]) -> None:
+    errors: List[str] = []
+    reus_rows: List[Dict[str, Any]] = []
+    tgn_rows: List[Dict[str, Any]] = []
+    try:
+        payload, artifact = unpack_json_artifact(cached_json(
+            MOT_REUS_URL, "mot_reus.json", ttl_hours=24, with_artifact=True, timeout=45,
+            headers={"Accept": "application/json"},
+        ))
+        reus_rows = parse_mot_reus_geojson(payload, source_artifact=artifact)
+        if len(reus_rows) < MOT_REUS_MIN_ROWS:
+            errors.append(f"Reus layer yielded {len(reus_rows)} rows (<{MOT_REUS_MIN_ROWS})")
+            reus_rows = []
+    except Exception as exc:
+        errors.append(f"Reus: {type(exc).__name__}: {exc}")
+    try:
+        artifact = cached_fetch(MOT_TARRAGONA_URL, "tgn_csv.csv", ttl_hours=24, timeout=45, headers={"Accept": "text/csv,*/*"})
+        tgn_rows = parse_mot_tarragona_csv(artifact.body, source_artifact=artifact)
+        if len(tgn_rows) < MOT_TARRAGONA_MIN_ROWS:
+            errors.append(f"Tarragona CSV yielded {len(tgn_rows)} rows (<{MOT_TARRAGONA_MIN_ROWS})")
+            tgn_rows = []
+    except Exception as exc:
+        errors.append(f"Tarragona: {type(exc).__name__}: {exc}")
+    records.extend(reus_rows)
+    added, crossref = apply_mot_tarragona(records, tgn_rows)
+    ADAPTER_STATUS["source_mot_aparcar"] = {
+        "reus_rows": len(reus_rows), "tarragona_rows": len(tgn_rows),
+        "tarragona_added": added, "tarragona_crossref_only": crossref,
+        "errors": errors, "complete": not errors,
+    }
+    print(f"mot_aparcar: reus={len(reus_rows)} tarragona={len(tgn_rows)} (added {added}, cross-referenced {crossref})")
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+# PlugShare: the public web client (www.plugshare.com) calls api.plugshare.com with a Basic
+# credential that ships in the site's own public bundle and is sent by every visitor's
+# browser; no user account is involved. It is configurable (VOLTA_PLUGSHARE_BASIC_AUTH) and
+# defaults to that public value. The host's WAF rejects h2, so requests stay HTTP/1.1 (the
+# urllib path used by fetch() speaks HTTP/1.1 only). The API 429s on bursts, hence the long
+# pause between live requests. PlugShare is a community directory: `cost: false` is a
+# community "free" claim, never an official tariff.
+PLUGSHARE_SOURCE = "PlugShare community web map"
+PLUGSHARE_API = "https://api.plugshare.com/v3"
+PLUGSHARE_STATION_URL = "https://www.plugshare.com/location/{id}"
+PLUGSHARE_DEFAULT_BASIC_AUTH = "d2ViX3YyOkVOanNuUE54NHhXeHVkODU="
+PLUGSHARE_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+PLUGSHARE_GRID_STEP_DEGREES = 0.38
+PLUGSHARE_RADIUS_METERS = 30000
+PLUGSHARE_COUNT = 1000
+PLUGSHARE_NEARBY_TTL_HOURS = 24 * 7
+PLUGSHARE_DETAIL_TTL_HOURS = 24 * 30
+PLUGSHARE_PAUSE_SECONDS = float(os.environ.get("VOLTA_PLUGSHARE_PAUSE_SECONDS", "8"))
+PLUGSHARE_MIN_ROWS = int(os.environ.get("VOLTA_PLUGSHARE_MIN_ROWS", "5000"))
+PLUGSHARE_MAX_CONSECUTIVE_FAILURES = 3
+PLUGSHARE_CONNECTOR_LABELS = {
+    "type 2": "Type 2", "ccs2": "CCS2", "chademo": "CHAdeMO", "wall (euro)": "Schuko", "j-1772": "Type 1",
+}
+
+
+def plugshare_headers() -> Dict[str, str]:
+    credential = os.environ.get("VOLTA_PLUGSHARE_BASIC_AUTH") or PLUGSHARE_DEFAULT_BASIC_AUTH
+    return {
+        "Authorization": f"Basic {credential}",
+        "User-Agent": PLUGSHARE_BROWSER_UA,
+        "Accept": "application/json",
+        "Referer": "https://www.plugshare.com/",
+        "Origin": "https://www.plugshare.com",
+    }
+
+
+def plugshare_nearby_url(lat: float, lon: float) -> str:
+    params = urllib.parse.urlencode({
+        "access": 1, "count": PLUGSHARE_COUNT, "latitude": lat, "longitude": lon, "radius": PLUGSHARE_RADIUS_METERS,
+    })
+    return f"{PLUGSHARE_API}/locations/nearby?{params}"
+
+
+def plugshare_cell_cache_name(lat: float, lon: float) -> str:
+    return f"plugshare_nearby/{lat:.4f}_{lon:.4f}.json"
+
+
+def plugshare_grid_cells() -> List[Tuple[float, float]]:
+    """Cell centres over the Spanish list boxes whose neighbourhood touches Spain.
+
+    A 30 km circle covers a square cell of this step (half-diagonal under 28 km at Spanish
+    latitudes), so the grid leaves no gaps; cells over open sea or other countries are dropped.
+    """
+    step, probe = PLUGSHARE_GRID_STEP_DEGREES, PLUGSHARE_GRID_STEP_DEGREES / 2 - 0.01
+    cells: Set[Tuple[float, float]] = set()
+    for south, west, north, east in DIRECTORY_SPAIN_LIST_BOXES:
+        lat = south
+        while lat <= north + 1e-9:
+            lon = west
+            while lon <= east + 1e-9:
+                if any(point_in_spain(lat + dy, lon + dx) for dy in (-probe, 0, probe) for dx in (-probe, 0, probe)):
+                    cells.add((round(lat, 4), round(lon, 4)))
+                lon += step
+            lat += step
+    return sorted(cells)
+
+
+def plugshare_connector_label(name: Any) -> Optional[str]:
+    return PLUGSHARE_CONNECTOR_LABELS.get(str(name or "").strip().lower())
+
+
+def parse_plugshare_location(item: Dict[str, Any], detail: Optional[Dict[str, Any]], *,
+                             source_artifact: Optional[FetchArtifact] = None,
+                             detail_artifact: Optional[FetchArtifact] = None,
+                             out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """`source_artifact` is the nearby-list response; `detail_artifact` the cached detail, if used."""
+    out = out if out is not None else []
+    location_id = item.get("id")
+    detail = detail if isinstance(detail, dict) else {}
+    if detail and str(detail.get("id")) != str(location_id):
+        detail = {}  # a detail for another location never informs this row
+    lat, lon = fnum(item.get("latitude")), fnum(item.get("longitude"))
+    if location_id in (None, "") or not likely_in_spain(lat, lon):
+        return out
+    if item.get("coming_soon") or detail.get("coming_soon") or detail.get("enabled") is False:
+        return out
+    used_detail_artifact = detail_artifact if detail and detail_artifact is not None else None
+    station_url = PLUGSHARE_STATION_URL.format(id=location_id)
+    stations = (detail.get("stations") if detail else None) or item.get("stations") or []
+    connectors: List[Dict[str, Any]] = []
+    powers: List[float] = []
+    for station in stations:
+        for outlet in (station.get("outlets") or []) if isinstance(station, dict) else []:
+            if not isinstance(outlet, dict):
+                continue
+            power = fnum(outlet.get("kilowatts")) or None
+            if power:
+                powers.append(power)
+            if detail:
+                connectors.append(connector_ref(
+                    plugshare_connector_label(outlet.get("connector_name")) or "Unknown connector",
+                    power_kw=power, status="UNKNOWN", source_url=station_url, connector_id=outlet.get("id"),
+                    raw={"connector_name": outlet.get("connector_name"), "is_dc": outlet.get("is_dc")},
+                ))
+    type_names = [str(t) for t in (detail.get("connector_types") or item.get("connector_types") or [])]
+    labels = sorted({plugshare_connector_label(t) for t in type_names if plugshare_connector_label(t)}
+                    | set(published_connector_labels(connectors)))
+    cost_flag = detail.get("cost") if detail else None
+    community_free = cost_flag is False
+    price = 0.0 if community_free else None  # a community claim, recorded as such below
+    under_repair = bool(detail.get("under_repair") if detail else item.get("under_repair")) or bool(item.get("under_repair"))
+    add_record(
+        out,
+        source=PLUGSHARE_SOURCE,
+        source_url=station_url,
+        name=str(item.get("name") or detail.get("name") or "PlugShare charger").strip(),
+        address=str(detail.get("address") or item.get("address") or ""),
+        city="",
+        lat=lat,
+        lon=lon,
+        price_min=price,
+        free_condition=(
+            "PlugShare community listing flags this location as not costing money (cost=false). "
+            "Community claim, not an official tariff; check onsite."
+            if community_free else
+            "PlugShare publishes no verified tariff for this listing; check the operator app."
+        ),
+        connector_labels=labels,
+        max_power_kw=max(powers) if powers else None,
+        status="VERIFY",
+        reliability="community-free" if community_free else "directory-page",
+        evidence=(
+            f"PlugShare community web map listing {location_id}"
+            + (f"; community score {item.get('score')}" if item.get("score") is not None else "")
+            + ". Community data (power, connectors, cost are user/CPO-entered claims); availability is never treated as live."
+        ),
+        parking_kind="unknown",
+        parking_note=DIRECTORY_PARKING_NOTE,
+        raw={
+            "plugshare_location_id": str(location_id),
+            "connector_types": type_names,
+            "station_count": item.get("station_count"),
+            "score": item.get("score"),
+            "is_fast_charger": item.get("is_fast_charger"),
+            "under_repair": under_repair,
+            "access": item.get("access"),
+            "hours": detail.get("hours") if detail else None,
+            "open247": detail.get("open247") if detail else None,
+            "cost_flag": cost_flag,
+            "cost_description": (detail.get("cost_description") or None) if detail else None,
+            "community_free_claim": community_free,
+            "detail_fetched": bool(detail),
+            "list_fetched_at": source_artifact.fetched_at if source_artifact else None,
+            "detail_fetched_at": used_detail_artifact.fetched_at if used_detail_artifact else None,
+            "detail_stale": used_detail_artifact.stale if used_detail_artifact else None,
+            "updated_at": detail.get("updated_at") if detail else None,
+            "source": "plugshare-public-web-api",
+        },
+        connectors=connectors,
+        port_count=len(connectors) or None,
+        source_artifact=used_detail_artifact or source_artifact,
+    )
+    return out
+
+
+def plugshare_cached_detail(location_id: Any, budget: List[int]) -> Optional[Tuple[Dict[str, Any], FetchArtifact]]:
+    cache_name = f"plugshare_locations/{location_id}.json"
+    (CACHE / cache_name).parent.mkdir(parents=True, exist_ok=True)
+    before = budget[0]
+    try:
+        result = budgeted_cached_json(
+            f"{PLUGSHARE_API}/locations/{location_id}", cache_name, ttl_hours=PLUGSHARE_DETAIL_TTL_HOURS,
+            budget=budget, headers=plugshare_headers(), timeout=30,
+        )
+    except Exception:
+        return None
+    if budget[0] < before:
+        time.sleep(PLUGSHARE_PAUSE_SECONDS)
+    if not result or not isinstance(result[0], dict):
+        return None
+    return result[0], result[1]
+
+
+def plugshare_detail_priority(key: str) -> Tuple[int, float]:
+    """Missing details first (newest id first), then the oldest cached; fresh ones cost nothing."""
+    path = CACHE / f"plugshare_locations/{key}.json"
+    if not path.exists():
+        return (0, -float(int(key) if key.isdigit() else 0))
+    return (1, path.stat().st_mtime)
+
+
+def source_plugshare(records: List[Dict[str, Any]]) -> None:
+    cells = plugshare_grid_cells()
+    nearby_start = int(os.environ.get("VOLTA_PLUGSHARE_NEARBY_BUDGET", "500"))
+    nearby_budget = [nearby_start]
+    items: Dict[str, Dict[str, Any]] = {}
+    item_artifacts: Dict[str, FetchArtifact] = {}
+    cells_with_data = capped = consecutive_failures = 0
+
+    def cell_priority(cell: Tuple[float, float]) -> Tuple[int, float]:
+        path = CACHE / plugshare_cell_cache_name(*cell)
+        return (0, 0.0) if not path.exists() else (1, path.stat().st_mtime)
+
+    for lat, lon in sorted(cells, key=cell_priority):
+        cache_name = plugshare_cell_cache_name(lat, lon)
+        (CACHE / cache_name).parent.mkdir(parents=True, exist_ok=True)
+        before = nearby_budget[0]
+        try:
+            result = budgeted_cached_json(
+                plugshare_nearby_url(lat, lon), cache_name, ttl_hours=PLUGSHARE_NEARBY_TTL_HOURS,
+                budget=nearby_budget, headers=plugshare_headers(), timeout=60,
+            )
+        except Exception as exc:
+            consecutive_failures += 1
+            print(f"plugshare: cell {lat},{lon} failed: {type(exc).__name__}: {exc}")
+            if consecutive_failures >= PLUGSHARE_MAX_CONSECUTIVE_FAILURES:
+                print("plugshare: stopping the walk after consecutive failures (rate limit?)")
+                break
+            time.sleep(PLUGSHARE_PAUSE_SECONDS)
+            continue
+        consecutive_failures = 0
+        if nearby_budget[0] < before:
+            time.sleep(PLUGSHARE_PAUSE_SECONDS)
+        if result is None or not isinstance(result[0], list):
+            continue
+        payload, artifact = result
+        cells_with_data += 1
+        capped += 1 if len(payload) >= PLUGSHARE_COUNT else 0
+        for item in payload:
+            if isinstance(item, dict) and item.get("id") is not None:
+                items[str(item["id"])] = item
+                item_artifacts.setdefault(str(item["id"]), artifact)
+    candidates = [k for k, v in items.items() if likely_in_spain(fnum(v.get("latitude")), fnum(v.get("longitude")))]
+    detail_start = int(os.environ.get("VOLTA_PLUGSHARE_DETAIL_BUDGET", "100"))
+    detail_budget = [detail_start]
+    details: Dict[str, Tuple[Dict[str, Any], FetchArtifact]] = {}
+    for key in sorted(candidates, key=plugshare_detail_priority):
+        result = plugshare_cached_detail(key, detail_budget)
+        if result:
+            details[key] = result
+    parsed: List[Dict[str, Any]] = []
+    for key in sorted(candidates, key=lambda k: int(k) if k.isdigit() else 0):
+        detail, detail_artifact = details.get(key, (None, None))
+        parse_plugshare_location(items[key], detail, source_artifact=item_artifacts.get(key),
+                                 detail_artifact=detail_artifact, out=parsed)
+    with_detail = sum(1 for row in parsed if row["raw"].get("detail_fetched"))
+    ADAPTER_STATUS["source_plugshare"] = {
+        "cells": len(cells),
+        "cells_with_data": cells_with_data,
+        "cells_without_data": len(cells) - cells_with_data,
+        "capped_cells": capped,
+        "nearby_network_fetches": nearby_start - nearby_budget[0],
+        "listings": len(items),
+        "rows": len(parsed),
+        "rows_with_detail": with_detail,
+        "rows_without_detail": len(parsed) - with_detail,
+        "detail_network_fetches": detail_start - detail_budget[0],
+        "complete": cells_with_data == len(cells) and capped == 0,
+    }
+    print(f"plugshare: {len(parsed)} Spanish rows from {len(items)} listings in {cells_with_data}/{len(cells)} cells ({with_detail} with details)")
+    if len(parsed) < PLUGSHARE_MIN_ROWS:
+        raise RuntimeError(f"PlugShare walk yielded {len(parsed)} Spanish rows (<{PLUGSHARE_MIN_ROWS}); refusing a partial walk")
+    records.extend(parsed)
+
+
+# P-APP (Interparking): the public car park finder embeds its Next.js (RSC flight) data in the
+# page itself. One robots-allowed GET of this exact path (never /api/ or a query variant).
+# P-APP & WEB SERVICIOS DIGITALES S.L.U. (CIF B67447151) belongs to the Interparking group;
+# the DGT operator id is ES*IPK and its EVSE ids embed the car park id (ES*IPK*E<id> <->
+# es-<id>). Only Spanish (es-*) car parks carrying the 'Electric charging station' facility
+# flag are rows; the flag is all the page says about charging. Its `price` is a PARKING
+# price and never a charging price. The page's coordinates are the source's own claim.
+# DGT proximity agreement is mean <=100 m but has outliers (Jerez Hospital 4.2 km, Lleida
+# 682 m, Cadiz 234 m, BCN Parc Sanitari 184 m, BCN WTC name-only 302 m), so merging stays
+# on the existing cross-source rules only.
+INTERPARKING_SOURCE = "P-APP (Interparking) public car park finder"
+INTERPARKING_PAGE_URL = "https://www.interparking.es/es/encuentra-un-aparcamiento/"
+INTERPARKING_SITE = "https://www.interparking.es"
+INTERPARKING_EV_FACILITY = "Electric charging station"
+INTERPARKING_MIN_ROWS = int(os.environ.get("VOLTA_INTERPARKING_MIN_ROWS", "30"))
+INTERPARKING_PUSH_RE = re.compile(r'self\.__next_f\.push\(\[1,("(?:[^"\\]|\\.)*")\]\)')
+
+
+def interparking_car_parks_from_page(page: str) -> List[Dict[str, Any]]:
+    chunks: List[str] = []
+    for literal in INTERPARKING_PUSH_RE.findall(page):
+        try:
+            chunks.append(json.loads(literal))
+        except ValueError:
+            continue
+    flight = "".join(chunks)
+    marker = flight.find('"carParks":')
+    if marker < 0:
+        raise RuntimeError("Interparking finder page carries no embedded carParks data; upstream shape change?")
+    try:
+        car_parks, _end = json.JSONDecoder().raw_decode(flight[marker + len('"carParks":'):])
+    except ValueError as exc:
+        raise RuntimeError(f"Interparking embedded carParks JSON does not parse: {exc}") from exc
+    if not isinstance(car_parks, list) or not car_parks:
+        raise RuntimeError("Interparking embedded carParks list is empty")
+    return [c for c in car_parks if isinstance(c, dict)]
+
+
+def interparking_has_ev_flag(car_park: Dict[str, Any]) -> bool:
+    return any(isinstance(f, dict) and f.get("id") == INTERPARKING_EV_FACILITY for f in car_park.get("facilities") or [])
+
+
+def interparking_is_spanish(car_park: Dict[str, Any]) -> bool:
+    return str(car_park.get("externalId") or "").startswith("es-")
+
+
+def parse_interparking_car_parks(car_parks: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for park in car_parks:
+        if not interparking_is_spanish(park):
+            skipped["not_spain"] += 1
+            continue
+        if not interparking_has_ev_flag(park):
+            skipped["no_ev_flag"] += 1  # no charger claim: not an actionable record
+            continue
+        location = park.get("location") if isinstance(park.get("location"), dict) else {}
+        lat, lon = fnum(location.get("lat")), fnum(location.get("lng"))
+        if not point_in_declared_spain(lat, lon, "ES"):
+            skipped["outside_spain"] += 1
+            continue
+        price = re.sub(r"\s+", " ", str(park.get("price") or "").replace("\xa0", " ")).strip()
+        price = "" if price.startswith("$") else price  # "$undefined" is the RSC null marker
+        path = str(park.get("url") or "")
+        source_url = INTERPARKING_SITE + path if re.fullmatch(r"/es/aparcamientos/[a-z0-9/_-]+/", path) else INTERPARKING_PAGE_URL
+        city = park.get("city") if isinstance(park.get("city"), dict) else {}
+        add_record(
+            parsed,
+            source=INTERPARKING_SOURCE,
+            source_url=source_url,
+            name=re.sub(r"\s+", " ", str(park.get("name") or "Interparking car park")).strip(),
+            address=str(park.get("address") or ""),
+            city=str(city.get("title") or ""),
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition=(
+                f"The Interparking finder shows a parking price ({price}), not a charging tariff; charging price unknown. Check onsite or in P-APP."
+                if price else
+                "Charging price unknown: the Interparking finder lists only a parking price, when it lists any price. Check onsite or in P-APP."
+            ),
+            connector_labels=[],  # the finder flags charging only; no plug type or power is published
+            max_power_kw=None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence="Interparking public car park finder flags 'Puntos de carga eléctrica' at this car park; no plug count, connector type, power or tariff is published.",
+            parking_kind="paid_or_metered",
+            parking_note="Interparking car park; the finder's price is the parking price, not a charging tariff.",
+            raw={
+                "interparking_external_id": str(park.get("externalId")),
+                "parking_price": price or None,
+                "brand": park.get("brand"),
+                "city_slug": city.get("slug"),
+                "ev_facility_flag": True,
+                "source": "interparking-public-finder",
+            },
+            source_artifact=source_artifact,
+        )
+    print(f"interparking_papp: {len(parsed)} EV-flagged Spanish rows from {len(car_parks)} car parks (skipped: {dict(skipped)})")
+    return parsed
+
+
+def parse_interparking_page(page: str, *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    return parse_interparking_car_parks(interparking_car_parks_from_page(page), source_artifact=source_artifact)
+
+
+def source_interparking_papp(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(INTERPARKING_PAGE_URL, "interparking_finder.html", ttl_hours=24, timeout=60,
+                            headers={"Accept": "text/html"})
+    car_parks = interparking_car_parks_from_page(artifact.decode("utf-8", "replace"))
+    parsed = parse_interparking_car_parks(car_parks, source_artifact=artifact)
+    spanish = [c for c in car_parks if interparking_is_spanish(c)]
+    ADAPTER_STATUS["source_interparking_papp"] = {
+        "car_parks_total": len(car_parks),
+        "spanish_car_parks": len(spanish),
+        "ev_flagged_rows": len(parsed),
+        "unflagged_spanish_skipped": sum(1 for c in spanish if not interparking_has_ev_flag(c)),
+    }
+    if len(parsed) < INTERPARKING_MIN_ROWS:
+        raise RuntimeError(f"Interparking finder yielded {len(parsed)} EV-flagged Spanish rows (<{INTERPARKING_MIN_ROWS}); upstream shape change?")
+    records.extend(parsed)
+
+
 # --- Directory web maps, national (owner decision 2026-10-12) ----------------------------
 # Electromaps and Chargemap web maps answer anonymous GETs. The owner decided on
 # 2026-10-12 to collect their public station data despite their terms. Both are community
@@ -5938,6 +6726,10 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_atlante,
     source_zunder,
     source_repsol,
+    source_mot_aparcar,
+    source_place_to_plug,
+    source_plugshare,
+    source_interparking_papp,
     source_electromaps_national,
     source_chargemap_national,
     source_telpark,

@@ -4757,7 +4757,7 @@ def source_health_summary() -> Dict[str, Any]:
     return {
         "generated_at": now_iso(),
         "policy": {
-            "allowed": ["GET-only public pages (default)", "official/open APIs", "public datasets", "user-verifiable source links", "three owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe marker list, Repsol charging-point list)"],
+            "allowed": ["GET-only public pages (default)", "official/open APIs", "public datasets", "user-verifiable source links", "four owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe marker list, Repsol charging-point list, Place to Plug zone query)"],
             "blocked": ["login bypass", "private tokens", "MITM", "payment/session-start actions", "app-private scraping", "any other POST or non-GET request", "sources denied by reuse-rights policy"],
             "summary": "Volta may collect and verify public/user-verifiable evidence only; app-only/private provider data requires official API/export permission.",
         },

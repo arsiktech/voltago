@@ -31,6 +31,11 @@ def identity_keys(row: dict) -> set[tuple]:
         "Repsol public charging point finder": ("repsol_point_id",),
         "Electromaps public web map": ("electromaps_location_id",),
         "Chargemap public web map": ("chargemap_pool_id",),
+        "Place to Plug public charging zones": ("ptp_zone_id",),
+        "MOT (Aparcar) — Ajuntament de Reus municipal GIS": ("reus_feature_id",),
+        "MOT (Aparcar) — Ajuntament de Tarragona open data": ("tarragona_nom",),
+        "PlugShare community web map": ("plugshare_location_id",),
+        "P-APP (Interparking) public car park finder": ("interparking_external_id",),
     }
     for field in typed_fields.get(family, ()):
         value = raw.get(field)

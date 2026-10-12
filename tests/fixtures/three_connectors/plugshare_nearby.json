@@ -1,0 +1,398 @@
+[
+ {
+  "access": 1,
+  "address": "Prta del Sol, 16, Centro, 28001 Madrid, Spain",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 100.52920053389852,
+  "connector_types": [
+   "CCS2",
+   "CHAdeMO"
+  ],
+  "distance_meters": 43.872,
+  "icon": "https://assets.plugshare.com/icons/Y.png",
+  "icon_type": "Y",
+  "id": 639427,
+  "in_use_station_count": null,
+  "is_fast_charger": true,
+  "latitude": 40.41672790000001,
+  "longitude": -3.7032905,
+  "name": "Spain",
+  "station_count": 1,
+  "stations": [
+   {
+    "id": 1707620,
+    "outlets": [
+     {
+      "connector": 20,
+      "id": 3764721,
+      "is_dc": true,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "DC",
+      "status": null
+     },
+     {
+      "connector": 20,
+      "id": 3764722,
+      "is_dc": true,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "DC",
+      "status": null
+     },
+     {
+      "connector": 3,
+      "id": 3764723,
+      "is_dc": true,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "DC",
+      "status": null
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/639427"
+ },
+ {
+  "access": 1,
+  "address": "C. de la Salud, 12, 28013 Madrid, Spain",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 4.856001196322211,
+  "connector_types": [
+   "J-1772"
+  ],
+  "distance_meters": 207.01,
+  "icon": "https://assets.plugshare.com/icons/G.png",
+  "icon_type": "G",
+  "id": 405059,
+  "in_use_station_count": null,
+  "is_fast_charger": false,
+  "latitude": 40.418655,
+  "longitude": -3.703593,
+  "name": "Hotel LIABENY",
+  "station_count": 1,
+  "stations": [
+   {
+    "id": 976129,
+    "outlets": [
+     {
+      "connector": 2,
+      "id": 2568104,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/405059"
+ },
+ {
+  "access": 1,
+  "address": "Plaza de Jacinto Benavente, 28012 Madrid, Spanien",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 174.61930909989246,
+  "connector_types": [
+   "CCS2",
+   "CHAdeMO",
+   "Type 2",
+   "Wall (Euro)"
+  ],
+  "distance_meters": 280.782,
+  "icon": "https://assets.plugshare.com/icons/Y.png",
+  "icon_type": "Y",
+  "id": 131326,
+  "in_use_station_count": null,
+  "is_fast_charger": true,
+  "latitude": 40.414286,
+  "longitude": -3.703489,
+  "name": "EMT - Jacinto Benavente",
+  "score": 4.9,
+  "station_count": 5,
+  "stations": [
+   {
+    "id": 239101,
+    "outlets": [
+     {
+      "connector": 3,
+      "id": 495711,
+      "is_dc": true,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "DC",
+      "status": null
+     },
+     {
+      "connector": 20,
+      "id": 495712,
+      "is_dc": true,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "DC",
+      "status": null
+     },
+     {
+      "connector": 7,
+      "id": 495713,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   },
+   {
+    "id": 239102,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 495714,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   },
+   {
+    "id": 239103,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 495715,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   },
+   {
+    "id": 239104,
+    "outlets": [
+     {
+      "connector": 10,
+      "id": 495716,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   },
+   {
+    "id": 239105,
+    "outlets": [
+     {
+      "connector": 10,
+      "id": 495717,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/131326"
+ },
+ {
+  "access": 1,
+  "address": "C. de Gerona, 14, 28012 Madrid, Spain",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 232.90290029946465,
+  "connector_types": [
+   "Type 2",
+   "Wall (Euro)"
+  ],
+  "distance_meters": 296.985,
+  "icon": "https://assets.plugshare.com/icons/G.png",
+  "icon_type": "G",
+  "id": 383861,
+  "in_use_station_count": null,
+  "is_fast_charger": false,
+  "latitude": 40.415189,
+  "longitude": -3.706598,
+  "name": "Plaza Mayor Parking",
+  "station_count": 2,
+  "stations": [
+   {
+    "id": 922745,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2479912,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     },
+     {
+      "connector": 10,
+      "id": 2479984,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   },
+   {
+    "id": 922746,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2479913,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/383861"
+ },
+ {
+  "access": 1,
+  "address": "Calle De La Madera, 9, Madrid, Comunidad de Madrid, 28004",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 349.6363305094479,
+  "connector_types": [
+   "Wall (Euro)"
+  ],
+  "distance_meters": 662.072,
+  "icon": "https://assets.plugshare.com/icons/G.png",
+  "icon_type": "G",
+  "id": 34429,
+  "in_use_station_count": null,
+  "is_fast_charger": false,
+  "latitude": 40.422657,
+  "longitude": -3.705207,
+  "name": "Madera",
+  "station_count": 1,
+  "stations": [
+   {
+    "id": 46835,
+    "network_id": 1170,
+    "outlets": [
+     {
+      "connector": 10,
+      "id": 83948,
+      "is_dc": false,
+      "kilowatts": null,
+      "power": 0,
+      "power_type": "AC",
+      "status": null
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/34429"
+ },
+ {
+  "access": 1,
+  "address": "17 Bailén, Madrid, Madrid, 28013, ESP",
+  "available_station_count": null,
+  "coming_soon": false,
+  "compass_bearing": 282.17698266035467,
+  "connector_types": [
+   "Type 2"
+  ],
+  "distance_meters": 663.828,
+  "icon": "https://assets.plugshare.com/icons/G.png",
+  "icon_type": "G",
+  "id": 386261,
+  "in_use_station_count": null,
+  "is_fast_charger": false,
+  "latitude": 40.418059,
+  "longitude": -3.711465,
+  "name": "EDP Clientes, S.A.",
+  "station_count": 4,
+  "stations": [
+   {
+    "id": 929448,
+    "network_id": 1169,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2490999,
+      "is_dc": false,
+      "kilowatts": 3.0,
+      "power": 0,
+      "power_type": "AC",
+      "status": "UNKNOWN"
+     }
+    ]
+   },
+   {
+    "id": 929449,
+    "network_id": 1169,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2491000,
+      "is_dc": false,
+      "kilowatts": 3.0,
+      "power": 0,
+      "power_type": "AC",
+      "status": "UNKNOWN"
+     }
+    ]
+   },
+   {
+    "id": 929450,
+    "network_id": 1169,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2491001,
+      "is_dc": false,
+      "kilowatts": 7.0,
+      "power": 0,
+      "power_type": "AC",
+      "status": "UNKNOWN"
+     }
+    ]
+   },
+   {
+    "id": 929451,
+    "network_id": 1169,
+    "outlets": [
+     {
+      "connector": 7,
+      "id": 2491002,
+      "is_dc": false,
+      "kilowatts": 7.0,
+      "power": 0,
+      "power_type": "AC",
+      "status": "UNKNOWN"
+     }
+    ]
+   }
+  ],
+  "under_repair": false,
+  "url": "http://api.plugshare.com/view/location/386261"
+ }
+]

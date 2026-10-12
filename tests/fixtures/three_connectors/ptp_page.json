@@ -1,0 +1,82 @@
+{
+ "data": {
+  "findChargingZones": {
+   "totalCount": 463,
+   "hasNextPage": true,
+   "chargingZones": [
+    {
+     "id": "654384e37194eb2747da322e",
+     "name": "Bluespace - Hospitalet Bellvitge",
+     "coordinates": [
+      2.105032813490526,
+      41.35182905577839
+     ],
+     "address": {
+      "street": "Travesia industrial 95",
+      "city": "L'Hospitalet de Llobregat",
+      "country": "Spain"
+     },
+     "powerRange": {
+      "min": 22,
+      "max": 90
+     },
+     "status": "AVAILABLE"
+    },
+    {
+     "id": "6720d2583da7c1bcedc8a792",
+     "name": "Bluespace - Hospitalet Riereta",
+     "coordinates": [
+      2.0987367,
+      41.354876
+     ],
+     "address": {
+      "street": "Cami de la Riereta, nº 37",
+      "city": "L'Hospitalet de Llobregat",
+      "country": "España"
+     },
+     "powerRange": {
+      "min": 22,
+      "max": 22
+     },
+     "status": "AVAILABLE"
+    },
+    {
+     "id": "634e0963f59d740025d74f5e",
+     "name": "McDonald's Bellvitge",
+     "coordinates": [
+      2.1059311448497056,
+      41.353062859717596
+     ],
+     "address": {
+      "street": "McDonald's",
+      "city": "l'Hospitalet de Llobregat",
+      "country": "Spain"
+     },
+     "powerRange": {
+      "min": 22,
+      "max": 50
+     },
+     "status": "UNKNOWN"
+    },
+    {
+     "id": "654384e37194eb2747da3230",
+     "name": "Palacio Infante Don Juan Manuel Hotel Spa",
+     "coordinates": [
+      -2.702476,
+      39.560724
+     ],
+     "address": {
+      "street": null,
+      "city": "Belmonte",
+      "country": "Spain"
+     },
+     "powerRange": {
+      "min": null,
+      "max": null
+     },
+     "status": "UNKNOWN"
+    }
+   ]
+  }
+ }
+}

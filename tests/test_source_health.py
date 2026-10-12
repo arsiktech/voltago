@@ -20,7 +20,7 @@ class SourceHealthTests(unittest.TestCase):
         hidden = intel.get("hidden_from_map") or {}
 
         self.assertIn("get-only", policy_text)
-        self.assertIn("three owner-approved read-only data-query posts", policy_text)
+        self.assertIn("four owner-approved read-only data-query posts", policy_text)
         self.assertIn("any other post or non-get request", policy_text)
         self.assertIn("login bypass", policy_text)
         self.assertIn("private tokens", policy_text)

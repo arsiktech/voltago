@@ -1,0 +1,346 @@
+[
+ {
+  "brand": "Interparking",
+  "externalId": "es-6259",
+  "titlesInAllLocales": [
+   "Alfonso X"
+  ],
+  "title": "Alfonso X en Murcia (Murcia)",
+  "name": "Alfonso X (Murcia)",
+  "slugsInAllLocales": [
+   "alfonsox"
+  ],
+  "slug": "alfonsox",
+  "price": "3,20 €",
+  "address": "Gran Vía Alfonso X, 14, 30008 Murcia",
+  "url": "/es/aparcamientos/murcia/alfonsox/",
+  "location": {
+   "lat": 37.990742,
+   "lng": -1.130104
+  },
+  "city": {
+   "title": "Murcia",
+   "slug": "murcia",
+   "cordination": {
+    "lat": 37.990742,
+    "lng": -1.130104
+   },
+   "countryId": "es"
+  },
+  "target": "_self",
+  "type": "carPark",
+  "facilities": [
+   {
+    "id": "Tram",
+    "label": "Conexión con tranvía"
+   },
+   {
+    "id": "Electric charging station",
+    "label": "Puntos de carga eléctrica"
+   },
+   {
+    "id": "Exit 24-7",
+    "label": "Acceso disponible 24/7"
+   },
+   {
+    "id": "Payment Machine",
+    "label": "Terminal de pago"
+   },
+   {
+    "id": "Music",
+    "label": "Música ambiental"
+   },
+   {
+    "id": "Toilets",
+    "label": "Aseos"
+   },
+   {
+    "id": "Elevator",
+    "label": "Ascensor"
+   },
+   {
+    "id": "Bus",
+    "label": "Conexión de autobús"
+   }
+  ],
+  "products": [
+   {
+    "id": "booking",
+    "label": "Reserva de plaza de aparcamiento"
+   },
+   {
+    "id": "subscription",
+    "label": "Abonos de aparcamiento"
+   },
+   {
+    "id": "pcard",
+    "label": "Admite P-app"
+   }
+  ],
+  "externalUrl": "$undefined",
+  "isBookable": true
+ },
+ {
+  "brand": "Interparking",
+  "externalId": "es-6246",
+  "titlesInAllLocales": [
+   "Avenida País Valencià",
+   "Avda. Pais valencia"
+  ],
+  "title": "Avenida País Valencià en Torrent (Torrent)",
+  "name": "Avenida País Valencià (Torrent)",
+  "slugsInAllLocales": [
+   "paisvalencia"
+  ],
+  "slug": "paisvalencia",
+  "price": "2,90 €",
+  "address": "Av. El Vedat 26, 46900 Torrent, Spain",
+  "url": "/es/aparcamientos/torrent/paisvalencia/",
+  "location": {
+   "lat": 39.435791015625,
+   "lng": -0.467056006193161
+  },
+  "city": {
+   "title": "Torrent",
+   "slug": "torrent",
+   "cordination": {
+    "lat": 39.435791015625,
+    "lng": -0.467056006193161
+   },
+   "countryId": "es"
+  },
+  "target": "_self",
+  "type": "carPark",
+  "facilities": [
+   {
+    "id": "First Aid Kit",
+    "label": "Botiquín de primeros auxilios"
+   },
+   {
+    "id": "Tram",
+    "label": "Conexión con tranvía"
+   },
+   {
+    "id": "Motorbike",
+    "label": "Plazas para motocicletas"
+   },
+   {
+    "id": "Electric charging station",
+    "label": "Puntos de carga eléctrica"
+   },
+   {
+    "id": "Exit 24-7",
+    "label": "Acceso disponible 24/7"
+   },
+   {
+    "id": "Payment Machine",
+    "label": "Terminal de pago"
+   },
+   {
+    "id": "Music",
+    "label": "Música ambiental"
+   },
+   {
+    "id": "Toilets",
+    "label": "Aseos"
+   },
+   {
+    "id": "Elevator",
+    "label": "Ascensor"
+   },
+   {
+    "id": "Bus",
+    "label": "Conexión de autobús"
+   }
+  ],
+  "products": [
+   {
+    "id": "booking",
+    "label": "Reserva de plaza de aparcamiento"
+   },
+   {
+    "id": "subscription",
+    "label": "Abonos de aparcamiento"
+   },
+   {
+    "id": "pcard",
+    "label": "Admite P-app"
+   }
+  ],
+  "externalUrl": "$undefined",
+  "isBookable": true
+ },
+ {
+  "brand": "Interparking",
+  "externalId": "es-6215",
+  "titlesInAllLocales": [
+   "Barceló",
+   "Barcelo"
+  ],
+  "title": "Barceló en Madrid (Madrid)",
+  "name": "Barceló (Madrid)",
+  "slugsInAllLocales": [
+   "barcelo"
+  ],
+  "slug": "barcelo",
+  "price": "2,90 €",
+  "address": "c/ Barceló s/n, 28004 Madrid, Spain",
+  "url": "/es/aparcamientos/madrid/barcelo/",
+  "location": {
+   "lat": 40.426655,
+   "lng": -3.699968
+  },
+  "city": {
+   "title": "Madrid",
+   "slug": "madrid",
+   "cordination": {
+    "lat": 40.44795227050781,
+    "lng": -3.695770025253296
+   },
+   "countryId": "es"
+  },
+  "target": "_self",
+  "type": "carPark",
+  "facilities": [
+   {
+    "id": "First Aid Kit",
+    "label": "Botiquín de primeros auxilios"
+   },
+   {
+    "id": "Tram",
+    "label": "Conexión con tranvía"
+   },
+   {
+    "id": "Electric charging station",
+    "label": "Puntos de carga eléctrica"
+   },
+   {
+    "id": "Exit 24-7",
+    "label": "Acceso disponible 24/7"
+   },
+   {
+    "id": "Payment Machine",
+    "label": "Terminal de pago"
+   },
+   {
+    "id": "Music",
+    "label": "Música ambiental"
+   },
+   {
+    "id": "Toilets",
+    "label": "Aseos"
+   },
+   {
+    "id": "Elevator",
+    "label": "Ascensor"
+   },
+   {
+    "id": "Bus",
+    "label": "Conexión de autobús"
+   }
+  ],
+  "products": [
+   {
+    "id": "booking",
+    "label": "Reserva de plaza de aparcamiento"
+   },
+   {
+    "id": "subscription",
+    "label": "Abonos de aparcamiento"
+   },
+   {
+    "id": "pcard",
+    "label": "Admite P-app"
+   }
+  ],
+  "externalUrl": "$undefined",
+  "isBookable": true
+ },
+ {
+  "brand": "Interparking",
+  "externalId": "es-7372",
+  "titlesInAllLocales": [
+   "Ametzola"
+  ],
+  "title": "Ametzola en Bilbao (Bilbao)",
+  "name": "Ametzola (Bilbao)",
+  "slugsInAllLocales": [
+   "ametzola"
+  ],
+  "slug": "ametzola",
+  "price": "$undefined",
+  "address": "Avda. Ferrocarril 38, 48012 Bilbao, Spain",
+  "url": "/es/aparcamientos/bilbao/ametzola/",
+  "location": {
+   "lat": 43.254298,
+   "lng": -2.943143
+  },
+  "city": {
+   "title": "Bilbao",
+   "slug": "bilbao",
+   "cordination": {
+    "lat": 43.267074,
+    "lng": -2.936418
+   },
+   "countryId": "es"
+  },
+  "target": "_self",
+  "type": "carPark",
+  "facilities": [
+   {
+    "id": "First Aid Kit",
+    "label": "Botiquín de primeros auxilios"
+   },
+   {
+    "id": "Train",
+    "label": "Conexión con tren"
+   },
+   {
+    "id": "Toilets",
+    "label": "Aseos"
+   },
+   {
+    "id": "Elevator",
+    "label": "Ascensor"
+   },
+   {
+    "id": "Bus",
+    "label": "Conexión de autobús"
+   }
+  ],
+  "products": [],
+  "externalUrl": "$undefined",
+  "isBookable": false
+ },
+ {
+  "brand": "Saba",
+  "externalId": "saba-es-374",
+  "titlesInAllLocales": [],
+  "title": "Parking Bamsa Passeig de Gràcia - La Pedrera (Barcelona)",
+  "name": "Parking Bamsa Passeig de Gràcia - La Pedrera (Barcelona)",
+  "slugsInAllLocales": [],
+  "slug": "parking-bamsa-passeig-de-gr-cia-la-pedrera-barcelona",
+  "price": "$undefined",
+  "address": " Passeig de Gràcia,08007, Barcelona",
+  "url": "https://www.saba.es/es/parking-barcelona/parking-bamsa-passeig-de-gracia-la-pedrera",
+  "location": {
+   "lat": 41.39470395767088,
+   "lng": 2.1620866347272014
+  },
+  "city": {
+   "title": "Barcelona",
+   "slug": "barcelona",
+   "cordination": {
+    "lat": 41.4100227355957,
+    "lng": 2.1772680282592773
+   },
+   "countryId": "es"
+  },
+  "target": "_blank",
+  "type": "carPark",
+  "facilities": [],
+  "products": [],
+  "externalUrl": "https://www.saba.es/es/parking-barcelona/parking-bamsa-passeig-de-gracia-la-pedrera",
+  "isBookable": false
+ }
+]
