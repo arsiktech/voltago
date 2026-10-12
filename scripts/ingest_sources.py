@@ -4996,22 +4996,57 @@ def ocpi_power_kw(connector: Dict[str, Any]) -> Optional[float]:
 
 OPERATOR_FEED_PARKING_NOTE = "The operator's public map publishes no parking detail; check the signs onsite."
 
+# Per-adapter run status for this build (completeness, caps, detail coverage). Cleared by
+# build_payload and published as `source_adapter_status`, so a partial walk is visible
+# instead of looking like a complete one.
+ADAPTER_STATUS: Dict[str, Dict[str, Any]] = {}
+
+SPAIN_COUNTRY_CODES = {"ES", "ESP", "IC", "EA", "ESPAÑA", "ESPANA", "SPAIN"}
+KNOWN_CONNECTOR_LABELS = {"Type 2", "CCS2", "CHAdeMO", "Tesla", "Schuko", "Type 1"}
+
+
+def point_in_declared_spain(lat: Optional[float], lon: Optional[float], declared_country: Any = None) -> bool:
+    """An explicit Spanish country declaration is authoritative inside the broad Spain extent.
+
+    The coastline outline is coarse; a source that itself says ES/IC/EA must not lose
+    border-area stations to it. Another declared country is never Spain. With no
+    declaration, geometry alone decides.
+    """
+    country = str(declared_country or "").strip().upper()
+    if country in SPAIN_COUNTRY_CODES:
+        return in_bbox(lat, lon, SPAIN_BBOX)
+    if country:
+        return False
+    return likely_in_spain(lat, lon)
+
+
+def known_connector_label(token: Any) -> Optional[str]:
+    """A recognised connector family, or None. Arbitrary tokens are never title-cased into a type."""
+    label = connector_label_from_token(token)
+    return label if label in KNOWN_CONNECTOR_LABELS else None
+
+
+def published_connector_labels(connectors: List[Dict[str, Any]]) -> List[str]:
+    """Labels for add_record that exclude "Unknown connector"; [] (not None) so no Type 2 default applies."""
+    return sorted({c["label"] for c in connectors if c.get("label") in KNOWN_CONNECTOR_LABELS})
+
 
 # Etecnic platform: the public map behind the EVcharge app, the Balearic Government's
 # MELIB network and other councils/companies Etecnic manages. Power units in this feed are
 # mixed (some rows carry kW, others look like amps), so power is kept raw and never
-# published. Connector ids are mapped only where the hardware pattern is unambiguous.
+# published. The feed's connector_type_id values have no public legend (the operator map
+# page never names them), so connectors stay "Unknown connector" with the raw id kept.
 ETECNIC_SOURCE = "Etecnic EVcharge public charger map"
 ETECNIC_FEED_URL = "https://etecnic.net/api/v1/chargers/index.json"
 ETECNIC_MAP_PAGE_URL = "https://etecnic.es/mapa-de-recarga/"
 ETECNIC_MIN_ROWS = 3000
-ETECNIC_CONNECTOR_LABELS = {1: "CHAdeMO", 2: "Type 2", 3: "CCS2"}
 
 
-def etecnic_network(lat: float, lon: float) -> str:
-    if in_bbox(lat, lon, SPAIN_ISLAND_AND_CITY_BOXES[0]):
+def etecnic_network(name: str) -> str:
+    """Network membership only when the row's own name says so; region never implies it."""
+    if re.search(r"\bMELIB\b", name or "", re.I):
         return "MELIB (Govern de les Illes Balears), Etecnic platform"
-    return "EVcharge (Etecnic)"
+    return "Etecnic platform (operator not stated)"
 
 
 def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
@@ -5034,7 +5069,7 @@ def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchAr
             type_counts[socket.get("connector_type_id")] += 1
         connectors = [
             connector_ref(
-                ETECNIC_CONNECTOR_LABELS.get(type_id, "Unknown connector"),
+                "Unknown connector",
                 count=count,
                 source_url=ETECNIC_MAP_PAGE_URL,
                 connector_id=type_id,
@@ -5043,7 +5078,7 @@ def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchAr
             for type_id, count in sorted(type_counts.items(), key=lambda kv: str(kv[0]))
         ]
         name = str(row.get("name") or "").strip() or "Etecnic charger"
-        network = etecnic_network(lat, lon)
+        network = etecnic_network(name)
         add_record(
             parsed,
             source=ETECNIC_SOURCE,
@@ -5055,12 +5090,12 @@ def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchAr
             lon=lon,
             price_min=None,
             free_condition="The Etecnic public map publishes no tariff; check the price in the operator app.",
-            connector_labels=sorted({c["label"] for c in connectors if c.get("label") != "Unknown connector"}) or None,
+            connector_labels=[],  # connector ids have no public legend; never default to Type 2
             max_power_kw=None,
             status="VERIFY",
             reliability="directory-page",
             evidence=(
-                f"Etecnic public charger map ({network}): {len(sockets)} sockets. "
+                f"Etecnic public charger map ({network}): {len(sockets)} sockets, connector types not published. "
                 "Socket status is a cached snapshot from the operator map, never live availability."
             ),
             parking_kind="unknown",
@@ -5117,7 +5152,7 @@ def parse_atlante_locations(rows: List[Any], *, source_artifact: Optional[FetchA
             continue
         coords = row.get("coordinates") or (evses[0].get("coordinates") or {})
         lat, lon = fnum(coords.get("latitude")), fnum(coords.get("longitude"))
-        if not likely_in_spain(lat, lon):
+        if not point_in_declared_spain(lat, lon, row.get("country")):
             skipped["outside_spain"] += 1
             continue
         connectors: List[Dict[str, Any]] = []
@@ -5134,7 +5169,7 @@ def parse_atlante_locations(rows: List[Any], *, source_artifact: Optional[FetchA
                     powers.append(power)
                 standard = str(connector.get("standard") or "")
                 connectors.append(connector_ref(
-                    connector_label_from_token(standard) or "Unknown connector",
+                    known_connector_label(standard) or "Unknown connector",
                     power_kw=power,
                     status="UNKNOWN",
                     source_url=ATLANTE_MAP_PAGE_URL,
@@ -5154,7 +5189,7 @@ def parse_atlante_locations(rows: List[Any], *, source_artifact: Optional[FetchA
             lon=lon,
             price_min=None,
             free_condition="Atlante's public map publishes no tariff; check the price in the operator app.",
-            connector_labels=None,
+            connector_labels=published_connector_labels(connectors),  # [] when none recognised: no Type 2 default
             max_power_kw=max(powers) if powers else None,
             status="VERIFY",
             reliability="directory-page",
@@ -5286,11 +5321,10 @@ def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[
             skipped["not_spain"] += 1
             continue
         lat, lon = fnum(item.get("y")), fnum(item.get("x"))
-        if not likely_in_spain(lat, lon):
+        if not point_in_declared_spain(lat, lon, item.get("pais")):
             skipped["outside_spain"] += 1
             continue
         speeds = [str(s) for s in (item.get("velocidad") or []) if s]
-        fast = any(re.search(r"r[aá]pida", s, re.I) for s in speeds)
         address = ", ".join(p for p in (str(item.get("direccion") or "").strip(), str(item.get("cp") or "").strip(), str(item.get("localidad") or "").strip()) if p)
         add_record(
             parsed,
@@ -5304,9 +5338,9 @@ def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[
             price_min=None,
             free_condition="Repsol's finder publishes no tariff here; check the price in Waylet.",
             connector_labels=[],  # no connector evidence; never fall back to the Type 2 default
-            # The finder's speed class is not a kW figure. "Rápida" means at least 43 kW in
-            # Repsol's own labels, which is what the fast flag needs; the exact power is unknown.
-            max_power_kw=50.0 if fast else None,
+            # The finder's speed class (Normal/Rápida/Ultrarrápida) is not a kW figure, so no
+            # power is published and the fast flag stays off; the class stays in evidence/raw.
+            max_power_kw=None,
             status="VERIFY",
             reliability="directory-page",
             evidence=f"Repsol public charging point finder: speed class {', '.join(speeds) or 'not stated'}.",
@@ -5374,7 +5408,9 @@ ELECTROMAPS_HEADERS = {"Accept": "application/json", "App-platform": "web", "Ref
 ELECTROMAPS_LIST_TYPES = "ON_STREET,PARKING,AIRPORT,CAMPING,HOTEL,RESTAURANT,SHOP,WORKSHOP,FUEL_STATION,CAR_DEALER,MALL,TAXI"
 ELECTROMAPS_MIN_ROWS = 20000
 ELECTROMAPS_DETAIL_TTL_HOURS = 24 * 30
-ELECTROMAPS_KWH_RE = re.compile(r"(\d+(?:[.,]\d{1,3})?)\s*€?\s*/\s*kwh", re.I)
+# A tariff is trusted only when the whole text is one plain energy price. Mixed text
+# ("0,00 €/kWh + 0,05 €/min", "0.20€/kWh + 2€ por sesión", ranges, day/night) is unknown.
+ELECTROMAPS_KWH_RE = re.compile(r"^\s*(\d+(?:[.,]\d{1,3})?)\s*€\s*/\s*kwh\s*\.?\s*$", re.I)
 ELECTROMAPS_FREE_RE = re.compile(r"^\s*(gratis|gratuito|free)\s*\.?\s*$", re.I)
 
 
@@ -5393,28 +5429,35 @@ def electromaps_list_url(box: Tuple[float, float, float, float]) -> str:
 
 
 def electromaps_price(text: str) -> Optional[float]:
-    """A plain "Gratis" is 0.0; one explicit €/kWh figure is that price; anything else is unknown."""
+    """A plain "Gratis" is 0.0; a text that is, in full, one €/kWh figure is that price; else unknown."""
     if not text:
         return None
     if ELECTROMAPS_FREE_RE.match(text):
         return 0.0
-    prices = {fnum(m.group(1).replace(",", ".")) for m in ELECTROMAPS_KWH_RE.finditer(text)}
-    prices.discard(None)
-    return min(prices) if len(prices) == 1 else None
+    match = ELECTROMAPS_KWH_RE.match(text)
+    return fnum(match.group(1).replace(",", ".")) if match else None
 
 
 def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, Any]], *,
                                source_artifact: Optional[FetchArtifact] = None,
+                               detail_artifact: Optional[FetchArtifact] = None,
                                out: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, Any]]:
+    """`source_artifact` is the list response; `detail_artifact` the cached detail, if one was used.
+
+    Price, connectors and status come from the detail, so when a detail is used the row's
+    freshness is the detail's age, not the list's; both times are kept in `raw`.
+    """
     out = out if out is not None else []
     location_id = item.get("id")
     lat, lon = fnum(item.get("latitude")), fnum(item.get("longitude"))
-    if location_id in (None, "") or not likely_in_spain(lat, lon):
-        return out
     detail = detail if isinstance(detail, dict) else {}
     address = detail.get("address") or {}
+    # A detail's own country code is authoritative; with none, geometry decides.
+    if location_id in (None, "") or not point_in_declared_spain(lat, lon, address.get("country_code") if detail else None):
+        return out
     if detail and str(address.get("country_code") or "ES").upper() not in {"ES", "IC", "EA"}:
         return out
+    used_detail_artifact = detail_artifact if detail and detail_artifact is not None else None
     connectors: List[Dict[str, Any]] = []
     powers: List[float] = []
     for connector in detail.get("connectors") or []:
@@ -5470,6 +5513,9 @@ def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, 
             "electromaps_location_id": str(location_id),
             "marker": item.get("marker"),
             "detail_fetched": bool(detail),
+            "list_fetched_at": source_artifact.fetched_at if source_artifact else None,
+            "detail_fetched_at": used_detail_artifact.fetched_at if used_detail_artifact else None,
+            "detail_stale": used_detail_artifact.stale if used_detail_artifact else None,
             "charge_price_text": charge_text or None,
             "parking_price_text": parking_text or None,
             "offline_status": detail.get("offline_status"),
@@ -5480,12 +5526,12 @@ def parse_electromaps_location(item: Dict[str, Any], detail: Optional[Dict[str, 
         },
         connectors=connectors,
         port_count=len(connectors) or None,
-        source_artifact=source_artifact,
+        source_artifact=used_detail_artifact or source_artifact,
     )
     return out
 
 
-def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Optional[Dict[str, Any]]:
+def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Optional[Tuple[Dict[str, Any], FetchArtifact]]:
     try:
         result = budgeted_cached_json(
             f"{ELECTROMAPS_API}/locations/{location_id}?skipAuthTokenValidation=true",
@@ -5494,8 +5540,17 @@ def electromaps_cached_detail(location_id: Any, budget: List[int]) -> Optional[D
         )
     except Exception:
         return None
-    detail = result[0] if result else None
-    return detail if isinstance(detail, dict) else None
+    if not result or not isinstance(result[0], dict):
+        return None
+    return result[0], result[1]
+
+
+def electromaps_detail_priority(key: str) -> Tuple[int, float]:
+    """Missing details first (newest listing id first), then the oldest cached; fresh ones cost nothing."""
+    path = CACHE / f"electromaps_location_{key}.json"
+    if not path.exists():
+        return (0, -float(int(key) if key.isdigit() else 0))
+    return (1, path.stat().st_mtime)
 
 
 def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
@@ -5515,15 +5570,36 @@ def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
     # Details enrich a rolling subset: cached details are reused for 30 days, and only a
     # bounded number of missing ones are fetched per run, so full coverage builds up over
     # successive refreshes instead of hammering the upstream in one build.
-    budget = [int(os.environ.get("VOLTA_ELECTROMAPS_DETAIL_BUDGET", "400"))]
+    budget_start = int(os.environ.get("VOLTA_ELECTROMAPS_DETAIL_BUDGET", "400"))
+    budget = [budget_start]
+    candidates = [
+        key for key in items
+        if likely_in_spain(fnum(items[key].get("latitude")), fnum(items[key].get("longitude")))
+    ]
+    # Spend the budget where it matters: listings with no detail (newest first), then the
+    # oldest cached details. Ascending id order starved every new listing.
+    details: Dict[str, Tuple[Dict[str, Any], FetchArtifact]] = {}
+    for key in sorted(candidates, key=electromaps_detail_priority):
+        result = electromaps_cached_detail(key, budget)
+        if result:
+            details[key] = result
     parsed: List[Dict[str, Any]] = []
-    for key in sorted(items, key=lambda k: int(k) if k.isdigit() else 0):
-        item = items[key]
-        if not likely_in_spain(fnum(item.get("latitude")), fnum(item.get("longitude"))):
-            continue
-        parse_electromaps_location(item, electromaps_cached_detail(key, budget), source_artifact=artifact, out=parsed)
+    for key in sorted(candidates, key=lambda k: int(k) if k.isdigit() else 0):
+        detail, detail_artifact = details.get(key, (None, None))
+        parse_electromaps_location(items[key], detail, source_artifact=artifact,
+                                   detail_artifact=detail_artifact, out=parsed)
     with_detail = sum(1 for row in parsed if row["raw"].get("detail_fetched"))
-    print(f"electromaps_national: {len(parsed)} Spanish rows from {len(items)} listings ({with_detail} with details)")
+    stale_detail = sum(1 for row in parsed if row["raw"].get("detail_stale"))
+    ADAPTER_STATUS["source_electromaps_national"] = {
+        "listings": len(items),
+        "rows": len(parsed),
+        "rows_with_detail": with_detail,
+        "rows_with_stale_detail": stale_detail,
+        "rows_without_detail": len(parsed) - with_detail,
+        "detail_network_fetches": budget_start - budget[0],
+        "complete": with_detail == len(parsed),
+    }
+    print(f"electromaps_national: {len(parsed)} Spanish rows from {len(items)} listings ({with_detail} with details, {stale_detail} stale)")
     records.extend(parsed)
 
 
@@ -5532,6 +5608,11 @@ CHARGEMAP_POOLS_URL = "https://map.chargemap.com/mappy/charging_pools.json"
 CHARGEMAP_HEADERS = {"Accept": "application/json", "Referer": "https://chargemap.com/en-gb/map"}
 CHARGEMAP_BOX_TTL_HOURS = 24 * 7
 CHARGEMAP_MAX_DEPTH = 10
+# Observed partial walks yield ~4,650 Spanish pools; below the floor, or well below the
+# previous successful run, the walk is treated as broken rather than published as complete.
+CHARGEMAP_MIN_ROWS = int(os.environ.get("VOLTA_CHARGEMAP_MIN_ROWS", "4000"))
+CHARGEMAP_MIN_PREVIOUS_FRACTION = 0.9
+CHARGEMAP_LAST_RUN_CACHE = "chargemap_national_last_run.json"
 
 
 def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[FetchArtifact] = None,
@@ -5541,7 +5622,8 @@ def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[Fetc
         return out
     coords = pool.get("gps_coordinates") or {}
     lat, lon = fnum(coords.get("lat")), fnum(coords.get("lon"))
-    if not likely_in_spain(lat, lon) or pool.get("id") in (None, ""):
+    # The pool declares ES/IC/EA above, which outranks the coarse coastline outline.
+    if not point_in_declared_spain(lat, lon, pool.get("country_code")) or pool.get("id") in (None, ""):
         return out
     slug_value = str(pool.get("slug") or pool.get("id"))
     url = f"https://chargemap.com/{slug_value}.html"
@@ -5607,6 +5689,14 @@ def parse_chargemap_pool(pool: Dict[str, Any], *, source_artifact: Optional[Fetc
     return out
 
 
+def chargemap_previous_rows() -> int:
+    try:
+        value = json.loads((CACHE / CHARGEMAP_LAST_RUN_CACHE).read_text(encoding="utf-8")).get("rows")
+        return value if isinstance(value, int) and value > 0 else 0
+    except (OSError, ValueError, AttributeError):
+        return 0
+
+
 def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
     """Quadtree walk of the public pool endpoint over Spain.
 
@@ -5617,6 +5707,9 @@ def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
     budget = [int(os.environ.get("VOLTA_CHARGEMAP_NETWORK_BUDGET", "1200"))]
     pools: Dict[str, Tuple[Dict[str, Any], Optional[FetchArtifact]]] = {}
     incomplete = [0]
+    max_depth_incomplete = [0]
+    boxes_fetched = [0]
+    stale_boxes = [0]
 
     def fetch_box(north: float, west: float, south: float, east: float) -> Optional[Tuple[List[Dict[str, Any]], Optional[FetchArtifact]]]:
         key = f"{north:.4f}_{west:.4f}_{south:.4f}_{east:.4f}".replace("-", "m").replace(".", "p")
@@ -5640,13 +5733,23 @@ def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
             incomplete[0] += 1
             return
         items, artifact = result
+        boxes_fetched[0] += 1
+        if artifact is not None and artifact.stale:
+            stale_boxes[0] += 1
         has_cluster = False
         for item in items:
             pool = item.get("pool") if isinstance(item, dict) else None
             if isinstance(pool, dict) and pool.get("id") is not None:
-                pools[str(pool["id"])] = (pool, artifact)
+                known = pools.get(str(pool["id"]))
+                # A pool in overlapping boxes keeps its freshest response.
+                if known is None or (artifact and known[1] and artifact.fetched_at > known[1].fetched_at) or known[1] is None:
+                    pools[str(pool["id"])] = (pool, artifact)
             elif isinstance(item, dict) and item.get("type") == "cluster":
                 has_cluster = True
+        if has_cluster and depth >= CHARGEMAP_MAX_DEPTH:
+            # Clusters we can no longer split hide pools: that box is incomplete, not done.
+            incomplete[0] += 1
+            max_depth_incomplete[0] += 1
         if has_cluster and depth < CHARGEMAP_MAX_DEPTH:
             mid_lat, mid_lon = (north + south) / 2, (west + east) / 2
             for box in ((north, west, mid_lat, mid_lon), (north, mid_lon, mid_lat, east),
@@ -5658,9 +5761,28 @@ def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
     parsed: List[Dict[str, Any]] = []
     for pool, artifact in pools.values():
         parse_chargemap_pool(pool, source_artifact=artifact, out=parsed)
-    print(f"chargemap_national: {len(parsed)} Spanish rows from {len(pools)} pools; {incomplete[0]} boxes left for later runs")
-    if not parsed:
-        raise RuntimeError("Chargemap walk returned no Spanish pools")
+    previous = chargemap_previous_rows()
+    floor = max(CHARGEMAP_MIN_ROWS, int(previous * CHARGEMAP_MIN_PREVIOUS_FRACTION))
+    ADAPTER_STATUS["source_chargemap_national"] = {
+        "pools": len(pools),
+        "rows": len(parsed),
+        "boxes_fetched": boxes_fetched[0],
+        "stale_boxes": stale_boxes[0],
+        "incomplete_boxes": incomplete[0],
+        "max_depth_incomplete_boxes": max_depth_incomplete[0],
+        "previous_rows": previous or None,
+        "row_floor": floor,
+        "complete": incomplete[0] == 0,
+    }
+    print(f"chargemap_national: {len(parsed)} Spanish rows from {len(pools)} pools; "
+          f"{incomplete[0]} boxes left for later runs ({max_depth_incomplete[0]} at max depth), {stale_boxes[0]} stale boxes")
+    if len(parsed) < floor:
+        raise RuntimeError(
+            f"Chargemap walk yielded {len(parsed)} Spanish rows (<{floor}; "
+            f"{incomplete[0]} incomplete boxes); refusing a partial walk"
+        )
+    if incomplete[0] == 0 or len(parsed) >= previous:  # a thinner partial walk never lowers the baseline
+        (CACHE / CHARGEMAP_LAST_RUN_CACHE).write_text(json.dumps({"rows": len(parsed), "at": now_iso()}), encoding="utf-8")
     records.extend(parsed)
 
 
@@ -5690,6 +5812,7 @@ def build_payload() -> Dict[str, Any]:
     # Provenance is per build. Never let a prior in-process build/test make the next
     # output claim fetches that did not happen in that build.
     FETCH_EVIDENCE.clear()
+    ADAPTER_STATUS.clear()
     records: List[Dict[str, Any]] = []
     errors = []
     source_adapter_counts: Dict[str, int] = {}
@@ -5715,6 +5838,7 @@ def build_payload() -> Dict[str, Any]:
         "raw_records": len(records),
         "cross_source_merged": cross_merged,
         "source_adapter_counts": source_adapter_counts,
+        "source_adapter_status": {name: dict(status) for name, status in sorted(ADAPTER_STATUS.items())},
         "errors": errors,
         "fetch_evidence": fetch_evidence_payload(),
         "license_notes": [

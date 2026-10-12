@@ -113,12 +113,25 @@ class EtecnicTests(unittest.TestCase):
         self.assertEqual(first["status"], "VERIFY")
         self.assertIsNone(first["max_power_kw"], "mixed kW/amp units must never be published as power")
         self.assertEqual(first["raw"]["power_raw"], 22.0)
-        self.assertEqual(first["connector_labels"], ["Type 2"])
+        self.assertEqual(first["connector_labels"], [], "Etecnic connector ids have no public legend: never guess Type 2")
+        self.assertIsNone(first["tesla_ok"], "unknown connectors are unknown, not Tesla-compatible or incompatible")
         self.assertEqual(first["total_evse"], 2)
-        self.assertIn("MELIB", melib["raw"]["network"])
-        self.assertEqual(melib["connector_labels"], ["CCS2", "CHAdeMO"], "unmapped id 7 stays out of the labels")
-        self.assertIn("Unknown connector", [c["label"] for c in melib["connectors"]])
+        self.assertEqual(first["raw"]["network"], "Etecnic platform (operator not stated)")
+        self.assertIn("MELIB", melib["raw"]["network"], "MELIB only because the row name says so")
+        self.assertEqual(melib["connector_labels"], [])
+        self.assertEqual({c["label"] for c in melib["connectors"]}, {"Unknown connector"})
+        self.assertEqual(sorted(c["raw"]["etecnic_connector_type_id"] for c in melib["connectors"]), [1, 3, 7],
+                         "raw ids are kept for later mapping")
         self.assertEqual(melib["raw"]["socket_status_codes"], [1, 1, 1])
+
+    def test_balearic_location_alone_never_implies_melib(self):
+        rows = ing.parse_etecnic_chargers([
+            {"id": 253, "name": "SIXT PMI_253_22kW", "lat": "39.55", "lon": "2.73", "show_map": True,
+             "charger_sockets": []},
+        ])
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn("MELIB", rows[0]["raw"]["network"])
+        self.assertNotIn("MELIB", rows[0]["sources"][0]["evidence"])
 
     def test_identity_key_is_the_etecnic_charger_id(self):
         row = ing.parse_etecnic_chargers(ETECNIC_ROWS[:1])[0]
@@ -142,7 +155,24 @@ class AtlanteTests(unittest.TestCase):
         self.assertTrue(all(c["status"] == "UNKNOWN" for c in row["connectors"]), "EVSE status must not become live availability")
         self.assertEqual(row["raw"]["evse_status_counts"], {"AVAILABLE": 1, "CHARGING": 1})
         self.assertEqual(row["raw"]["evse_ids"], ["ES*ATE*E00026*1", "ES*ATE*E00026*2"])
+        self.assertEqual(row["connector_labels"], ["CCS2", "CHAdeMO"])
         self.assertIn(("Atlante public charger map", "atlante_location_id", "ES00056"), identity_keys(row))
+
+    def test_unknown_standards_are_not_guessed_or_defaulted(self):
+        loc = atlante_location("ES00060", "ES", None, 40.4, -3.7)
+        for evse in loc["evses"]:
+            evse["connectors"][0]["standard"] = "XYZ_PLUG"
+        row = ing.parse_atlante_locations([loc])[0]
+        self.assertEqual(row["connector_labels"], [], "no Type 2 default and no title-cased invented type")
+        self.assertIsNone(row["tesla_ok"])
+        self.assertEqual({c["label"] for c in row["connectors"]}, {"Unknown connector"})
+        self.assertEqual(row["connectors"][0]["raw"]["standard"], "XYZ_PLUG")
+        bare = atlante_location("ES00061", "ES", None, 40.4, -3.7)
+        for evse in bare["evses"]:
+            evse["connectors"] = []
+        row = ing.parse_atlante_locations([bare])[0]
+        self.assertEqual(row["connector_labels"], [])
+        self.assertIsNone(row["tesla_ok"])
 
 
 class ZunderTests(unittest.TestCase):
@@ -163,7 +193,10 @@ class RepsolTests(unittest.TestCase):
         self.assertEqual([r["raw"]["repsol_point_id"] for r in rows], ["10005", "10007"])
         fast, slow = rows
         self.assertEqual(fast["source_url"], "https://www.repsol.es/buscador-eess-y-puntos-de-recarga/madrid/madrid/avenida-de-canillejas-a-vicalvaro-147/")
-        self.assertTrue(fast["fast"])
+        self.assertIsNone(fast["max_power_kw"], "a speed class is not a kW figure")
+        self.assertFalse(fast["fast"], "fast needs a published power, not an inferred 50 kW")
+        self.assertEqual(fast["raw"]["speed_classes"], ["Rápida"])
+        self.assertIn("Rápida", fast["sources"][0]["evidence"])
         self.assertFalse(slow["fast"])
         self.assertEqual(slow["source_url"], ing.REPSOL_FINDER_URL, "unsafe slug parts fall back to the finder page")
         self.assertEqual(fast["connector_labels"], [])
