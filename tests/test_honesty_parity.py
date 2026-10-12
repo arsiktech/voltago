@@ -245,6 +245,9 @@ class TeslaCompatibilityTests(unittest.TestCase):
     CASES = [
         ([], None),
         (["Wall outlet (connector unspecified)"], None),
+        (["Unknown connector"], None),
+        (["Unknown Connector", "other", "N/A"], None),
+        (["Unknown connector", "CHAdeMO"], False),
         (["Type 2"], True),
         (["CCS2", "CHAdeMO"], True),
         (["Tesla"], True),
@@ -277,6 +280,20 @@ class TeslaCompatibilityTests(unittest.TestCase):
         self.assertIsNone(row["tesla_ok"])
         self.assertNotEqual(row["decision"]["label"], "Not Tesla-safe")
         self.assertIn("doesn't say which connectors", row["decision"]["reason"])
+
+    def test_operator_unknown_socket_rows_keep_compatibility_unknown(self) -> None:
+        parsed = ing.parse_etecnic_chargers([{
+            "id": 42, "name": "Unknown connector fixture", "show_map": True,
+            "lat": 41.132473, "lon": 1.252453,
+            "charger_sockets": [{"id": 1, "connector_type_id": 7, "status": 0}],
+        }])[0]
+        merged, _ = ing.merge_cross_source_duplicates(ing.dedupe([parsed]))
+        row = server._normalize_lead(merged[0], parsed["source"])
+        self.assertIsNone(row["tesla_ok"])
+        self.assertNotEqual(row["decision"]["label"], "Not Tesla-safe")
+        self.assertFalse(row["verification"]["live_verified"])
+        self.assertEqual(row["total_evse"], 1)
+        self.assertTrue(server.source_health_map_eligible(row))
 
     def test_known_incompatible_connectors_still_avoid(self) -> None:
         row = server._normalize_lead(

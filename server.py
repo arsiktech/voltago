@@ -861,7 +861,7 @@ def tesla_compatibility(item: Dict[str, Any]) -> Optional[bool]:
     labels += [str(c.get("label")) for c in item.get("connectors") or [] if isinstance(c, dict) and c.get("label")]
     if any(c.get("tesla_ok") for c in item.get("connectors") or [] if isinstance(c, dict)) or any(x in TESLA_OK_LABELS for x in labels):
         return True
-    known = [x for x in labels if x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "other"}]
+    known = [x for x in labels if x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "unknown connector", "connector", "other", "n/a", "none"}]
     return False if known else None
 
 

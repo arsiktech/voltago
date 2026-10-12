@@ -234,7 +234,7 @@ def tesla_compat(labels: Any) -> Optional[bool]:
     labels = [str(x) for x in labels or []]
     if any(x in TESLA_OK_LABELS for x in labels):
         return True
-    if any(x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "other"} for x in labels):
+    if any(x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "unknown connector", "connector", "other", "n/a", "none"} for x in labels):
         return False
     return None
 
