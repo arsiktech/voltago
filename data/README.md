@@ -16,6 +16,16 @@ OpenStreetMap-derived rows are © OpenStreetMap contributors, available under th
 [Open Database License](https://opendatacommons.org/licenses/odbl/). Each record keeps
 its source URL and attribution in `sources`.
 
+## Geographic boundary
+
+`spain_boundary.geojson` contains the simplified Spain ADM0 boundary from
+[geoBoundaries](https://www.geoboundaries.org/api/current/gbOpen/ESP/ADM0/), originally
+provided by Instituto Geográfico Nacional. It is licensed under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The geometry is unchanged;
+source attribution and the pinned revision are included in the file. It filters
+coordinates when a source omits its country, rather than guessing land borders.
+It is not charger evidence, and its simplified coastline has finite precision.
+
 ## Build the full dataset
 
 ```bash

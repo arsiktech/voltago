@@ -39,6 +39,7 @@ try:
     )
     from .source_transport import SourcePolicyBlocked, policy_urlopen
     from .station_identity import identity_keys
+    from .spain_geography import point_in_spain
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_policy import (
         load_source_policy_exclusions,
@@ -49,6 +50,7 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     )
     from source_transport import SourcePolicyBlocked, policy_urlopen
     from station_identity import identity_keys
+    from spain_geography import point_in_spain
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -1377,11 +1379,44 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
         },
         "raw": raw,
     }
+    apply_directory_lifecycle(rec)
     rec["primary_source"] = primary_source_for(rec)
     rec["location_claim"] = location_claim_for(rec)
     rec["hardware_claim"] = hardware_claim_for(rec)
     rec["access_claim"] = access_claim_for(rec)
     records.append(rec)
+
+
+DIRECTORY_INACTIVE_NAME_RE = re.compile(
+    r"\b(?:n\s*['’]?\s*existe\s+pas|nexiste\s+pas|no\s+existe|does\s+not\s+exist|"
+    r"nonexistent|removed|inexistant|supprimee?|demontee?|doublon|duplicate)\b", re.I
+)
+
+
+def apply_directory_lifecycle(row: Dict[str, Any]) -> None:
+    """Retain dead listings as non-actionable history, never as free recommendations."""
+    source = row.get("source")
+    if source not in {"Electromaps public web map", "Chargemap public web map"}:
+        return
+    raw = row.get("raw") or {}
+    field, value = None, None
+    if DIRECTORY_INACTIVE_NAME_RE.search(normalized_identity_text(row.get("name"))):
+        field, value = "name", row.get("name")
+    elif source == "Chargemap public web map" and raw.get("operational_status") in {
+        "OUT_OF_ORDER", "REMOVED", "CLOSED", "PLANNED", "UNDER_CONSTRUCTION",
+    }:
+        field, value = "operational_status", raw["operational_status"]
+    elif source == "Electromaps public web map" and raw.get("offline_status") in {
+        "NOT_WORKING", "ALL_SOCKETS_NOT_WORK", "REMOVED",
+    }:
+        field, value = "offline_status", raw["offline_status"]
+    if field is not None:
+        row["source_reported_unavailable"] = {
+            "source": source, "field": field, "value": value,
+            "summary": "Directory reports a removed, duplicate or unavailable listing. Verify the operator before travelling.",
+        }
+        row["is_free"] = False
+        row["is_cheap"] = False
 
 
 def normalize_valencia_municipal_address(value: Any) -> str:
@@ -3575,6 +3610,11 @@ def merge_media(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
 def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> None:
     """Keep the ids of rows folded into this pin, so a refresh can show where they went."""
+    # Carry every represented family across stages, even when sources are truncated.
+    items = list(items)
+    base["merged_source_families"] = sorted(set().union(
+        represented_source_families(base), *(represented_source_families(item) for item in items)
+    ))
     merged_ids = set(base.get("merged_ids") or [])
     for item in items:
         merged_ids.update(item.get("merged_ids") or [])
@@ -3653,8 +3693,8 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             any(((item.get("access") or {}).get("level") == "restricted") for item in items)
             or any(ACCESS_LIMIT_RE.search(s.get("evidence") or "") for s in sources)
         )
-        base["is_free"] = base.get("price_min") == 0 and not has_restricted_free
-        base["is_cheap"] = base.get("price_min") is not None and base["price_min"] <= 0.25
+        base["is_free"] = base.get("price_min") == 0 and not has_restricted_free and not base.get("source_reported_unavailable")
+        base["is_cheap"] = base.get("price_min") is not None and base["price_min"] <= 0.25 and not base.get("source_reported_unavailable")
         base["price_claim_type"] = price_claim_type_for(base.get("price_min"))
         if has_restricted_free and base.get("price_min") == 0:
             base["price_claim_type"] = "access_limited_free"
@@ -3703,6 +3743,15 @@ def record_source_family(r: Dict[str, Any]) -> str:
         if any(n in blob for n in needles):
             return family
     return blob[:16]
+
+
+def represented_source_families(row: Dict[str, Any]) -> set:
+    families = set(row.get("merged_source_families") or [])
+    families.add(record_source_family(row))
+    for source in row.get("sources") or []:
+        if source.get("name") or source.get("url"):
+            families.add(record_source_family({"source": source.get("name"), "source_url": source.get("url")}))
+    return families
 
 
 def _dist_km(a: Dict[str, Any], b: Dict[str, Any]) -> float:
@@ -3994,7 +4043,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
 
     # Same-family rows never merge, including through a third row: one registry listing two
     # nearby sites (for example two operators in one car park) keeps two pins.
-    families = [{record_source_family(r)} for r in records]
+    families = [represented_source_families(r) for r in records]
 
     def union(x: int, y: int) -> None:
         rx, ry = find(x), find(y)
@@ -4113,8 +4162,8 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
             or any(ACCESS_LIMIT_RE.search(str(source.get("evidence") or "")) for source in item.get("sources", []) if isinstance(source, dict))
             for item in items
         )
-        base["is_free"] = base.get("price_min") == 0 and not has_restricted_free
-        base["is_cheap"] = base.get("price_min") is not None and base["price_min"] <= 0.25
+        base["is_free"] = base.get("price_min") == 0 and not has_restricted_free and not base.get("source_reported_unavailable")
+        base["is_cheap"] = base.get("price_min") is not None and base["price_min"] <= 0.25 and not base.get("source_reported_unavailable")
         base["price_claim_type"] = price_claim_type_for(base.get("price_min"))
         if has_restricted_free and base.get("price_min") == 0:
             base["price_claim_type"] = "access_limited_free"
@@ -4925,22 +4974,7 @@ def source_mapareve_public(records: List[Dict[str, Any]]) -> None:
 # live authority (MapaREVE remains the live layer). Rows sit at directory-page reliability
 # so a cross-source merge never re-keys a station already in the DB.
 
-# Coarse Spain outline (lon, lat). Sea-side vertices are deliberately generous; only the
-# land borders with Portugal, France and Andorra matter. Islands and the two autonomous
-# cities are separate boxes. Points within a few km of the Portuguese border can fall on
-# the wrong side; the rectangle SPAIN_BBOX alone admits Porto, Lisbon and southern France.
-SPAIN_MAINLAND_OUTLINE: Tuple[Tuple[float, float], ...] = (
-    (-9.6, 43.3), (-8.0, 44.0), (-3.8, 43.7), (-1.79, 43.40),
-    (-1.55, 43.30), (-1.35, 43.05), (-0.8, 42.95), (-0.3, 42.83), (0.65, 42.88),
-    (0.95, 42.78), (1.40, 42.60), (1.45, 42.43), (1.95, 42.47), (2.5, 42.45),
-    (2.9, 42.46), (3.17, 42.45), (3.6, 42.45),
-    (3.6, 41.0), (1.2, 39.8), (0.8, 38.6), (-0.3, 37.4), (-1.5, 36.6), (-2.2, 36.5),
-    (-4.5, 36.15), (-5.35, 35.85), (-6.5, 36.3), (-7.0, 36.8), (-7.40, 37.10),
-    (-7.45, 37.55), (-7.25, 38.0), (-7.0, 38.2), (-7.3, 38.45), (-7.1, 38.85),
-    (-7.0, 39.05), (-7.5, 39.65), (-7.0, 39.67), (-6.85, 40.2), (-6.85, 40.6),
-    (-6.8, 41.0), (-6.2, 41.55), (-6.55, 41.95), (-7.2, 41.88), (-7.9, 41.86),
-    (-8.2, 42.0), (-8.87, 41.87), (-9.6, 41.85),
-)
+# Region bounds are labels only; country filtering uses the attributed IGN boundary.
 SPAIN_ISLAND_AND_CITY_BOXES: Tuple[Tuple[float, float, float, float], ...] = (
     (38.55, 1.1, 40.15, 4.4),      # Balearics (south, west, north, east)
     (27.5, -18.3, 29.5, -13.3),    # Canaries
@@ -4949,23 +4983,8 @@ SPAIN_ISLAND_AND_CITY_BOXES: Tuple[Tuple[float, float, float, float], ...] = (
 )
 
 
-def point_in_polygon(lon: float, lat: float, polygon: Tuple[Tuple[float, float], ...]) -> bool:
-    inside = False
-    j = len(polygon) - 1
-    for i, (xi, yi) in enumerate(polygon):
-        xj, yj = polygon[j]
-        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
-            inside = not inside
-        j = i
-    return inside
-
-
 def likely_in_spain(lat: Optional[float], lon: Optional[float]) -> bool:
-    if lat is None or lon is None:
-        return False
-    if any(in_bbox(lat, lon, box) for box in SPAIN_ISLAND_AND_CITY_BOXES):
-        return True
-    return point_in_polygon(lon, lat, SPAIN_MAINLAND_OUTLINE)
+    return point_in_spain(lat, lon)
 
 
 def ocpi_power_kw(connector: Dict[str, Any]) -> Optional[float]:
