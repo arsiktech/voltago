@@ -223,6 +223,19 @@ LIDL_DUPLICATE_LABELS = {
 }
 
 
+TESLA_OK_LABELS = {"Type 2", "CCS2", "Tesla CCS", "Tesla"}
+
+
+def tesla_compat(labels: Any) -> Optional[bool]:
+    """None when the source names no specific connector: unknown is not incompatible."""
+    labels = [str(x) for x in labels or []]
+    if any(x in TESLA_OK_LABELS for x in labels):
+        return True
+    if any(x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "other"} for x in labels):
+        return False
+    return None
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -1324,7 +1337,7 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
         "is_cheap": bool(is_cheap),
         "price_claim_type": price_claim_type_for(price_min),
         "free_condition": free_condition,
-        "tesla_ok": any(x in {"Type 2", "CCS2", "Tesla CCS", "Tesla"} for x in labels),
+        "tesla_ok": tesla_compat(labels),
         "fast": bool(max_power_kw and max_power_kw >= 43),
         "max_power_kw": max_power_kw,
         "connector_labels": labels,
@@ -3627,7 +3640,7 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             base["connector_labels"] = labels
             base["connector_count"] = sum(count_int(c.get("count")) for c in merged_connectors)
             base["total_evse"] = base["connector_count"]
-            base["tesla_ok"] = any(x in {"Type 2", "CCS2", "Tesla CCS", "Tesla"} for x in labels)
+            base["tesla_ok"] = tesla_compat(labels)
             connector_powers = [fnum(c.get("power_kw")) for c in merged_connectors]
             connector_powers = [p for p in connector_powers if p is not None]
             inventory_powers = [fnum(item.get("max_power_kw")) for item in inventory_items]
@@ -4109,7 +4122,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
                 base["access"] = {"level": "restricted", "label": "Access caveat", "note": "A source reports free charging but also access restrictions."}
         base["fast"] = bool(base.get("max_power_kw") and base["max_power_kw"] >= 43)
         labels = list(base.get("connector_labels") or [])
-        base["tesla_ok"] = any(x in {"Type 2", "CCS2", "Tesla CCS", "Tesla"} for x in labels)
+        base["tesla_ok"] = tesla_compat(labels)
         # Cross-source parking vs charge provenance may now differ — keep the conflict marker honest.
         charge_url = str(((base.get("charge_claim") or {}).get("url") or "")).rstrip("/")
         parking_url = str(((base.get("parking_claim") or {}).get("url") or "")).rstrip("/")

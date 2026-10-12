@@ -20,7 +20,7 @@ export interface Connector {
   price?: string
   is_free?: boolean
   tariff_text?: string | null
-  tesla_ok?: boolean
+  tesla_ok?: boolean | null
   fast?: boolean
   source_url?: string | null
 }
@@ -174,7 +174,7 @@ export interface Station {
   free_condition?: string
   price_claim_type?: string
 
-  tesla_ok?: boolean
+  tesla_ok?: boolean | null
   fast?: boolean
   max_power_kw?: number | null
   connector_labels?: string[]

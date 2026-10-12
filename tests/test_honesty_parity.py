@@ -234,6 +234,60 @@ class DecisionFallbackLeadAwareParityTests(unittest.TestCase):
         self.assertEqual(live_level, "check", "sanity check: live=True should still be able to reach 'check'")
 
 
+class TeslaCompatibilityTests(unittest.TestCase):
+    """A source that names no connector type is "unknown", never "Not Tesla-safe".
+
+    Regression: Lidl's official store list publishes no per-store connectors, so
+    every Lidl pin was labelled "Not Tesla-safe". server.tesla_compatibility and
+    ingest_sources.tesla_compat must agree on the three outcomes.
+    """
+
+    CASES = [
+        ([], None),
+        (["Wall outlet (connector unspecified)"], None),
+        (["Type 2"], True),
+        (["CCS2", "CHAdeMO"], True),
+        (["Tesla"], True),
+        (["CHAdeMO"], False),
+        (["CEE 7/4 - Schuko - Type F"], False),
+    ]
+
+    def test_server_and_ingest_agree(self) -> None:
+        for labels, expected in self.CASES:
+            self.assertIs(server.tesla_compatibility({"tesla_ok": False, "connector_labels": labels}), expected, labels)
+            self.assertIs(ing.tesla_compat(labels), expected, labels)
+
+    def test_unknown_connectors_are_not_labelled_not_tesla_safe(self) -> None:
+        lead = {
+            "id": "lidl-like",
+            "name": "Lidl store",
+            "lat": 28.38,
+            "lon": -16.69,
+            "is_free": True,
+            "is_cheap": True,
+            "price_min": 0.0,
+            "tesla_ok": False,
+            "connector_labels": [],
+            "connectors": [],
+            "status": "VERIFY",
+            "source": "Lidl official free list",
+            "reliability": "official-free-policy",
+        }
+        row = server._normalize_lead(dict(lead), lead["source"])
+        self.assertIsNone(row["tesla_ok"])
+        self.assertNotEqual(row["decision"]["label"], "Not Tesla-safe")
+        self.assertIn("doesn't say which connectors", row["decision"]["reason"])
+
+    def test_known_incompatible_connectors_still_avoid(self) -> None:
+        row = server._normalize_lead(
+            {"id": "schuko", "name": "Schuko only", "lat": 40.0, "lon": -3.0, "is_free": True,
+             "tesla_ok": False, "connector_labels": ["Schuko"], "source": "OpenStreetMap public tags"},
+            "OpenStreetMap public tags",
+        )
+        self.assertIs(row["tesla_ok"], False)
+        self.assertEqual(row["decision"]["label"], "Not Tesla-safe")
+
+
 class ConnectorLabelNormalizerParityTests(unittest.TestCase):
     """Case 4: server.normalize_connector_label and
     ingest_sources.connector_label_from_token are two independent copies of
