@@ -1067,6 +1067,25 @@ describe('chooseChargersData (intelligence-first render)', () => {
     expect(c.data?.stations).toEqual([])
     expect(c.usingInstant).toBe(false)
   })
+  it('cold overview keeps the cached national inventory when the region request is offline', () => {
+    const cached = { ...instant, cache: { stale: true }, meta: { offline: true } }
+    const c = chooseChargersData({ overview: true, live: undefined, instant: cached, isFetching: false, isPlaceholder: false, isError: true, viewportBbox: bbox })
+    expect(c.data).toBe(cached)
+    expect(c.data?.cache?.stale).toBe(true)
+    expect(c.data?.stations).toEqual([])
+    expect(c.usingInstant).toBe(false)
+    expect(c.liveFailed).toBe(false)
+  })
+  it('overview errors fall back without borrowing the previous query authority', () => {
+    const c = chooseChargersData({ overview: true, live, instant, isFetching: false, isPlaceholder: false, isError: true, viewportBbox: bbox })
+    expect(c.data).toBe(instant)
+    expect(c.data?.stations).toEqual([])
+  })
+  it('a successful regional overview wins over the national fallback', () => {
+    const regional = { stations: [], leads: [mk({ id: 'regional-only', lead: true })] }
+    const c = chooseChargersData({ overview: true, live: regional, instant, isFetching: false, isPlaceholder: false, isError: false, viewportBbox: bbox })
+    expect(c.data).toBe(regional)
+  })
   it('returning to overview without inventory fails closed during the fetch', () => {
     const c = chooseChargersData({ overview: true, live, isFetching: true, isPlaceholder: true, viewportBbox: bbox })
     expect(c.data).toBeUndefined()
