@@ -1,0 +1,27 @@
+# Volta Go's existing Fly.io app. The legacy app ID below is externally bound;
+# Madrid keeps the scraper close to Spanish sources.
+# Deploy: `fly launch --copy-config --now` (first time) or `fly deploy`.
+app = "volta-vlc"
+primary_region = "mad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8765
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[env]
+  HOST = "0.0.0.0"
+  PORT = "8765"
+  # No Fly volume is mounted. Fail closed instead of accepting check-ins/photos
+  # that disappear when a machine is replaced or suspended.
+  VOLTA_COMMUNITY_WRITES_ENABLED = "false"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # The all-charger national DB (~14k records) settles near 300 MB RSS.
+  memory = "512mb"

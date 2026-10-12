@@ -1,0 +1,21 @@
+# DISABLED TEMPLATE. Replace /PATH/TO/VOLTA-DEDICATED-CHECKOUT; do not enable
+# without owner approval. Install: systemctl --user enable --now volta-server.service
+[Unit]
+Description=Volta local-first EV charger server
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/PATH/TO/VOLTA-DEDICATED-CHECKOUT/.volta-auto-refresh-dedicated
+ConditionPathExists=/PATH/TO/VOLTA-DEDICATED-CHECKOUT/frontend/dist/index.html
+
+[Service]
+Type=simple
+WorkingDirectory=/PATH/TO/VOLTA-DEDICATED-CHECKOUT
+Environment=HOST=127.0.0.1
+Environment=PORT=8773
+Environment=PYTHONPYCACHEPREFIX=/tmp/volta-pycache
+ExecStart=/usr/bin/python3 -u /PATH/TO/VOLTA-DEDICATED-CHECKOUT/server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

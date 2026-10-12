@@ -1,0 +1,90 @@
+{
+  "identifier" : "D0F238D8-B865-4F4D-B529-7322670F5FE8",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_billingGracePeriodEnabled" : false,
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "5D8B5860-15CD-417A-AF88-2F7A8BB58323",
+      "localizations" : [
+
+      ],
+      "name" : "Volta Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "A66AF4B7-0F92-4543-8890-4E56A228860B",
+          "introductoryOffer" : {
+            "displayPrice" : "0",
+            "internalID" : "CFC1552F-6215-46A0-8797-183CC3101D58",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Billed monthly after a 7-day free trial.",
+              "displayName" : "Volta Plus Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "volta.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Volta Plus Monthly",
+          "subscriptionGroupID" : "5D8B5860-15CD-417A-AF88-2F7A8BB58323",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "E3B9A845-AA8C-4BCC-9E37-BD5C70444DEF",
+          "introductoryOffer" : {
+            "displayPrice" : "0",
+            "internalID" : "4AA5C947-FD22-4893-AF5A-ECA781A53548",
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Billed yearly after a 7-day free trial. Best value.",
+              "displayName" : "Volta Plus Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "volta.plus.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Volta Plus Yearly",
+          "subscriptionGroupID" : "5D8B5860-15CD-417A-AF88-2F7A8BB58323",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 2,
+    "minor" : 0
+  }
+}

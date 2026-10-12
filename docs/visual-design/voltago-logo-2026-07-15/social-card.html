@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+      body {
+        display: grid;
+        grid-template-columns: minmax(440px, 0.9fr) minmax(620px, 1.1fr);
+        align-items: center;
+        gap: 6%;
+        padding: 7.5% 8.5%;
+        color: #172027;
+        background:
+          linear-gradient(rgba(43, 67, 57, 0.045) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(43, 67, 57, 0.045) 1px, transparent 1px),
+          linear-gradient(135deg, #fffdf7 0%, #f3f7f2 58%, #e6efea 100%);
+        background-size: 68px 68px, 68px 68px, 100% 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
+      }
+      .icon {
+        width: min(38vw, 68vh);
+        aspect-ratio: 1;
+        justify-self: center;
+        filter: drop-shadow(0 34px 44px rgba(24, 35, 31, 0.17));
+      }
+      .copy { max-width: 720px; }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 30px;
+        color: #31664e;
+        font-size: clamp(18px, 1.45vw, 25px);
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .eyebrow::before {
+        content: "";
+        width: 42px;
+        height: 8px;
+        border-radius: 99px;
+        background: #b8f400;
+        box-shadow: 54px 0 0 #ff674c;
+        margin-right: 42px;
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(74px, 7.8vw, 132px);
+        line-height: 0.94;
+        letter-spacing: -0.055em;
+        font-weight: 780;
+      }
+      p {
+        margin: 34px 0 0;
+        max-width: 670px;
+        color: #4a5a52;
+        font-size: clamp(28px, 2.3vw, 42px);
+        line-height: 1.18;
+        font-weight: 520;
+        letter-spacing: -0.02em;
+      }
+      .url {
+        margin-top: 48px;
+        color: #263d32;
+        font-size: clamp(20px, 1.45vw, 26px);
+        font-weight: 700;
+        letter-spacing: 0.025em;
+      }
+      @media (max-aspect-ratio: 1.45/1) {
+        body { grid-template-columns: 0.82fr 1.18fr; gap: 5%; padding: 10% 7%; }
+        .icon { width: min(43vw, 61vh); }
+        h1 { font-size: clamp(76px, 8.5vw, 116px); }
+        p { font-size: clamp(28px, 2.7vw, 39px); }
+      }
+    </style>
+  </head>
+  <body>
+    <img class="icon" src="./voltago-app-icon-flat.svg" alt="" />
+    <main class="copy">
+      <div class="eyebrow">Charge with confidence</div>
+      <h1>Volta Go</h1>
+      <p>Free-first EV charging radar for Spain—clear about what is live before you drive.</p>
+      <div class="url">voltago.app</div>
+    </main>
+  </body>
+</html>

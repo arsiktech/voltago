@@ -1,0 +1,12 @@
+# DISABLED TEMPLATE. Replace /PATH/TO/VOLTA-DEDICATED-CHECKOUT; do not enable
+# without owner approval. Install: systemctl --user enable --now volta-refresh.timer
+[Unit]
+Description=Volta intelligence exact-candidate refresh
+ConditionPathExists=/PATH/TO/VOLTA-DEDICATED-CHECKOUT/.volta-auto-refresh-dedicated
+
+[Service]
+Type=oneshot
+WorkingDirectory=/PATH/TO/VOLTA-DEDICATED-CHECKOUT
+Environment=PYTHONPYCACHEPREFIX=/tmp/volta-pycache
+Environment=VOLTA_REFRESH_PUSH=false
+ExecStart=/usr/bin/python3 /PATH/TO/VOLTA-DEDICATED-CHECKOUT/scripts/auto_refresh.py --root /PATH/TO/VOLTA-DEDICATED-CHECKOUT

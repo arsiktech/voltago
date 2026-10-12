@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Volta charger data every six hours
+
+[Timer]
+OnCalendar=*-*-* 00,06,12,18:30:00 UTC
+RandomizedDelaySec=300
+Persistent=true
+Unit=volta-data-refresh.service
+
+[Install]
+WantedBy=timers.target

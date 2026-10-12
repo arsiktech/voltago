@@ -1,0 +1,13 @@
+.git
+**/__pycache__
+**/*.pyc
+frontend/node_modules
+frontend/dist
+node_modules
+data/cache
+data/source_probe
+qa
+tests
+docs
+*.log
+.claude

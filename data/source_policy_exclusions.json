@@ -1,0 +1,64 @@
+{
+  "version": 6,
+  "updated_at": "2026-10-06",
+  "normalization": "unicode-casefold-strip-diacritics",
+  "granted_reuse": [
+    {
+      "id": "fenie-owner-attested-permission",
+      "family": "Feníe Energía Recarga",
+      "source_family_terms": ["fenie", "fenieenergia"],
+      "origin_hosts": ["recarga.fenieenergia.es"],
+      "status": "permitted",
+      "basis": "owner-attested express written permission covering public redistribution",
+      "granted_on": "2026-07-18",
+      "attested_by": "owner in-session; confirmed permission covers public redistribution via Volta (voltago.app + App Store)",
+      "homepage_url": "https://recarga.fenieenergia.es/",
+      "terms_url": "https://recarga.fenieenergia.es/pagina/condiciones-de-uso-y-politica-de-privacidad",
+      "access_method_note": "The public marker listing needs an anonymous GET for a session/CSRF value followed by a read-only marker-list POST. On 2026-10-06 the owner explicitly approved that one POST (no login, account, payment, or session-start action) as a narrow exception, enforced by scripts/source_transport.py: exact HTTPS host and path, empty body, no redirects, bounded budget. It grants no other POST.",
+      "attribution_required": "Feníe Energía — Red de recarga (public map)",
+      "audit_note": "The written permission is retained by the owner off-repo and was recorded from the owner's explicit in-session attestation; it was not independently verified in this workspace. As of 2026-10-06 the separate request-method block is lifted by the owner's narrow read-only query exception.",
+      "revocation_gate": "Remove this record and restore a Feníe exclusion if the permission is withdrawn or its scope no longer covers public redistribution."
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "electromaps-reuse-rights",
+      "family": "Electromaps",
+      "source_family_terms": ["electromaps"],
+      "origin_hosts": ["electromaps.com"],
+      "match_scope": "structured-source-origin-only",
+      "status": "link-only-rights-blocked",
+      "homepage_url": "https://www.electromaps.com/",
+      "terms_url": "https://www.electromaps.com/es/terms-and-conditions",
+      "reason": "Electromaps' public terms reserve extraction, sharing, and exploitation rights absent express permission. Public GET access and permissive robots rules do not grant storage, transformation, or redistribution rights.",
+      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence."
+    },
+    {
+      "id": "chargemap-reuse-and-robots",
+      "family": "Chargemap",
+      "source_family_terms": ["chargemap public map api"],
+      "origin_hosts": ["chargemap.com"],
+      "match_scope": "structured-source-origin-only",
+      "status": "removed-rights-blocked",
+      "homepage_url": "https://chargemap.com/",
+      "terms_url": "https://chargemap.com/es-es/about/legal",
+      "reason": "Chargemap's generic robots rule disallows crawling and its terms withhold extraction, reproduction, and reuse rights absent written authorization. Volta therefore retains no Chargemap station evidence.",
+      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review."
+    },
+    {
+      "id": "consum-locator-reuse-permission",
+      "family": "Consum store locator",
+      "source_family_terms": ["consum store locator"],
+      "origin_hosts": ["consum.es"],
+      "match_scope": "structured-source-origin-only",
+      "status": "link-only-rights-blocked",
+      "homepage_url": "https://www.consum.es/",
+      "terms_url": "https://www.consum.es/aviso-legal-y-terminos-y-condiciones/",
+      "reason": "Consum's public locator and same-site JSON surface do not provide an open reuse grant. The legal notice limits copying and storage and permits only conservative homepage linking absent written authorization.",
+      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "reintroduction_gate": "Written permission covering periodic retrieval, caching, transformation, redistribution, attribution, and deep links; homepage links alone are not station evidence."
+    }
+  ]
+}

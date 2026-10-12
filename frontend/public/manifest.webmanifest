@@ -1,0 +1,19 @@
+{
+  "name": "Volta Go — EV charging across Spain",
+  "short_name": "Volta Go",
+  "description": "Live, free-first, low-cost EV charging radar for Spain.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07100f",
+  "theme_color": "#0fa755",
+  "icons": [
+    {
+      "src": "/brand/volta-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+# DISABLED TEMPLATE. Install/enable only after owner approval:
+# systemctl --user enable --now volta-health.timer
+[Unit]
+Description=Probe Volta every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+Unit=volta-health.service
+
+[Install]
+WantedBy=timers.target

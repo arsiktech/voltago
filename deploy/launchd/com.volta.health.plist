@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DISABLED TEMPLATE: replace /PATH/TO/VOLTA-DEDICATED-CHECKOUT first.
+  Do not activate without the owner's explicit approval.
+  Install only after review: launchctl enable gui/$(id -u)/com.volta.health,
+  then launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.volta.health.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.volta.health</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/scripts/health_probe.py</string>
+    <string>--base-url</string>
+    <string>http://127.0.0.1:8773</string>
+    <string>--db</string>
+    <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/free_intelligence.json</string>
+    <string>--receipt</string>
+    <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/last.json</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT</string>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>StandardOutPath</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/launchd-health.log</string>
+  <key>StandardErrorPath</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/launchd-health-error.log</string>
+</dict>
+</plist>

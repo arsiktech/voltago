@@ -1,0 +1,10 @@
+# DISABLED TEMPLATE. Replace /PATH/TO/VOLTA-DEDICATED-CHECKOUT; do not enable
+# without owner approval. Install: systemctl --user enable --now volta-health.timer
+[Unit]
+Description=Volta API and intelligence freshness probe
+ConditionPathExists=/PATH/TO/VOLTA-DEDICATED-CHECKOUT/.volta-auto-refresh-dedicated
+
+[Service]
+Type=oneshot
+WorkingDirectory=/PATH/TO/VOLTA-DEDICATED-CHECKOUT
+ExecStart=/usr/bin/python3 /PATH/TO/VOLTA-DEDICATED-CHECKOUT/scripts/health_probe.py --base-url http://127.0.0.1:8773 --db /PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/free_intelligence.json --receipt /PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/last.json

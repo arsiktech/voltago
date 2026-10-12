@@ -1,0 +1,663 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/manrope';
+
+/* Dark mode is driven by the data-theme attribute (set in index.html before paint). */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* ---------- Theme tokens (light) ---------- */
+/* Direction D, "Green means go": a neutral ink interface. Actions and selection use ink;
+   green is reserved for the Go-now evidence state (and the logo mark). See
+   docs/design-system.md before adding or changing a token. */
+:root {
+  --bg: #f5f6f4;
+  --map-water: #d9e3e8;
+  --map-park: #e2e7e0;
+  --surface: #ffffff;
+  --surface-2: #eef0ee;
+  --surface-3: #e6e9e6;
+  --border: rgba(14, 21, 18, 0.1);
+  --border-strong: rgba(14, 21, 18, 0.18);
+  --fg: #0e1512;
+  --fg-soft: #2a332f;
+  --muted: #5a6560;
+  --faint: #8b948f;
+
+  /* Primary controls: ink fill with white text (18:1). Never green. */
+  --brand: #0e1512;
+  --brand-strong: #2a332f;
+  --brand-contrast: #ffffff;
+  --accent: #5a6560;
+  /* The logo period is the only green outside the evidence states. */
+  --mark: #0d7d40;
+
+  /* Evidence states have independent text colors; low price is not live authority. */
+  --go: #0d7d40;
+  --go-contrast: #ffffff;
+  --check: #986200;
+  --verify: #426ac3;
+  --danger: #d83a40;
+
+  --glass: rgba(255, 255, 255, 0.76);
+  --glass-strong: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-rim: rgba(255, 255, 255, 0.85);
+  --glass-shade: rgba(14, 21, 18, 0.08);
+  --shadow-sm: 0 1px 2px rgba(14, 21, 18, 0.05), 0 2px 8px -4px rgba(14, 21, 18, 0.1);
+  --shadow-md: 0 8px 24px -12px rgba(14, 21, 18, 0.22);
+  --shadow-lg: 0 24px 60px -28px rgba(14, 21, 18, 0.4);
+  --ring: rgba(14, 21, 18, 0.7);
+}
+
+[data-theme='dark'] {
+  --bg: #0b0f0d;
+  --surface: #141a17;
+  --surface-2: #1b221f;
+  --surface-3: #222a26;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --fg: #edf1ee;
+  --fg-soft: #cdd5d0;
+  --muted: #9aa59f;
+  --faint: #6f7a74;
+
+  --brand: #edf1ee;
+  --brand-strong: #ffffff;
+  --brand-contrast: #0b0f0d;
+  --accent: #9aa59f;
+  --mark: #21d277;
+
+  --go: #21d277;
+  --go-contrast: #04140c;
+  --check: #f0b429;
+  --verify: #7aa2f7;
+  --danger: #ff6b70;
+
+  --glass: rgba(20, 26, 23, 0.68);
+  --glass-strong: rgba(20, 26, 23, 0.88);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-rim: rgba(255, 255, 255, 0.16);
+  --glass-shade: rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 12px 32px -16px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 30px 70px -30px rgba(0, 0, 0, 0.75);
+  --ring: rgba(237, 241, 238, 0.75);
+}
+
+/* ---------- Map Tailwind theme to tokens (utilities auto-flip with theme) ---------- */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-soft: var(--fg-soft);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-contrast: var(--brand-contrast);
+  --color-accent: var(--accent);
+
+  --color-go: var(--go);
+  --color-go-contrast: var(--go-contrast);
+  --color-mark: var(--mark);
+  --color-check: var(--check);
+  --color-verify: var(--verify);
+  --color-danger: var(--danger);
+
+  --font-sans: 'Manrope Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  --radius-xl: 0.85rem;
+  --radius-2xl: 1.15rem;
+}
+
+/* ---------- Base ---------- */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--fg);
+    background-color: var(--bg);
+    background-image: none;
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+  h1,
+  h2,
+  h3 {
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--fg);
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--brand) 28%, transparent);
+  }
+  /* Scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--faint);
+    background-clip: content-box;
+  }
+}
+
+/* ---------- Components ---------- */
+@layer components {
+  /* Small control surfaces only: opaque content keeps evidence readable. */
+  .glass,
+  .glass-strong {
+    background: var(--surface);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-shade), var(--shadow-md);
+  }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass,
+    .glass-strong {
+      background: linear-gradient(155deg, var(--glass-rim), transparent 42%), var(--glass);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      backdrop-filter: blur(18px) saturate(140%);
+    }
+    .glass-strong {
+      background: linear-gradient(155deg, var(--glass-rim), transparent 42%), var(--glass-strong);
+    }
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    /* Outer radius steps above the nested rounded-xl (1.1rem) controls inside. */
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Filter chips */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.34rem;
+    white-space: nowrap;
+    padding: 0.5rem 0.72rem;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 560;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    transition:
+      color 0.16s ease,
+      background-color 0.16s ease,
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
+      scale 0.12s ease;
+  }
+  .chip:hover {
+    color: var(--fg);
+    border-color: var(--border-strong);
+  }
+  .chip:active {
+    scale: 0.96;
+  }
+  .chip[aria-pressed='true'] {
+    color: var(--brand-contrast);
+    background: var(--brand);
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  /* A reserved check slot keeps every hit target stationary during rapid toggles.
+     Light responds to the press; no timers, travelling overlays or idle animation. */
+  .filter-chip {
+    min-height: 44px;
+    color: var(--fg-soft);
+    box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-shade);
+  }
+  .filter-chip::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-shade);
+  }
+  .filter-chip-check {
+    opacity: 0;
+  }
+  .filter-chip[aria-pressed='true'] .filter-chip-check {
+    opacity: 1;
+  }
+  .filter-chip:active {
+    scale: 1;
+  }
+  .filter-chip:active::after {
+    background: rgba(127, 127, 127, 0.12);
+  }
+  /* Pointer feedback moves paint only; keyboard focus is immediate. */
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .filter-chip:active:not(:focus-visible) {
+      scale: 0.98;
+    }
+  }
+  .filter-chip:focus-visible {
+    transition: none;
+  }
+
+  /* Decision pills */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.34rem;
+    padding: 0.28rem 0.62rem;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 680;
+    letter-spacing: 0.01em;
+    line-height: 1;
+  }
+  /* Go now is the only solid green in the interface; the other states stay tinted. */
+  .pill-go {
+    color: var(--go-contrast);
+    background: var(--go);
+    border: 1px solid transparent;
+  }
+  .pill-check {
+    color: var(--check);
+    background: color-mix(in oklab, var(--check) 16%, transparent);
+    border: 1px solid color-mix(in oklab, var(--check) 40%, transparent);
+  }
+  .pill-verify {
+    color: var(--verify);
+    background: color-mix(in oklab, var(--verify) 16%, transparent);
+    border: 1px solid color-mix(in oklab, var(--verify) 40%, transparent);
+  }
+  .pill-lead {
+    color: var(--muted);
+    background: color-mix(in oklab, var(--muted) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--muted) 36%, transparent);
+  }
+  .pill-avoid {
+    color: var(--danger);
+    background: color-mix(in oklab, var(--danger) 14%, transparent);
+    border: 1px solid color-mix(in oklab, var(--danger) 38%, transparent);
+  }
+
+  /* Small status/info badges */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .badge-brand {
+    color: var(--brand-strong);
+    background: color-mix(in oklab, var(--brand) 13%, transparent);
+    border-color: color-mix(in oklab, var(--brand) 34%, transparent);
+  }
+  .badge-warn {
+    color: var(--check);
+    background: color-mix(in oklab, var(--check) 14%, transparent);
+    border-color: color-mix(in oklab, var(--check) 36%, transparent);
+  }
+  .badge-danger {
+    color: var(--danger);
+    background: color-mix(in oklab, var(--danger) 14%, transparent);
+    border-color: color-mix(in oklab, var(--danger) 36%, transparent);
+  }
+
+  /* Icon buttons */
+  .icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 0.85rem;
+    color: var(--fg);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+    transition:
+      border-color 0.16s ease,
+      background-color 0.16s ease,
+      scale 0.12s ease;
+  }
+  .icon-btn:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-2);
+  }
+  .icon-btn:active {
+    scale: 0.96;
+  }
+
+  .live-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: var(--go);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--go) 70%, transparent);
+    animation: pulse 2s 3;
+  }
+
+  .live-dot-muted {
+    background: var(--muted);
+    box-shadow: none;
+    animation: none;
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--surface-2);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, var(--fg) 7%, transparent),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+
+  .empty-state-visual {
+    filter: drop-shadow(0 12px 24px rgba(8, 30, 20, 0.08));
+  }
+  .empty-state-ring {
+    transform-origin: center;
+    animation: calm-ring 2.8s ease-in-out infinite;
+  }
+  .user-location-marker {
+    width: 16px;
+    height: 16px;
+    border-radius: 999px;
+    background: #2f80ed;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.25);
+    animation: user-location-pulse 2.2s ease-out infinite;
+  }
+
+  .station-virtual-row {
+    will-change: transform;
+    transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--go) 60%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 7px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+@keyframes calm-ring {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.08);
+  }
+}
+@keyframes user-location-pulse {
+  0% {
+    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.25), 0 0 0 0 rgba(47, 128, 237, 0.34);
+  }
+  70% {
+    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.2), 0 0 0 14px rgba(47, 128, 237, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.25), 0 0 0 0 rgba(47, 128, 237, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .station-virtual-row {
+    transition: none !important;
+    will-change: auto;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .glass,
+  .glass-strong {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-color: var(--border-strong);
+  }
+}
+@media (forced-colors: active) {
+  .glass,
+  .glass-strong,
+  .filter-chip {
+    background: Canvas;
+    color: CanvasText;
+    border: 1px solid ButtonText;
+    box-shadow: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  .filter-chip[aria-pressed='true'] {
+    background: Highlight;
+    color: HighlightText;
+  }
+  .filter-chip::after {
+    display: none;
+  }
+}
+
+/* ---------- MapLibre overrides ---------- */
+.maplibregl-ctrl-attribution {
+  font-size: 10px;
+  background: var(--glass) !important;
+  color: var(--muted);
+  border-radius: 8px 0 0 0;
+}
+.maplibregl-ctrl-attribution a {
+  color: var(--muted);
+}
+.maplibregl-ctrl-bottom-right {
+  opacity: 0.7;
+}
+/* Mobile: the map canvas is the strip above the bottom sheet, so a station popup may
+   legitimately extend past the canvas; clip it at the sheet edge and the driver loses
+   the card. The popup layer already sits above the panel (z-index 40 > 20). */
+@media (max-width: 767px) {
+  .maplibregl-map {
+    overflow: visible;
+  }
+}
+.volta-popup .maplibregl-popup-content,
+.maplibregl-popup-content {
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: 12px 14px;
+}
+.volta-popup {
+  z-index: 40;
+}
+.maplibregl-popup-tip {
+  border-top-color: var(--surface) !important;
+  border-bottom-color: var(--surface) !important;
+}
+.maplibregl-popup-close-button {
+  color: var(--muted);
+  font-size: 16px;
+  padding: 2px 6px;
+}
+
+/* Discovery layout: one set of geometry values owns both the map and list.
+   The map has real available space; camera fits need no sidebar compensation. */
+:root { --discovery-width: 432px; --page-gutter: 24px; --header-height: 76px; }
+.app-header {
+  position: absolute; inset: 0 0 auto; height: var(--header-height); z-index: 25;
+  display: flex; align-items: center; gap: 32px; padding: 0 var(--page-gutter);
+  background: var(--bg);
+}
+.brand-lockup { display: inline-flex; align-items: center; gap: 10px; min-height: 44px;
+  color: var(--fg); text-decoration: none; font-size: 23px; font-weight: 750; letter-spacing: 0; }
+.brand-period { color: var(--mark); }
+.discovery-panel { top: var(--header-height); bottom: 20px; left: var(--page-gutter);
+  width: var(--discovery-width); border: 1px solid var(--border); border-radius: 24px; }
+.discovery-map { position: absolute; top: var(--header-height); bottom: 20px;
+  left: calc(var(--discovery-width) + var(--page-gutter) + 16px); right: var(--page-gutter);
+  overflow: hidden; border-radius: 24px; border: 1px solid var(--border); }
+.discovery-search { flex: none; padding: 24px 24px 16px; border-bottom: 1px solid var(--border); }
+.discovery-title { font-size: 34px; font-weight: 750; line-height: 1.08; letter-spacing: 0; text-wrap: auto; }
+.discovery-intro { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 12px 0 0; padding-bottom: 22px; }
+/* Pinned inside the result scroller: the count and refresh stay in view, a hairline
+   appears only once results scroll beneath it. */
+.results-heading { position: sticky; top: 0; z-index: 5; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: 12px 24px 8px; background: var(--surface);
+  border-bottom: 1px solid transparent; transition: border-color 180ms ease-out; }
+.results-heading[data-scrolled] { border-bottom-color: var(--border); }
+.discovery-status { padding: 0 24px 12px; }
+.discovery-status:empty { padding: 0; }
+.overview-guidance { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.overview-guidance svg { flex: none; }
+.result-scroller { padding: 0 0 12px; overscroll-behavior: contain; }
+.results-body { padding: 4px 16px 0; }
+.region-nav { position: absolute; z-index: 22; display: flex; gap: 2px; padding: 4px;
+  top: calc(var(--header-height) + 16px); left: calc(var(--discovery-width) + var(--page-gutter) + 32px);
+  border-radius: 16px; }
+.region-nav button { min-height: 44px; padding: 0 14px; border-radius: 12px;
+  color: var(--fg-soft); font-size: 12px; font-weight: 550; white-space: nowrap; }
+.region-nav button[aria-pressed='true'] { color: var(--brand-contrast); background: var(--brand); }
+.region-nav button:hover:not([aria-pressed='true']) { background: var(--surface-2); }
+.area-search { top: calc(var(--header-height) + 84px); right: calc(var(--page-gutter) + 16px); }
+.maplibregl-ctrl-group { overflow: hidden; border-radius: 12px !important; box-shadow: var(--shadow-sm) !important; }
+.maplibregl-ctrl-group button { width: 44px; height: 44px; }
+@media (max-width: 1100px) and (min-width: 768px) {
+  :root { --discovery-width: 380px; --page-gutter: 16px; }
+  .app-header { gap: 20px; }
+  .region-nav button { padding: 0 10px; font-size: 11px; }
+  .discovery-search { padding: 20px 20px 16px; }
+}
+@media (max-width: 767px) {
+  :root { --header-height: 60px; --page-gutter: 16px; }
+  .app-header { gap: 12px; }
+  .brand-lockup { font-size: 21px; }
+  .brand-lockup img { width: 30px; height: 30px; }
+  .discovery-map { top: var(--header-height); bottom: 58dvh; left: 0; right: 0; border: 0; border-radius: 0; }
+  .discovery-panel { top: 42dvh; bottom: 0; left: 0; right: 0; width: auto;
+    border-radius: 24px 24px 0 0; border-bottom: 0; box-shadow: 0 -8px 28px -22px var(--fg); }
+  .discovery-title, .discovery-intro { display: none; }
+  .discovery-search { padding: 0 16px 12px; }
+  .results-heading { padding: 8px 20px 6px; }
+  .results-heading h1 { font-size: 16px; }
+  .discovery-status { padding: 0 20px 8px; }
+  .overview-guidance { font-size: 11px; line-height: 1.4; }
+  .results-body { padding: 4px 12px 0; }
+  .data-honesty { padding-left: 20px; padding-right: 20px; }
+  .region-nav { top: calc(var(--header-height) + 10px); left: 12px; max-width: calc(100% - 24px); }
+  .region-nav button { padding: 0 10px; font-size: 11px; }
+  .area-search { top: calc(var(--header-height) + 74px); right: 12px; font-size: 12px; }
+}
+@media (max-height: 650px) {
+  .discovery-title, .discovery-intro { display: none; }
+  .discovery-search { padding-top: 12px; padding-bottom: 12px; }
+}
+
+/* Mobile sheet: drag the grabber, or use the List/Map button in the results heading. */
+.sheet-grabber-zone, .mobile-view-toggle { display: none; }
+@media (max-width: 767px) {
+  .discovery-panel { transition: top 280ms cubic-bezier(0.2, 0, 0, 1), border-radius 280ms ease-out; }
+  .sheet-grabber-zone { display: grid; flex: none; place-items: center; height: 20px; touch-action: none; cursor: grab; }
+  .sheet-grabber-zone:active { cursor: grabbing; }
+  .sheet-grabber { width: 40px; height: 5px; border-radius: 999px; background: var(--border-strong); }
+  .mobile-view-toggle { display: inline-flex; gap: 6px; align-items: center; justify-content: center;
+    min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--surface); color: var(--fg-soft); font-size: 12px; font-weight: 600;
+    transition: background-color 180ms ease-out, border-color 180ms ease-out; }
+  .mobile-view-toggle:active { background: var(--surface-2); }
+  [data-view='list'] .discovery-panel { top: var(--header-height); border-radius: 20px 20px 0 0; }
+  [data-view='list'] .discovery-map, [data-view='list'] .region-nav, [data-view='list'] .area-search { visibility: hidden; }
+}
+@media (max-width: 767px) and (prefers-reduced-motion: reduce) {
+  .discovery-panel { transition: none; }
+}
+
+/* Native range preserves keyboard/assistive control behavior in every theme. */
+.price-slider {
+  accent-color: var(--brand);
+  color-scheme: light;
+}
+[data-theme='dark'] .price-slider { color-scheme: dark; }
+.price-slider:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+@media (forced-colors: active) {
+  .price-slider { forced-color-adjust: auto; }
+  .price-slider:focus-visible { outline-color: Highlight; }
+}

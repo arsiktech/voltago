@@ -1,0 +1,20 @@
+const { chromium } = require('playwright');
+const { installDeterministicBasemap } = require('./qa_browser_harness');
+(async () => {
+ const browser = await chromium.launch({headless:true, executablePath:process.env.VOLTA_QA_CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+ const page = await browser.newPage({viewport:{width:1280,height:900}, reducedMotion:'reduce'});
+ const errors=[]; page.on('pageerror',e=>errors.push(String(e)));
+ await installDeterministicBasemap(page);
+ const start=performance.now();
+ await page.goto('http://127.0.0.1:8773');
+ await page.locator('h3').first().waitFor({timeout:15000});
+ const firstCardMs=performance.now()-start;
+ await page.locator('.maplibregl-canvas').waitFor({timeout:15000});
+ const canvas=page.locator('.maplibregl-canvas'); const box=await canvas.boundingBox();
+ const panStart=performance.now();
+ await page.mouse.move(box.x+box.width*0.75,box.y+box.height*0.4);
+ await page.mouse.down(); await page.mouse.move(box.x+box.width*0.5,box.y+box.height*0.6,{steps:12}); await page.mouse.up();
+ await page.waitForTimeout(1200);
+ console.log(JSON.stringify({firstCardMs,panObservationMs:performance.now()-panStart,cards:await page.locator('h3').count(),errors}));
+ await browser.close(); if(errors.length)process.exitCode=1;
+})().catch(e=>{console.error(e);process.exit(1)});

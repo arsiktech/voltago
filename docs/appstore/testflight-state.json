@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "bundle_id": "tech.arsik.volta",
+  "last_known_internal_assignment": {
+    "version": "1.1",
+    "build": 202607101745,
+    "verified_at": "2026-07-10T17:45:00+02:00",
+    "status": "Ready to Submit and assigned to Internal Testing",
+    "note": "Last known App Store Connect/Internal Testing assignment. No device-install evidence is claimed; reconcile App Store Connect immediately before every upload."
+  },
+  "candidate": {
+    "version": "1.2",
+    "build": 202609051100,
+    "paywall": "off",
+    "purpose": "Local TestFlight candidate; not an App Store Connect distribution claim",
+    "distribution_state": "local_candidate",
+    "archive_verified": false,
+    "upload_verified": false,
+    "processing_verified": false,
+    "internal_group_assignment_verified": false,
+    "device_install_verified": false,
+    "next_action": "Reconcile the highest App Store Connect build, then archive, upload, wait for processing, assign Internal Testing, and record a separate device-install receipt."
+  }
+}

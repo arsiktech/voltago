@@ -1,0 +1,12 @@
+# DISABLED TEMPLATE. Install/enable only after owner approval:
+# systemctl --user enable --now volta-refresh.timer
+[Unit]
+Description=Run Volta intelligence refresh weekly
+
+[Timer]
+OnCalendar=Mon *-*-* 05:30:00
+Persistent=true
+Unit=volta-refresh.service
+
+[Install]
+WantedBy=timers.target

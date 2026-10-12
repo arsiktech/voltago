@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "connector_labels": [
+    { "token": "IEC_62196_T2_COMBO", "expected": "CCS2" },
+    { "token": "CCS", "expected": "CCS2" },
+    { "token": "CHADEMO", "expected": "CHAdeMO" },
+    { "token": "TESLA", "expected": "Tesla" },
+    { "token": "MENNEKES", "expected": "Type 2" },
+    { "token": "tipo 2", "expected": "Type 2" },
+    { "token": "SCHUKO", "expected": "Schuko" },
+    { "token": "T1", "expected": "Type 1" },
+    { "token": "UNKNOWN_XYZ", "expected": "Unknown Xyz" },
+    { "token": "", "expected": null },
+    { "token": null, "expected": null }
+  ],
+  "source_resources": [
+    {
+      "source": { "name": "Gaia", "url": "https://partner-next.gaiacharge.com/cpo/jump/site/connector" },
+      "expected": { "kind": "start_page", "quality": "exact" }
+    },
+    {
+      "source": { "name": "Electromaps", "url": "https://www.electromaps.com/fr/p/station-42" },
+      "expected": { "kind": "station_page", "quality": "exact" }
+    },
+    {
+      "source": { "name": "OSM", "url": "https://www.openstreetmap.org/node/123" },
+      "expected": { "kind": "map_object", "quality": "map" }
+    },
+    {
+      "source": { "name": "MapaREVE", "url": "https://www.mapareve.es/" },
+      "expected": { "kind": "live_map", "quality": "map" }
+    },
+    {
+      "source": { "name": "Unknown", "url": "https://example.com/chargers" },
+      "expected": { "kind": "generic", "quality": "generic" }
+    }
+  ],
+  "route_ready": [
+    {
+      "id": "live-connector-ready",
+      "station": { "id": "a", "name": "A", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": { "live_verified": true, "level": "live" }, "connector_summary": { "available": 2 } },
+      "expected": true
+    },
+    {
+      "id": "lead-never-ready",
+      "station": { "id": "b", "name": "B", "lat": 39.47, "lon": -0.38, "lead": true, "verification": { "live_verified": true, "level": "live" }, "decision": { "level": "go" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "missing-verification",
+      "station": { "id": "missing-verification", "name": "Unverified", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "null-verification",
+      "station": { "id": "null-verification", "name": "Unverified", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": null, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "missing-live-verification",
+      "station": { "id": "missing-live-verification", "name": "Unverified", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": { "level": "live" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "null-live-verification",
+      "station": { "id": "null-live-verification", "name": "Unverified", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": { "live_verified": null, "level": "live" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "explicit-not-live",
+      "station": { "id": "c", "name": "C", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": { "live_verified": false, "level": "live" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "non-live-level",
+      "station": { "id": "d", "name": "D", "lat": 39.47, "lon": -0.38, "lead": false, "decision": { "level": "go" }, "verification": { "live_verified": true, "level": "official" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "connector-zero-overrides-top-level",
+      "station": { "id": "e", "name": "E", "lat": 39.47, "lon": -0.38, "lead": false, "verification": { "live_verified": true, "level": "live" }, "decision": { "level": "go" }, "connector_summary": { "available": 0 }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "available-status-fallback",
+      "station": { "id": "f", "name": "F", "lat": 39.47, "lon": -0.38, "lead": false, "verification": { "live_verified": true, "level": "live" }, "decision": { "level": "go" }, "status": " available " },
+      "expected": true
+    },
+    {
+      "id": "stale-row-never-ready",
+      "station": { "id": "g", "name": "G", "lat": 39.47, "lon": -0.38, "lead": false, "cache_stale": true, "decision": { "level": "go" }, "verification": { "live_verified": true, "level": "live" }, "available": 3 },
+      "expected": false
+    },
+    {
+      "id": "check-never-ready",
+      "station": { "id": "h", "name": "H", "lat": 39.47, "lon": -0.38, "lead": false, "verification": { "live_verified": true, "level": "live" }, "decision": { "level": "check" }, "available": 3 },
+      "expected": false
+    }
+  ],
+  "decision_fallback": [
+    { "id": "missing-live", "station": { "id": "i", "name": "I", "lat": 1, "lon": 2, "lead": false }, "expected": "check" },
+    { "id": "unknown-live", "station": { "id": "j", "name": "J", "lat": 1, "lon": 2, "lead": false, "decision": { "level": "future" } }, "expected": "check" },
+    { "id": "missing-lead", "station": { "id": "k", "name": "K", "lat": 1, "lon": 2, "lead": true }, "expected": "verify" },
+    { "id": "valid-go-lead", "station": { "id": "l", "name": "L", "lat": 1, "lon": 2, "lead": true, "decision": { "level": "go" } }, "expected": "go" }
+  ],
+  "public_web_urls": [
+    { "value": "https://example.com/station", "valid": true },
+    { "value": "http://example.com/station", "valid": true },
+    { "value": "javascript:alert(1)", "valid": false },
+    { "value": "/relative/station", "valid": false },
+    { "value": "http://localhost:8773/private", "valid": false },
+    { "value": "https://127.0.0.1/private", "valid": false },
+    { "value": "https://user:pass@example.com/private", "valid": false },
+    { "value": "https://192.0.2.1/documentation-only", "valid": false }
+  ]
+}

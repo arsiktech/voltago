@@ -1,0 +1,13 @@
+{
+  "name": "volta-qa-tooling",
+  "private": true,
+  "description": "Root-level QA tooling deps for scripts/qa_*.js (Playwright library; browsers NOT downloaded \u2014 scripts launch the system Chrome via VOLTA_QA_CHROME/executablePath).",
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  },
+  "engines": {
+    "node": ">=26.10.0",
+    "npm": ">=12.2.0"
+  },
+  "packageManager": "npm@12.2.0"
+}

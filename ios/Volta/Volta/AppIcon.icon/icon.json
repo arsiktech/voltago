@@ -1,0 +1,41 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name" : "03-route-accent.svg",
+          "name" : "03-route-accent"
+        },
+        {
+          "image-name" : "02-bolt.svg",
+          "name" : "02-bolt"
+        },
+        {
+          "image-name" : "01-pin.svg",
+          "name" : "01-pin"
+        },
+        {
+          "image-name" : "00-background.svg",
+          "name" : "00-background"
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.2
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Volta gated charger-data refresh (no Git publication)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/apps/voltago
+EnvironmentFile=%h/.config/volta/data-refresh.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 %h/apps/voltago/scripts/runtime_refresh.py --state-dir ${VOLTA_REFRESH_STATE_DIR} --command-timeout 1200
+ExecStopPost=/usr/bin/python3 %h/apps/voltago/scripts/runtime_refresh_alert.py --state-dir ${VOLTA_REFRESH_STATE_DIR} --target ${VOLTA_ALERT_TARGET} --hermes %h/.local/bin/hermes
+TimeoutStartSec=30min
+TimeoutStopSec=60
+UMask=0077
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=1536M
+CPUQuota=150%
+TasksMax=64

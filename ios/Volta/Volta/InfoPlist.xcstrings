@@ -1,0 +1,53 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "CFBundleDisplayName" : {
+      "comment" : "Bundle display name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Volta Go"
+          }
+        }
+      }
+    },
+    "CFBundleName" : {
+      "comment" : "Bundle name",
+      "extractionState" : "extracted_with_value",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Volta Go"
+          }
+        }
+      }
+    },
+    "NSLocationWhenInUseUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "After location access is granted, Volta uses your location when the app opens and when you ask to find or rank nearby chargers. Your coordinates are sent to the configured Volta service."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Después de conceder acceso a la ubicación, Volta la usa al abrir la app y cuando pides buscar u ordenar cargadores cercanos. Tus coordenadas se envían al servicio de Volta configurado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После разрешения доступа к геопозиции Volta использует её при открытии приложения и когда вы просите найти или ранжировать ближайшие зарядные станции. Ваши координаты отправляются настроенному сервису Volta."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

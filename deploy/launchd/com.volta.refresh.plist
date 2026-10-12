@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DISABLED TEMPLATE: replace /PATH/TO/VOLTA-DEDICATED-CHECKOUT first.
+  Do not activate without the owner's explicit approval.
+  Install only after review: launchctl enable gui/$(id -u)/com.volta.refresh,
+  then launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.volta.refresh.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.volta.refresh</string>
+  <key>Disabled</key>
+  <true/>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/scripts/auto_refresh.py</string>
+    <string>--root</string>
+    <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PYTHONPYCACHEPREFIX</key>
+    <string>/tmp/volta-pycache</string>
+    <key>VOLTA_REFRESH_PUSH</key>
+    <string>false</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>1</integer>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/launchd-refresh.log</string>
+  <key>StandardErrorPath</key>
+  <string>/PATH/TO/VOLTA-DEDICATED-CHECKOUT/data/cache/auto-refresh/launchd-refresh-error.log</string>
+</dict>
+</plist>

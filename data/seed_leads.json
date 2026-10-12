@@ -1,0 +1,153 @@
+[
+  {
+    "id": "lead_lidl_valencia_maestro_rodrigo",
+    "name": "Lidl Maestro Rodrigo",
+    "city": "València",
+    "address": "Avinguda del Mestre Rodrigo 41",
+    "lat": 39.4872,
+    "lon": -0.401,
+    "price_min": 0,
+    "is_free": true,
+    "is_cheap": true,
+    "tesla_ok": true,
+    "fast": false,
+    "max_power_kw": 11,
+    "connector_labels": [
+      "Type 2"
+    ],
+    "status": "VERIFY",
+    "parking": {
+      "kind": "retail_parking",
+      "note": "Lidl Spain advertises free charging while shopping; per-store activation/time limits must be checked.",
+      "free_likelihood": "medium",
+      "peak_hint": "Small number of EV bays; avoid grocery peaks."
+    },
+    "reliability": "manual-check-needed",
+    "source_notes": "Lidl official free-while-shopping policy + charging directories; not live telemetry."
+  },
+  {
+    "id": "lead_lidl_eliana_maria_zambrano",
+    "name": "Lidl L’Eliana",
+    "city": "L'Eliana",
+    "address": "Carrer María Zambrano 8",
+    "lat": 39.5806,
+    "lon": -0.5328,
+    "price_min": 0,
+    "is_free": true,
+    "is_cheap": true,
+    "tesla_ok": true,
+    "fast": false,
+    "max_power_kw": 22,
+    "connector_labels": [
+      "Type 2"
+    ],
+    "status": "VERIFY",
+    "parking": {
+      "kind": "retail_parking",
+      "note": "Likely customer parking; free-charging evidence needs onsite/app verification.",
+      "free_likelihood": "medium",
+      "peak_hint": "Better outside Saturday and after-work shopping peaks."
+    },
+    "reliability": "manual-check-needed"
+  },
+  {
+    "id": "lead_mercadona_massamagrell_major",
+    "name": "Mercadona Massamagrell",
+    "city": "Massamagrell",
+    "address": "Av. Major 168",
+    "lat": 39.5753707,
+    "lon": -0.3303049,
+    "price_min": 0.25,
+    "is_free": false,
+    "is_cheap": true,
+    "tesla_ok": true,
+    "fast": false,
+    "max_power_kw": 4,
+    "connector_labels": [
+      "Type 2"
+    ],
+    "status": "VERIFY",
+    "parking": {
+      "kind": "retail_parking",
+      "note": "Older Mercadona low-power posts are often free/time-limited; newer 22 kW posts are reported around €0.25/kWh. Verify exact post.",
+      "free_likelihood": "medium",
+      "peak_hint": "Useful only during errands because power may be low."
+    },
+    "reliability": "manual-check-needed"
+  },
+  {
+    "id": "lead_valencia_municipal_marti_grajales",
+    "name": "València municipal fast charger — Martí Grajales",
+    "city": "València",
+    "address": "C/ Martí Grajales",
+    "lat": 39.4689,
+    "lon": -0.3313,
+    "price_min": null,
+    "is_free": false,
+    "is_cheap": false,
+    "tesla_ok": true,
+    "fast": true,
+    "max_power_kw": 50,
+    "connector_labels": [
+      "CCS2",
+      "CHAdeMO",
+      "Type 2"
+    ],
+    "status": "VERIFY",
+    "parking": {
+      "kind": "street_or_municipal",
+      "note": "Historical sources describe free municipal fast charging; current pricing/app must be verified.",
+      "free_likelihood": "unknown",
+      "peak_hint": "Cabanyal/beach traffic can make parking hard at peak."
+    },
+    "reliability": "stale-price-lead"
+  },
+  {
+    "id": "lead_tesla_bonaire_aldaia",
+    "name": "Tesla Supercharger Valencia Bonaire",
+    "city": "Aldaia",
+    "address": "Centro Comercial Bonaire, Parking A",
+    "lat": 39.472,
+    "lon": -0.4935,
+    "price_min": 0.19,
+    "is_free": false,
+    "is_cheap": true,
+    "tesla_ok": true,
+    "fast": true,
+    "max_power_kw": 250,
+    "connector_labels": [
+      "Tesla CCS"
+    ],
+    "status": "VERIFY",
+    "parking": {
+      "kind": "retail_parking",
+      "note": "Very fast and Tesla-native. Keep on map because the off-peak tariff can meet Volta standard before 10:00; verify live Tesla app price and mall parking access before routing.",
+      "free_likelihood": "medium",
+      "peak_hint": "Large mall parking; weekends and events can still congest. Price is usually best before 10:00."
+    },
+    "reliability": "manual-check-needed",
+    "price_max": 0.39,
+    "price_claim_type": "time_window_cheap",
+    "free_condition": "Tesla Supercharger off-peak tariff lead: reported around €0.19–€0.20/kWh before 10:00; current Tesla app price can be higher outside that window.",
+    "pricing": [
+      {
+        "price": 0.19,
+        "currency": "EUR",
+        "unit": "kWh",
+        "valid_from": "00:00",
+        "valid_until": "10:00",
+        "source": "Tesla app manual price lead",
+        "human": "Off-peak Supercharger price window reported by user; verify live in Tesla app."
+      },
+      {
+        "price": 0.39,
+        "currency": "EUR",
+        "unit": "kWh",
+        "valid_from": "10:00",
+        "valid_until": "24:00",
+        "source": "Tesla app manual price lead",
+        "human": "Outside the off-peak window the station may be above Volta standard; verify current Tesla app price."
+      }
+    ]
+  }
+]

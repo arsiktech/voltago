@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Volta Go">
+  <defs>
+    <linearGradient id="volta-go" x1="16%" y1="0%" x2="84%" y2="100%">
+      <stop offset="0%" stop-color="#38e08d"/>
+      <stop offset="52%" stop-color="#12b268"/>
+      <stop offset="100%" stop-color="#0a7a45"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#volta-go)" fill-rule="evenodd" d="M32 2a30 30 0 1 0 0 60 30 30 0 0 0 0-60Zm6.5 10-16.5 23.5h9l-4.5 16.5 16.5-23.5h-9L38.5 12Z"/>
+</svg>

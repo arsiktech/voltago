@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Volta Go</string>
+	<key>CFBundleName</key>
+	<string>Volta Go</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>After location access is granted, Volta uses your location when the app opens and when you ask to find or rank nearby chargers. Your coordinates are sent to the configured Volta service.</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+	<key>VoltaReleaseBaseURL</key>
+	<string>$(VOLTA_RELEASE_BASE_URL)</string>
+	<key>VoltaPrivacyPolicyURL</key>
+	<string>$(VOLTA_PRIVACY_POLICY_URL)</string>
+	<key>VoltaTermsURL</key>
+	<string>$(VOLTA_TERMS_URL)</string>
+	<key>VoltaSupportURL</key>
+	<string>$(VOLTA_SUPPORT_URL)</string>
+</dict>
+</plist>
