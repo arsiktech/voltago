@@ -3717,10 +3717,19 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         "latitude_ne": SPAIN_BBOX["latitude_ne"], "longitude_ne": SPAIN_BBOX["longitude_ne"],
     }
     compact = (params.get("compact") or ["false"])[0].lower() == "true"
+    free_only = (params.get("free_only") or ["false"])[0].lower() == "true"
+    price_cap = 0.0 if free_only else max_price
     out: List[Dict[str, Any]] = []
     for lead in load_all_leads(bbox):
-        price = lead.get("price_min")
-        if price is not None and price > max_price:
+        price = safe_float(lead.get("price_min"))
+        if price is None and lead.get("is_free") is True:
+            price = 0.0
+        # 5.0 is the clients' broad-discovery sentinel. Explicit price limits
+        # exclude unknown tariffs before ranking and the response-size cutoff.
+        if price is None:
+            if price_cap < 5.0:
+                continue
+        elif not math.isfinite(price) or price < 0 or price > price_cap:
             continue
         if fast_only and not lead.get("fast"):
             continue
@@ -3786,6 +3795,7 @@ def overview_response_bytes(params: Dict[str, List[str]], max_price: float, fast
         seeds.stat().st_mtime if seeds.exists() else 0,
         max_price,
         fast_only,
+        (params.get("free_only") or ["false"])[0].lower() == "true",
         (params.get("compact") or ["false"])[0].lower() == "true",
         # Serialized rows carry minute-derived evidence age. Keep fast repeated
         # requests in the same slot, but never freeze that age until the next DB

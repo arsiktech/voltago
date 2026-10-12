@@ -24,11 +24,12 @@ Important query parameters:
 
 | Parameter | Meaning |
 |---|---|
-| `overview=true` | Leads-only national/static view. Does not run live fetch. |
+| `overview=true` | Leads-only static view. Does not run live fetch. Send `bbox` for a region or viewport; selection happens before the 2,500-row ranking limit. |
 | `bbox=south,west,north,east` | Preferred viewport request format. |
 | `lat`, `lon`, `radius_km` | User-centered live request alternative. |
 | `include_leads=true` | Include source-backed intelligence/manual leads. |
-| `max_price=0.25` | Price cap in EUR/kWh; frontend uses `5.0` whenever neither price chip is active (including the default broad view). |
+| `max_price=0.25` | Price cap in EUR/kWh, clamped to 0–5 and rounded to two decimals. In overview mode, caps below `5.0` exclude unknown prices before ranking. The frontend sends `5.0` for broad discovery, retaining unknown-price locations. |
+| `free_only=true` | In overview mode, require a zero tariff or an explicit free claim without a numeric tariff before ranking. A positive numeric tariff overrides a conflicting free flag. |
 | `available=true` | Open-now route-ready filter. Drops to zero rather than showing stale/check-first rows. |
 | `fast=true` | Fast charger filter. |
 | `force=true` | Bypass fresh cache and attempt refetch. |

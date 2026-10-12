@@ -554,7 +554,12 @@ export function chooseChargersData(args: {
   const { overview, live, instant, isFetching, isPlaceholder, isError, viewportBbox } = args
   // A region shortcut can return from a live query while keepPreviousData still
   // carries its rows. Only the overview inventory may bridge that mode transition.
-  if (overview) return { data: isPlaceholder ? instant : live, usingInstant: false, liveFailed: false }
+  // Only the national inventory is stored offline, never a user's viewport.
+  // Retain that honest fallback when the regional request is missing or fails.
+  if (overview) {
+    const useInventory = isPlaceholder || !live || (isError && !isFetching)
+    return { data: useInventory ? instant : live, usingInstant: false, liveFailed: false }
+  }
   if (isError && !isFetching) {
     // Live source unreachable: drop stale live rows, keep honest leads if we have them.
     return { data: instant, usingInstant: false, liveFailed: true }

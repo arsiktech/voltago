@@ -357,7 +357,7 @@ export default function App() {
   const query = useChargers({
     filters: requestFilters,
     coords: overview ? null : origin?.coords,
-    bbox: overview ? null : committedBbox,
+    bbox: overview ? (committedBbox ?? viewport?.bbox) : committedBbox,
     overview,
     compact: overview,
   })
