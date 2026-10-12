@@ -487,12 +487,14 @@ async function regionalOverviewCoverage(browser) {
   const regions = page.getByRole("navigation", { name: "Explore a region" });
   await regions.getByRole("button", { name: "Canary Islands", exact: true }).click();
   await page.locator('[data-station="map-qa-canary"]').waitFor({ timeout: TIMEOUT });
-  await page.getByRole("button", { name: "Free", exact: true }).click();
-  await page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === "/api/chargers" && url.searchParams.get("max_price") === "0.00"
-      && url.searchParams.get("bbox") === "27.5,-18.3,29.5,-13.3";
-  }, { timeout: TIMEOUT });
+  await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/chargers" && url.searchParams.get("max_price") === "0.00"
+        && url.searchParams.get("bbox") === "27.5,-18.3,29.5,-13.3";
+    }, { timeout: TIMEOUT }),
+    page.getByRole("button", { name: "Free", exact: true }).click(),
+  ]);
   await page.locator('[data-station="map-qa-canary"]').waitFor({ timeout: TIMEOUT });
   await regions.getByRole("button", { name: "Balearic Islands", exact: true }).click();
   await page.locator('[data-station="map-qa-balearic"]').waitFor({ timeout: TIMEOUT });
