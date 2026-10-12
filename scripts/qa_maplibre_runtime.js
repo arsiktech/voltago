@@ -90,7 +90,7 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function fixtureRoutes(page, ready = Promise.resolve(), respondStyle) {
+async function fixtureRoutes(page, ready = Promise.resolve(), respondStyle, regionalCoverage = false) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === "tiles.openfreemap.org") {
@@ -101,7 +101,12 @@ async function fixtureRoutes(page, ready = Promise.resolve(), respondStyle) {
       await route.abort();
     } else if (url.pathname === "/api/chargers") {
       await ready;
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(payload) });
+      // Simulate the national ranking cap omitting island rows. Regional queries
+      // must request their own inventory rather than filtering the national sample.
+      const rows = regionalCoverage && !url.searchParams.has("bbox")
+        ? leads.filter((row) => row.id !== "map-qa-canary" && row.id !== "map-qa-balearic")
+        : leads;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...payload, leads: rows }) });
     } else if (url.pathname === "/api/geocode") {
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [{ name: "Madrid", label: "Madrid, Spain", lat: 40.4168, lon: -3.7038 }] }) });
     } else {
@@ -467,6 +472,37 @@ async function unsupportedMap(browser) {
   await context.close();
 }
 
+async function regionalOverviewCoverage(browser) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: "reduce", serviceWorkers: "block" });
+  const page = await context.newPage();
+  record(page, "regional-coverage");
+  const requests = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === "/api/chargers") requests.push(url);
+  });
+  await fixtureRoutes(page, Promise.resolve(), undefined, true);
+  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
+  await page.locator('[data-station="map-qa-0"]').waitFor({ timeout: TIMEOUT });
+  const regions = page.getByRole("navigation", { name: "Explore a region" });
+  await regions.getByRole("button", { name: "Canary Islands", exact: true }).click();
+  await page.locator('[data-station="map-qa-canary"]').waitFor({ timeout: TIMEOUT });
+  await page.getByRole("button", { name: "Free", exact: true }).click();
+  await page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === "/api/chargers" && url.searchParams.get("max_price") === "0.00"
+      && url.searchParams.get("bbox") === "27.5,-18.3,29.5,-13.3";
+  }, { timeout: TIMEOUT });
+  await page.locator('[data-station="map-qa-canary"]').waitFor({ timeout: TIMEOUT });
+  await regions.getByRole("button", { name: "Balearic Islands", exact: true }).click();
+  await page.locator('[data-station="map-qa-balearic"]').waitFor({ timeout: TIMEOUT });
+  assert(requests.some((url) => url.searchParams.get("bbox") === "38.5,1.1,40.2,4.4"), "Balearic overview did not request its region");
+  assert(await page.locator('[data-station="map-qa-canary"]').count() === 0, "Region change retained the previous region's list");
+  assert(await page.locator(".pill-go").count() === 0, "Regional inventory gained live authority");
+  checks.push({ name: "region and free queries recover chargers omitted by the national cap", ok: true });
+  await context.close();
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(chromePath ? { executablePath: chromePath } : {}) });
   let mapVersion;
@@ -483,6 +519,7 @@ async function main() {
     mapVersion = await supportedMap(browser, `/${mapChunk}`);
     await pendingThemeRecovery(browser, `/${mapChunk}`);
     await unsupportedMap(browser);
+    await regionalOverviewCoverage(browser);
     // Chromium reports synchronous GPU readback as this exact native performance
     // diagnostic on some CI renderers. Keep it in the receipt; app/style warnings,
     // other GPU diagnostics and every rendering assertion remain fatal.
