@@ -334,6 +334,7 @@ GAIA_HEADERS = {
 
 TESLA_OK_STANDARDS = {"IEC_62196_T2", "IEC_62196_T2_COMBO", "TESLA_R"}
 FAST_STANDARDS = {"IEC_62196_T2_COMBO", "CHADEMO", "TESLA_R"}
+TESLA_OK_LABELS = {"Type 2", "CCS2", "Tesla CCS", "Tesla"}
 ACCESS_LIMIT_RE = re.compile(r"private|staff|visitor|customer|notice|required|membership|members", re.I)
 GAIA_ALLOWED_HOSTS = {"partner-next.gaiacharge.com", "partner.gaiacharge.com"}
 BUSY_STATUSES = {"CHARGING", "PREPARING", "RESERVED", "SUSPENDEDEV", "SUSPENDEDEVSE", "FINISHING", "OCCUPIED"}
@@ -848,6 +849,22 @@ def verification_profile(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     return profile
 
 
+def tesla_compatibility(item: Dict[str, Any]) -> Optional[bool]:
+    """True/False only when the source names a connector type; None when it doesn't.
+
+    A source that lists a site without saying which sockets it has (Lidl's store
+    list, a "connector unspecified" wall outlet) is unknown, not incompatible.
+    """
+    if item.get("tesla_ok") is True:
+        return True
+    labels = [str(x) for x in item.get("connector_labels") or []]
+    labels += [str(c.get("label")) for c in item.get("connectors") or [] if isinstance(c, dict) and c.get("label")]
+    if any(c.get("tesla_ok") for c in item.get("connectors") or [] if isinstance(c, dict)) or any(x in TESLA_OK_LABELS for x in labels):
+        return True
+    known = [x for x in labels if x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "other"}]
+    return False if known else None
+
+
 def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
     # The source itself reports the charger out of service: keep it on the map so drivers
     # know it exists, but never offer it as a destination, whatever its price or live data.
@@ -865,7 +882,7 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
     price_ok_now = price_ok and (price_window_status.get("is_currently_within_standard", True) if has_time_pricing else True)
     next_window = price_window_status.get("next_matching_window") or {}
     window_label = next_window.get("label") or price_window_status.get("label")
-    tesla_ok = bool(item.get("tesla_ok"))
+    tesla_ok = item.get("tesla_ok") is True
     available = bool(item.get("available", 0) > 0 or item.get("status") == "AVAILABLE")
     stale_mins = age_minutes(item.get("last_seen"))
     stale_live = live and stale_mins is not None and stale_mins > 180
@@ -882,8 +899,8 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
         return {"level": "check", "label": "Check first", "reason": "Live feed is cheap and available, but the last station timestamp is old."}
     if live and price_ok_now and tesla_ok:
         return {"level": "check", "label": "Check first", "reason": "Cheap and Tesla-compatible, but no currently available bay is confirmed."}
-    if not tesla_ok:
-        return {"level": "avoid", "label": "Not Tesla-safe", "reason": "No CCS2/Type 2/Tesla-compatible connector was found in the source data."}
+    if item.get("tesla_ok") is False:
+        return {"level": "avoid", "label": "Not Tesla-safe", "reason": "The source lists only connectors a Tesla can't use (no CCS2, Type 2 or Tesla)."}
     if not price_ok:
         # Paid and unpriced chargers stay on the map as known places, ranked after every
         # free/cheap option. They are never green: the price standard is not met or unknown.
@@ -989,7 +1006,10 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["access"] = access_profile(item)
     item["primary_source"] = primary_source_for(item)
     item["verification"] = verification_profile(item, live=live)
+    item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
+    if item["tesla_ok"] is None:
+        item["decision"]["reason"] += " The source doesn't say which connectors this site has."
     item["freshness_minutes"] = age_minutes(freshness_timestamp(item))
     pricing = item.get("price_window_status") or {}
     item["price_label"] = pricing.get("label") or ("Free" if item.get("is_free") else (f"€{item['price_min']:.2f}/kWh" if isinstance(item.get("price_min"), (int, float)) else "Verify price"))

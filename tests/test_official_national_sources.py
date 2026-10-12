@@ -549,7 +549,7 @@ class NarrowOfficialPolicyTests(unittest.TestCase):
         self.assertFalse(row["is_free"])
         self.assertEqual(row["price_claim_type"], "access_limited_free")
         self.assertEqual(row["status"], "VERIFY")
-        self.assertFalse(row["tesla_ok"])
+        self.assertIsNone(row["tesla_ok"])
         self.assertIn("rfid", row["free_condition"].lower())
         self.assertIn("information desk", row["free_condition"].lower())
         self.assertNotEqual(row["parking"]["kind"], "free_parking")
@@ -578,8 +578,10 @@ class NarrowOfficialPolicyTests(unittest.TestCase):
             "Moraleja Green current services page + OSM venue geometry",
         )
         normalized = server._normalize_lead(deepcopy(row), row["source"])
-        self.assertEqual(normalized["decision"]["level"], "avoid")
-        self.assertEqual(normalized["decision"]["label"], "Not Tesla-safe")
+        # No connector types published: unknown, never "Not Tesla-safe".
+        self.assertIsNone(normalized["tesla_ok"])
+        self.assertNotEqual(normalized["decision"]["label"], "Not Tesla-safe")
+        self.assertEqual(normalized["decision"]["label"], "Verify first")
 
     def test_moraleja_green_claim_fails_closed_when_first_party_wording_disappears(self) -> None:
         acciona = ingestion.FetchArtifact(
