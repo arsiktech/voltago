@@ -4918,6 +4918,405 @@ def source_mapareve_public(records: List[Dict[str, Any]]) -> None:
     records.extend(parsed)
 
 
+# --- Operator open feeds (owner decision 2026-10-12) -------------------------------------
+# Charge point operators' own public, no-login map feeds. Each adapter reads the same
+# anonymous request the operator's public web map makes. None of them publishes a price,
+# so every row is a price-unknown lead; status snapshots stay in `raw` and never become
+# live authority (MapaREVE remains the live layer). Rows sit at directory-page reliability
+# so a cross-source merge never re-keys a station already in the DB.
+
+# Coarse Spain outline (lon, lat). Sea-side vertices are deliberately generous; only the
+# land borders with Portugal, France and Andorra matter. Islands and the two autonomous
+# cities are separate boxes. Points within a few km of the Portuguese border can fall on
+# the wrong side; the rectangle SPAIN_BBOX alone admits Porto, Lisbon and southern France.
+SPAIN_MAINLAND_OUTLINE: Tuple[Tuple[float, float], ...] = (
+    (-9.6, 43.3), (-8.0, 44.0), (-3.8, 43.7), (-1.79, 43.40),
+    (-1.55, 43.30), (-1.35, 43.05), (-0.8, 42.95), (-0.3, 42.83), (0.65, 42.88),
+    (0.95, 42.78), (1.40, 42.60), (1.45, 42.43), (1.95, 42.47), (2.5, 42.45),
+    (2.9, 42.46), (3.17, 42.45), (3.6, 42.45),
+    (3.6, 41.0), (1.2, 39.8), (0.8, 38.6), (-0.3, 37.4), (-1.5, 36.6), (-2.2, 36.5),
+    (-4.5, 36.15), (-5.35, 35.85), (-6.5, 36.3), (-7.0, 36.8), (-7.40, 37.10),
+    (-7.45, 37.55), (-7.25, 38.0), (-7.0, 38.2), (-7.3, 38.45), (-7.1, 38.85),
+    (-7.0, 39.05), (-7.5, 39.65), (-7.0, 39.67), (-6.85, 40.2), (-6.85, 40.6),
+    (-6.8, 41.0), (-6.2, 41.55), (-6.55, 41.95), (-7.2, 41.88), (-7.9, 41.86),
+    (-8.2, 42.0), (-8.87, 41.87), (-9.6, 41.85),
+)
+SPAIN_ISLAND_AND_CITY_BOXES: Tuple[Tuple[float, float, float, float], ...] = (
+    (38.55, 1.1, 40.15, 4.4),      # Balearics (south, west, north, east)
+    (27.5, -18.3, 29.5, -13.3),    # Canaries
+    (35.85, -5.40, 35.93, -5.27),  # Ceuta
+    (35.25, -2.99, 35.33, -2.91),  # Melilla
+)
+
+
+def point_in_polygon(lon: float, lat: float, polygon: Tuple[Tuple[float, float], ...]) -> bool:
+    inside = False
+    j = len(polygon) - 1
+    for i, (xi, yi) in enumerate(polygon):
+        xj, yj = polygon[j]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / (yj - yi) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def likely_in_spain(lat: Optional[float], lon: Optional[float]) -> bool:
+    if lat is None or lon is None:
+        return False
+    if any(in_bbox(lat, lon, box) for box in SPAIN_ISLAND_AND_CITY_BOXES):
+        return True
+    return point_in_polygon(lon, lat, SPAIN_MAINLAND_OUTLINE)
+
+
+def ocpi_power_kw(connector: Dict[str, Any]) -> Optional[float]:
+    watts = fnum(connector.get("max_electric_power"))
+    if not watts:
+        return None
+    return round(watts / 1000, 1) if watts > 1000 else watts
+
+
+OPERATOR_FEED_PARKING_NOTE = "The operator's public map publishes no parking detail; check the signs onsite."
+
+
+# Etecnic platform: the public map behind the EVcharge app, the Balearic Government's
+# MELIB network and other councils/companies Etecnic manages. Power units in this feed are
+# mixed (some rows carry kW, others look like amps), so power is kept raw and never
+# published. Connector ids are mapped only where the hardware pattern is unambiguous.
+ETECNIC_SOURCE = "Etecnic EVcharge public charger map"
+ETECNIC_FEED_URL = "https://etecnic.net/api/v1/chargers/index.json"
+ETECNIC_MAP_PAGE_URL = "https://etecnic.es/mapa-de-recarga/"
+ETECNIC_MIN_ROWS = 3000
+ETECNIC_CONNECTOR_LABELS = {1: "CHAdeMO", 2: "Type 2", 3: "CCS2"}
+
+
+def etecnic_network(lat: float, lon: float) -> str:
+    if in_bbox(lat, lon, SPAIN_ISLAND_AND_CITY_BOXES[0]):
+        return "MELIB (Govern de les Illes Balears), Etecnic platform"
+    return "EVcharge (Etecnic)"
+
+
+def parse_etecnic_chargers(rows: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for row in rows:
+        if not isinstance(row, dict):
+            skipped["not_object"] += 1
+            continue
+        if row.get("show_map") is False:
+            skipped["hidden_from_operator_map"] += 1
+            continue
+        lat, lon = fnum(row.get("lat")), fnum(row.get("lon"))
+        if not likely_in_spain(lat, lon):
+            skipped["outside_spain"] += 1
+            continue
+        sockets = [s for s in (row.get("charger_sockets") or []) if isinstance(s, dict)]
+        type_counts: Dict[Any, int] = defaultdict(int)
+        for socket in sockets:
+            type_counts[socket.get("connector_type_id")] += 1
+        connectors = [
+            connector_ref(
+                ETECNIC_CONNECTOR_LABELS.get(type_id, "Unknown connector"),
+                count=count,
+                source_url=ETECNIC_MAP_PAGE_URL,
+                connector_id=type_id,
+                raw={"etecnic_connector_type_id": type_id},
+            )
+            for type_id, count in sorted(type_counts.items(), key=lambda kv: str(kv[0]))
+        ]
+        name = str(row.get("name") or "").strip() or "Etecnic charger"
+        network = etecnic_network(lat, lon)
+        add_record(
+            parsed,
+            source=ETECNIC_SOURCE,
+            source_url=ETECNIC_MAP_PAGE_URL,
+            name=name,
+            address=str(row.get("address") or ""),
+            city="",
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="The Etecnic public map publishes no tariff; check the price in the operator app.",
+            connector_labels=sorted({c["label"] for c in connectors if c.get("label") != "Unknown connector"}) or None,
+            max_power_kw=None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence=(
+                f"Etecnic public charger map ({network}): {len(sockets)} sockets. "
+                "Socket status is a cached snapshot from the operator map, never live availability."
+            ),
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "etecnic_charger_id": row.get("id"),
+                "network": network,
+                "status_code": row.get("status"),
+                "socket_status_codes": [s.get("status") for s in sockets],
+                "power_raw": row.get("power"),
+                "phases": row.get("phases"),
+                "mobile_app_manage": row.get("mobile_app_manage"),
+                "source": "etecnic-public-map",
+            },
+            connectors=connectors,
+            port_count=len(sockets) or None,
+            source_artifact=source_artifact,
+        )
+    print(f"etecnic: {len(parsed)} rows from {len(rows)} chargers (skipped: {dict(skipped)})")
+    return parsed
+
+
+def source_etecnic(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(ETECNIC_FEED_URL, "etecnic_chargers.json", ttl_hours=6, timeout=60,
+                            headers={"Accept": "application/json", "Referer": ETECNIC_MAP_PAGE_URL})
+    rows = json.loads(artifact.decode("utf-8", "replace"))
+    if not isinstance(rows, list) or len(rows) < ETECNIC_MIN_ROWS:
+        raise RuntimeError(f"Etecnic feed shrank to {len(rows) if isinstance(rows, list) else 'non-list'} rows (<{ETECNIC_MIN_ROWS})")
+    records.extend(parse_etecnic_chargers(rows, source_artifact=artifact))
+
+
+# Atlante: the public map's static OCPI-shaped location export. Sites still waiting for a
+# grid connection or under construction are not chargers a driver can use yet.
+ATLANTE_SOURCE = "Atlante public charger map"
+ATLANTE_FEED_URL = "https://map.atlante.energy/geodata.json"
+ATLANTE_MAP_PAGE_URL = "https://map.atlante.energy/"
+ATLANTE_NOT_OPERATIONAL = {"WAITING FOR CONNECTION", "UNDER CONSTRUCTION"}
+ATLANTE_MIN_SPAIN_ROWS = 40
+
+
+def parse_atlante_locations(rows: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for row in rows:
+        if not isinstance(row, dict) or str(row.get("country") or "").upper() not in {"ES", "ESP"}:
+            skipped["not_spain"] += 1
+            continue
+        if str(row.get("site_status") or "").upper() in ATLANTE_NOT_OPERATIONAL:
+            skipped["not_operational"] += 1
+            continue
+        evses = [evse for evse in (row.get("evses") or []) if isinstance(evse, dict)]
+        if not evses:
+            skipped["no_evses"] += 1
+            continue
+        coords = row.get("coordinates") or (evses[0].get("coordinates") or {})
+        lat, lon = fnum(coords.get("latitude")), fnum(coords.get("longitude"))
+        if not likely_in_spain(lat, lon):
+            skipped["outside_spain"] += 1
+            continue
+        connectors: List[Dict[str, Any]] = []
+        powers: List[float] = []
+        status_counts: Dict[str, int] = defaultdict(int)
+        for evse in evses:
+            status = str(evse.get("status") or "UNKNOWN").upper()
+            status_counts[status] += 1
+            for connector in evse.get("connectors") or []:
+                if not isinstance(connector, dict):
+                    continue
+                power = ocpi_power_kw(connector)
+                if power:
+                    powers.append(power)
+                standard = str(connector.get("standard") or "")
+                connectors.append(connector_ref(
+                    connector_label_from_token(standard) or "Unknown connector",
+                    power_kw=power,
+                    status="UNKNOWN",
+                    source_url=ATLANTE_MAP_PAGE_URL,
+                    connector_id=connector.get("id"),
+                    raw={"evse_id": evse.get("evse_id"), "standard": standard, "format": connector.get("format")},
+                ))
+        address = ", ".join(p for p in (str(row.get("street") or "").strip(), str(row.get("postal_code") or "").strip(), str(row.get("city") or "").strip()) if p)
+        status_summary = ", ".join(f"{n} {s.lower()}" for s, n in sorted(status_counts.items()))
+        add_record(
+            parsed,
+            source=ATLANTE_SOURCE,
+            source_url=ATLANTE_MAP_PAGE_URL,
+            name=re.sub(r"\s+", " ", str(row.get("name") or "Atlante charger")).strip(),
+            address=address,
+            city=str(row.get("city") or ""),
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="Atlante's public map publishes no tariff; check the price in the operator app.",
+            connector_labels=None,
+            max_power_kw=max(powers) if powers else None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence=(
+                f"Atlante public charger map: {len(evses)} EVSEs ({status_summary}). "
+                "EVSE status is a cached snapshot from the operator map, never live availability."
+            ),
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "atlante_location_id": row.get("id"),
+                "party_id": row.get("party_id"),
+                "postal_code": row.get("postal_code"),
+                "evse_ids": [evse.get("evse_id") for evse in evses if evse.get("evse_id")][:12],
+                "evse_status_counts": dict(sorted(status_counts.items())),
+                "updated_at": row.get("last_updated"),
+                "source": "atlante-public-geodata",
+            },
+            connectors=connectors,
+            port_count=len(connectors) or None,
+            source_artifact=source_artifact,
+        )
+    print(f"atlante: {len(parsed)} Spanish rows from {len(rows)} locations (skipped: {dict(skipped)})")
+    return parsed
+
+
+def source_atlante(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(ATLANTE_FEED_URL, "atlante_geodata.json", ttl_hours=12, timeout=90,
+                            headers={"Accept": "application/json", "Referer": ATLANTE_MAP_PAGE_URL})
+    rows = json.loads(artifact.decode("utf-8", "replace"))
+    parsed = parse_atlante_locations(rows if isinstance(rows, list) else [], source_artifact=artifact)
+    if len(parsed) < ATLANTE_MIN_SPAIN_ROWS:
+        raise RuntimeError(f"Atlante feed yielded {len(parsed)} Spanish rows (<{ATLANTE_MIN_SPAIN_ROWS}); upstream shape change?")
+    records.extend(parsed)
+
+
+# Zunder: the public map page embeds every marker (position, title, location id) inline.
+# The per-station location.php JSON carries live occupancy but is not fetched here: one page
+# GET per build keeps the load to a single request.
+ZUNDER_SOURCE = "Zunder public charger map"
+ZUNDER_MAP_PAGE_URL = "https://www.zunder.com/mapa-de-ubicaciones/"
+ZUNDER_LOCATION_URL = "https://www.zunder.com/wp-content/plugins/easycharger/location.php?id={id}"
+ZUNDER_MIN_ROWS = 300
+ZUNDER_MARKER_RE = re.compile(
+    r"new\s+google\.maps\.Marker\(\{\s*position:\s*\{\s*lat:\s*(-?\d+(?:\.\d+)?),\s*lng:\s*(-?\d+(?:\.\d+)?)\s*\}"
+    r".*?title:\s*'((?:[^'\\]|\\.)*)'",
+    re.S,
+)
+ZUNDER_LOCATION_ID_RE = re.compile(r"easycharger/location\.php\?id=(\d+)")
+
+
+def parse_zunder_map_page(page: str, *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    blocks = page.split("new google.maps.Marker(")[1:]
+    for block in blocks:
+        match = ZUNDER_MARKER_RE.match("new google.maps.Marker(" + block)
+        id_match = ZUNDER_LOCATION_ID_RE.search(block)
+        if not match or not id_match:
+            skipped["unparsed_marker"] += 1
+            continue
+        lat, lon = fnum(match.group(1)), fnum(match.group(2))
+        if not likely_in_spain(lat, lon):
+            skipped["outside_spain"] += 1
+            continue
+        title = html.unescape(match.group(3).replace("\\'", "'")).strip()
+        location_id = id_match.group(1)
+        add_record(
+            parsed,
+            source=ZUNDER_SOURCE,
+            source_url=ZUNDER_MAP_PAGE_URL,
+            name=title or "Zunder charger",
+            address="",
+            city="",
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="Zunder's map publishes no per-station tariff; its published network tariffs apply. Check the app.",
+            connector_labels=[],  # no connector evidence; never fall back to the Type 2 default
+            max_power_kw=None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence="Zunder public charger map marker. Availability is not part of this snapshot.",
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "zunder_location_id": location_id,
+                "location_json_url": ZUNDER_LOCATION_URL.format(id=location_id),
+                "source": "zunder-public-map",
+            },
+            source_artifact=source_artifact,
+        )
+    print(f"zunder: {len(parsed)} Spanish rows from {len(blocks)} markers (skipped: {dict(skipped)})")
+    return parsed
+
+
+def source_zunder(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(ZUNDER_MAP_PAGE_URL, "zunder_map_page.html", ttl_hours=24, timeout=60,
+                            headers={"Accept": "text/html"})
+    parsed = parse_zunder_map_page(artifact.decode("utf-8", "replace"), source_artifact=artifact)
+    if len(parsed) < ZUNDER_MIN_ROWS:
+        raise RuntimeError(f"Zunder map yielded {len(parsed)} Spanish rows (<{ZUNDER_MIN_ROWS}); upstream shape change?")
+    records.extend(parsed)
+
+
+# Repsol (Waylet): the public station finder's charging-point list. Its own web client asks
+# for it with an empty-body POST; scripts/source_transport.py allows exactly that request.
+REPSOL_SOURCE = "Repsol public charging point finder"
+REPSOL_FINDER_URL = "https://www.repsol.es/buscador-eess-y-puntos-de-recarga/"
+REPSOL_SEARCH_URL = "https://www.repsol.es/bin/repsol/searchmiddleware/station-search.json?action=search&idioma=es&tipo=3"
+REPSOL_MIN_ROWS = 2000
+
+
+def repsol_station_url(item: Dict[str, Any]) -> str:
+    parts = [str(item.get(key) or "").strip("/") for key in ("provinceFormated", "locationFormated", "directionFormated")]
+    if all(re.fullmatch(r"[a-z0-9-]+", part) for part in parts):
+        return REPSOL_FINDER_URL + "/".join(parts) + "/"
+    return REPSOL_FINDER_URL
+
+
+def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    parsed: List[Dict[str, Any]] = []
+    skipped: Dict[str, int] = defaultdict(int)
+    for item in items:
+        if not isinstance(item, dict):
+            skipped["not_object"] += 1
+            continue
+        if str(item.get("pais") or "").strip().lower() not in {"españa", "espana", "spain"}:
+            skipped["not_spain"] += 1
+            continue
+        lat, lon = fnum(item.get("y")), fnum(item.get("x"))
+        if not likely_in_spain(lat, lon):
+            skipped["outside_spain"] += 1
+            continue
+        speeds = [str(s) for s in (item.get("velocidad") or []) if s]
+        fast = any(re.search(r"r[aá]pida", s, re.I) for s in speeds)
+        address = ", ".join(p for p in (str(item.get("direccion") or "").strip(), str(item.get("cp") or "").strip(), str(item.get("localidad") or "").strip()) if p)
+        add_record(
+            parsed,
+            source=REPSOL_SOURCE,
+            source_url=repsol_station_url(item),
+            name=str(item.get("nombre") or "Repsol charging point").strip(),
+            address=address,
+            city=str(item.get("localidad") or ""),
+            lat=lat,
+            lon=lon,
+            price_min=None,
+            free_condition="Repsol's finder publishes no tariff here; check the price in Waylet.",
+            connector_labels=[],  # no connector evidence; never fall back to the Type 2 default
+            # The finder's speed class is not a kW figure. "Rápida" means at least 43 kW in
+            # Repsol's own labels, which is what the fast flag needs; the exact power is unknown.
+            max_power_kw=50.0 if fast else None,
+            status="VERIFY",
+            reliability="directory-page",
+            evidence=f"Repsol public charging point finder: speed class {', '.join(speeds) or 'not stated'}.",
+            parking_kind="unknown",
+            parking_note=OPERATOR_FEED_PARKING_NOTE,
+            raw={
+                "repsol_point_id": item.get("id"),
+                "postal_code": item.get("cp"),
+                "speed_classes": speeds,
+                "platform": item.get("platform"),
+                "source": "repsol-public-finder",
+            },
+            source_artifact=source_artifact,
+        )
+    print(f"repsol: {len(parsed)} Spanish rows from {len(items)} charging points (skipped: {dict(skipped)})")
+    return parsed
+
+
+def source_repsol(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(REPSOL_SEARCH_URL, "repsol_charging_points.json", ttl_hours=24, timeout=45, data=b"",
+                            headers={"Accept": "application/json", "Referer": REPSOL_FINDER_URL})
+    payload = json.loads(artifact.decode("utf-8", "replace"))
+    items = ((payload.get("recarga") or {}).get("items") or []) if isinstance(payload, dict) else []
+    parsed = parse_repsol_charging_points(items, source_artifact=artifact)
+    if len(parsed) < REPSOL_MIN_ROWS:
+        raise RuntimeError(f"Repsol finder yielded {len(parsed)} Spanish rows (<{REPSOL_MIN_ROWS}); upstream shape change?")
+    records.extend(parsed)
+
+
 ACTIVE_SOURCE_ADAPTERS = (
     source_valencia_municipal,
     source_lidl,
@@ -4931,6 +5330,10 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_moraleja_green,
     source_canarias_tecarga,
     source_mapareve_public,
+    source_etecnic,
+    source_atlante,
+    source_zunder,
+    source_repsol,
 )
 
 

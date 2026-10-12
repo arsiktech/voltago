@@ -24,6 +24,10 @@ def identity_keys(row: dict) -> set[tuple]:
         "DGT National Access Point charging registry": ("nap_site_id",),
         "Feníe Energía public map (Gratuitos)": ("fenie_code",),
         "Lidl official free list": ("official_query",),
+        "Etecnic EVcharge public charger map": ("etecnic_charger_id",),
+        "Atlante public charger map": ("atlante_location_id",),
+        "Zunder public charger map": ("zunder_location_id",),
+        "Repsol public charging point finder": ("repsol_point_id",),
     }
     for field in typed_fields.get(family, ()):
         value = raw.get(field)

@@ -2,13 +2,16 @@
 """Reviewed source transport policy (Python standard library only).
 
 Volta's collection boundary is public, read-only retrieval. GET is the default. The
-owner explicitly approved exactly two read-only data-query POST families that the
+owner explicitly approved exactly three read-only data-query POST families that the
 upstream public web apps themselves use:
 
 * MapaREVE public OCPI map query (``POST /api/public/v1/locations?page=N&per_page=M``
   with a JSON bbox/filter body), and
 * Feníe Energía public marker list (``POST /punto-recarga/todos`` with an empty body,
-  after an anonymous GET of the public map page for its session/CSRF pair).
+  after an anonymous GET of the public map page for its session/CSRF pair), and
+* Repsol public charging-point finder list (``POST /bin/repsol/searchmiddleware/
+  station-search.json?action=search&idioma=es&tipo=3`` with an empty body; owner
+  decision 2026-10-12).
 
 Everything else that is not GET is refused before a socket is opened. An exception only
 matches an exact HTTPS host + exact path + allowed query keys + a bounded, read-only body
@@ -38,6 +41,9 @@ MAPAREVE_HOST = "www.mapareve.es"
 MAPAREVE_LOCATIONS_PATH = "/api/public/v1/locations"
 FENIE_HOST = "recarga.fenieenergia.es"
 FENIE_MARKERS_PATH = "/punto-recarga/todos"
+REPSOL_HOST = "www.repsol.es"
+REPSOL_SEARCH_PATH = "/bin/repsol/searchmiddleware/station-search.json"
+REPSOL_SEARCH_QUERY = {"action": ["search"], "idioma": ["es"], "tipo": ["3"]}
 
 # Hard upper bounds, independent of any caller's own (smaller) configuration.
 MAX_POST_TIMEOUT_SECONDS = 45.0
@@ -65,6 +71,7 @@ _FORBIDDEN_POST_HEADERS = {"authorization", "proxy-authorization", "x-api-key", 
 POST_BUDGETS: Dict[str, Tuple[float, int]] = {
     "mapareve-locations-query": (600.0, 1000),
     "fenie-markers-list": (600.0, 3),
+    "repsol-charging-points-list": (600.0, 3),
 }
 _BUDGET_LOCK = threading.Lock()
 _BUDGET_EVENTS: Dict[str, Deque[float]] = {}
@@ -165,6 +172,10 @@ def classify_post_exception(request: urllib.request.Request) -> str:
         if parsed.query or body:
             raise _blocked("Feníe marker list takes no query string or body")
         return "fenie-markers-list"
+    if host == REPSOL_HOST and parsed.path == REPSOL_SEARCH_PATH:
+        if query != REPSOL_SEARCH_QUERY or body:
+            raise _blocked("Repsol charging-point list takes exactly action=search&idioma=es&tipo=3 and no body")
+        return "repsol-charging-points-list"
     raise _blocked("POST is not an approved read-only source query for this origin/path")
 
 
