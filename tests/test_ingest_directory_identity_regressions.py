@@ -39,7 +39,10 @@ def em(location, lat=28.42578, lon=-14.05743, name="LP PM BDE BETANCURIA 02"):
 
 
 def build(rows):
-    with patch.object(ing, "ACTIVE_SOURCE_ADAPTERS", (lambda output: output.extend(deepcopy(rows)),)):
+    # These synthetic retirement/identity fixtures exercise dormant parser behavior.
+    # Active-source exclusions are tested separately, before either merge stage.
+    with patch.object(ing, "SOURCE_POLICY_EXCLUSIONS", {"exclusions": []}), \
+            patch.object(ing, "ACTIVE_SOURCE_ADAPTERS", (lambda output: output.extend(deepcopy(rows)),)):
         return ing.build_payload()
 
 

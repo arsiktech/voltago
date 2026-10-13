@@ -116,6 +116,11 @@ class ElectromapsNationalTests(unittest.TestCase):
 
 
 class ElectromapsDetailFairnessTests(unittest.TestCase):
+    def setUp(self):
+        guard = mock.patch.object(ing, "require_allowed_source")
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def _run(self, tmp, items, cached, budget):
         """Run the adapter offline; `cached` maps location id -> age in days of an existing detail."""
         for loc_id, age_days in cached.items():
@@ -191,6 +196,11 @@ def cm_pool(i, **extra):
 
 
 class ChargemapWalkTests(unittest.TestCase):
+    def setUp(self):
+        guard = mock.patch.object(ing, "require_allowed_source")
+        guard.start()
+        self.addCleanup(guard.stop)
+
     """Run the quadtree walk offline against a stub box response."""
 
     def _run(self, tmp, responder, *, previous=0, min_rows=3):
@@ -295,10 +305,10 @@ class BudgetedCacheTests(unittest.TestCase):
 
 
 class RegistrationTests(unittest.TestCase):
-    def test_national_directory_adapters_are_active_and_old_valencia_ones_stay_retired(self):
+    def test_all_excluded_directory_adapters_stay_retired(self):
         names = [fn.__name__ for fn in ing.ACTIVE_SOURCE_ADAPTERS]
-        self.assertIn("source_electromaps_national", names)
-        self.assertIn("source_chargemap_national", names)
+        self.assertNotIn("source_electromaps_national", names)
+        self.assertNotIn("source_chargemap_national", names)
         self.assertNotIn("source_electromaps_mapi", names)
         self.assertNotIn("source_chargemap_mappy", names)
 

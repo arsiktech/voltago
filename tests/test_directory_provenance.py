@@ -73,7 +73,8 @@ class DirectoryProvenanceTests(unittest.TestCase):
         responses = [([mainland], artifact("mainland.json", FRESH)),
                      ([island], artifact("island.json", OLD))]
         detail = artifact("detail.json", OLD)
-        with mock.patch.object(ing, "cached_json", side_effect=responses), \
+        with mock.patch.object(ing, "require_allowed_source"), \
+             mock.patch.object(ing, "cached_json", side_effect=responses), \
              mock.patch.object(ing, "budgeted_cached_json", side_effect=lambda url, cache_name, **kw: ({**EM_DETAIL, "id": 10}, detail) if cache_name == "electromaps_location_10.json" else None), \
              mock.patch.object(ing, "ELECTROMAPS_MIN_ROWS", 2):
             rows = []

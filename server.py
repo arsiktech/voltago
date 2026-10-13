@@ -4538,14 +4538,14 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         "revocation_gate": "Withdrawing the owner-attested permission restores the Feníe exclusion record; cached Feníe rows are then partitioned out.",
     }
     payload["electromaps"] = {
-        "status": "permitted-owner-decision-snapshot",
-        "station_evidence_records": sum(1 for r in intel_meta.get("records") or [] if r.get("source") == "Electromaps public web map"),
+        "status": "link-only-rights-blocked",
+        "station_evidence_records": 0,
         "checked_leads": 0,
         "promoted_live": 0,
         "out_of_service_dropped": 0,
         "source_url": "https://www.electromaps.com/",
-        "policy": "Owner decision 2026-10-12: Electromaps' public web-map listings are ingested nationally as directory leads (anonymous GET only, rolling detail cache). Price text and free flags are community directory claims; availability is never live. The site's terms still reserve reuse rights. Runtime live refresh stays disabled.",
-        "revocation_gate": "Restoring the electromaps exclusion in data/source_policy_exclusions.json stops collection and partitions cached rows out.",
+        "policy": "Conventional homepage link only. Direct and nested station evidence, media, connector details, and live refresh are excluded by reuse-rights policy.",
+        "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review.",
     }
     payload["intel"] = {
         "generated_at": intel_meta.get("generated_at"),
@@ -4567,8 +4567,7 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         "coverage": coverage,
         "named_provider_strategy": {
             "Google Maps": "deep links/navigation only in this build; Places API requires key/billing and its EV fields do not expose €/kWh tariffs",
-            "Electromaps": "national offline ingestion of the public web-map listings as directory leads (owner decision 2026-10-12); community price text never becomes an official tariff and availability is never live",
-            "Chargemap": "national offline ingestion of the public web-map pools as directory leads (owner decision 2026-10-12); free flags are directory claims and availability is never live",
+            "Electromaps": "conventional homepage link only; direct and nested station evidence is excluded until express written reuse permission and a separate GET-only adapter review",
             "Gaia Charge": "implemented for the seeded Alboraia free charger through public start-session HTML pages, with conservative sibling connector probing and short cache TTL; MapaREVE/public directories remain secondary coverage",
             "Feníe Energía Recarga": "offline ingestion of Feníe's own gratuito public-map stations under the owner-attested written redistribution permission, via one anonymous read-only marker-list POST exception; cached rows are never live",
             "LetMeCharge/EuroCharger": "public websites/app-store metadata verified; no unauthenticated station-price map API found on the web surfaces. Use only official API/export or underlying CPO public feeds.",
@@ -4757,7 +4756,7 @@ def source_health_summary() -> Dict[str, Any]:
     return {
         "generated_at": now_iso(),
         "policy": {
-            "allowed": ["GET-only public pages (default)", "official/open APIs", "public datasets", "user-verifiable source links", "four owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe marker list, Repsol charging-point list, Place to Plug zone query)"],
+            "allowed": ["GET-only public pages (default)", "official/open APIs", "public datasets", "user-verifiable source links", "two owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe marker list)"],
             "blocked": ["login bypass", "private tokens", "MITM", "payment/session-start actions", "app-private scraping", "any other POST or non-GET request", "sources denied by reuse-rights policy"],
             "summary": "Volta may collect and verify public/user-verifiable evidence only; app-only/private provider data requires official API/export permission.",
         },
@@ -4786,11 +4785,11 @@ def source_health_summary() -> Dict[str, Any]:
             "fenie": fenie_policy,
             "electromaps": {
                 "name": "Electromaps real-time detail cache",
-                "status": "permitted-owner-decision-snapshot",
+                "status": "link-only-rights-blocked",
                 "cached_details": 0,
                 "has_payload": False,
                 "source_url": "https://www.electromaps.com/",
-                "policy": "Runtime direct station fetching stays disabled; station evidence arrives through the offline national directory ingestion.",
+                "policy": "Direct station fetching and cached station evidence are disabled pending express reuse permission.",
             },
         },
         "engine": {
@@ -4858,11 +4857,11 @@ def requested_source_strategy() -> Dict[str, Any]:
             },
             {
                 "name": "Electromaps",
-                "status": "permitted-owner-decision-snapshot",
-                "method": "Owner decision 2026-10-12: Electromaps' public web-map listings are ingested nationally as directory leads (anonymous GET only, rolling detail cache). Price text and free flags are community directory claims; availability is never live. The site's terms still reserve reuse rights.",
-                "records_now": {"direct_station_records": sum(1 for rec in records if rec.get("source") == "Electromaps public web map"), "nested_station_evidence_records": 0},
+                "status": "link-only-rights-blocked",
+                "method": "Conventional homepage link only. Direct and nested station evidence, connector payloads, status, ratings, and media are excluded.",
+                "records_now": {"direct_station_records": 0, "nested_station_evidence_records": 0},
                 "source_url": "https://www.electromaps.com/",
-                "risk": "Collected without a licence by owner decision; restoring the exclusion record stops it.",
+                "risk": "Express written reuse permission and a separate GET-only adapter review are required before station evidence can return.",
             },
             {
                 "name": "Gaia Charge",
@@ -4880,11 +4879,11 @@ def requested_source_strategy() -> Dict[str, Any]:
             },
             {
                 "name": "Chargemap",
-                "status": "permitted-owner-decision-snapshot",
-                "method": "Owner decision 2026-10-12: Chargemap's public web-map pools are ingested nationally as directory leads (anonymous GET quadtree walk, cached boxes). Free flags are community directory claims; availability is never live. The site's terms and robots rules still reserve reuse rights.",
-                "records_now": {"direct_station_records": sum(1 for rec in records if rec.get("source") == "Chargemap public web map"), "nested_station_evidence_records": 0},
+                "status": "removed-rights-blocked",
+                "method": "No station ingestion or retained nested evidence. The generic robots rule and reuse terms require written API/data permission.",
+                "records_now": {"direct_station_records": 0, "nested_station_evidence_records": 0},
                 "source_url": "https://chargemap.com/",
-                "risk": "Collected without a licence by owner decision; restoring the exclusion record stops it.",
+                "risk": "Written API/data permission and a separate public-adapter review are required before any station evidence can return.",
             },
             {
                 "name": "Consum store locator",
@@ -4969,16 +4968,14 @@ def source_catalog_payload() -> Dict[str, Any]:
             "OpenStreetMap fee/access/parking tags, including narrowly matched Red MOVEM official tariff evidence",
             "OpenChargeMap public GitHub snapshot free/cost strings",
             "ACCIONA Moraleja Green first-party free-policy lead",
-            "Feníe public map snapshot: owner-attested written permission and narrow read-only POST exception",
-            "Electromaps and Chargemap public web maps: anonymous directory snapshots enabled by owner decision 2026-10-12, not a third-party reuse licence",
         ],
         "navigation_enrichment": ["Google Maps/Apple Maps deep links"],
         "covered_via_primary": [
-            "Independent MapaREVE/OSM/OpenChargeMap records may identify operators; exclusions follow evidence origin, not the operator name (Consum locator remains excluded)",
+            "Independent MapaREVE/OSM/OpenChargeMap records may identify operators, but retired provider-origin evidence is not retained",
             "Iberdrola/Acciona/GIC/Miio -> MapaREVE/OCPI or independent OSM/OpenChargeMap evidence when present",
         ],
         "official_api_needed": ["LetMeCharge direct app database", "EuroCharger direct app database"],
-        "policy": "Anonymous public Electromaps and Chargemap directory snapshots are enabled by owner decision 2026-10-12. That product policy is not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission. Feníe uses recorded owner-attested written permission and a narrow read-only POST exception. Consum locator evidence remains excluded. No login bypass, private tokens, MITM, provider sessions or payments.",
+        "policy": "This build uses rights-permitted public/open or user-verifiable pages. Proprietary app data and rights-blocked commercial locator/map data are not copied without permission, login bypass, private tokens, or MITM.",
         "source_health": source_health_summary(),
         "requested_source_strategy": requested_source_strategy(),
     }

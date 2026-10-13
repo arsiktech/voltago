@@ -52,7 +52,7 @@ Volta never starts a charging session, reserves a bay, makes a provider payment,
 
 Volta uses MapKit and hands routes to Apple Maps. Station detail may load a charger photo from its attributed public source host. Place searches go to the Volta Service and are relayed to Nominatim. The Privacy page explains these flows, ordinary server IP logging, and server caches. The app contains no advertising or third-party analytics SDK.
 
-Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps and Chargemap anonymous public-map snapshots are directory leads enabled by owner decision, not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission. Consum locator evidence remains excluded. Source-rights certification is required before submission.
+Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps, Chargemap, Consum and PlugShare station evidence is excluded. Public access alone does not establish Apple Guideline 5.2.2 permission. Source-rights certification is required before submission.
 
 Volta Plus is disabled in this build. All charger functionality is available without purchase. StoreKit subscriptions are not an active purchase path, and the product-page metadata/screenshots make no subscription or trial claim.
 ```
@@ -85,7 +85,7 @@ Volta never starts charging, reserves a bay, pays a provider, bypasses login, us
 
 Volta uses MapKit and Apple Maps route handoff. Detail may load a photo from its attributed public host. Place searches go through the Service to Nominatim. Privacy explains these flows and server IP logs/caches. There are no advertising or third-party analytics SDKs.
 
-Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps and Chargemap anonymous public-map snapshots are directory leads enabled by owner decision, not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission. Consum locator evidence remains excluded. Source-rights certification is required before submission.
+Feníe snapshots use one narrowly approved read-only marker-list POST and recorded owner-attested written redistribution permission, not independently verified here. Electromaps, Chargemap, Consum and PlugShare station evidence is excluded. Public access alone does not establish Apple Guideline 5.2.2 permission. Source-rights certification is required before submission.
 
 Volta Plus has two auto-renewable products in one group: volta.plus.monthly (one month) and volta.plus.yearly (one year). StoreKit supplies localized price, period, offer eligibility, and duration; production prices are not hardcoded. The paywall includes Restore Purchases, Terms, Privacy, and renewal/cancellation disclosure. Entitlement follows the purchasing Apple ID. If it changes during a route, that route remains usable until the next cold launch to avoid stranding the driver.
 ```
@@ -110,8 +110,8 @@ differences or reviewer-specific additions:
 
 | Exact assembly after substitutions | UTF-8 bytes | Byte headroom below 4,000 |
 |---|---:|---:|
-| A — paywall disabled | 3,340 | 660 |
-| B — paywall enabled | 3,482 | 518 |
+| A — paywall disabled | 3,264 | 736 |
+| B — paywall enabled | 3,406 | 594 |
 
 ### Feníe snapshot — current implementation state
 
@@ -138,11 +138,9 @@ The engineering boundary and the rights boundary are separate:
 Active source families include MapaREVE public OCPI, Gaia public pages, DGT NAP corroboration,
 OpenChargeMap, OpenStreetMap, València and other municipal open data, and narrow official
 retailer/policy material. Feníe snapshots are enabled under the recorded owner-attested
-permission and narrow POST exception. Electromaps and Chargemap anonymous public-map
-snapshots are enabled by owner decision dated 2026-10-12 as non-live directory leads.
-Consum locator evidence remains excluded. The owner decision does not establish third-party
-reuse rights or Apple Guideline 5.2.2 permission. The app provides source links and keeps
-provider/onsite information authoritative.
+permission and narrow POST exception. Electromaps, Chargemap, Consum and PlugShare
+station evidence is excluded. The owner must certify all retained source rights under
+Apple App Review Guideline 5.2.2. Provider and onsite information remains authoritative.
 
 ## Review attachments checklist
 
@@ -156,8 +154,8 @@ provider/onsite information authoritative.
       destinations.
 - [ ] Feníe's exact bundled/served snapshot matches the recorded permission and narrow POST
       exception; it is not presented as live and contains no copied Feníe media.
-- [ ] Electromaps/Chargemap source-rights gaps, including Apple 5.2.2 permission, are resolved
-      for the exact submitted revision; owner collection policy is not third-party permission.
+- [ ] The exact submitted dataset excludes direct and nested Electromaps, Chargemap,
+      Consum and PlugShare station evidence.
 - [ ] Source-rights owner certification is complete and retained internally.
 - [ ] Correct complete assembly pasted; the other assembly omitted.
 - [ ] If enabled, both IAPs are attached to the submission with localizations and a real

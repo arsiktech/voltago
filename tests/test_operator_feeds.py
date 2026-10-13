@@ -207,7 +207,8 @@ class RepsolTests(unittest.TestCase):
 
     def test_transport_allows_only_the_exact_charging_point_list_post(self):
         ok = urllib.request.Request(ing.REPSOL_SEARCH_URL, data=b"", method="POST")
-        self.assertEqual(transport.classify_post_exception(ok), "repsol-charging-points-list")
+        with self.assertRaises(transport.SourcePolicyBlocked):
+            transport.classify_post_exception(ok)
         for url, body in (
             ("https://www.repsol.es/bin/repsol/searchmiddleware/station-search.json?action=search&idioma=es&tipo=1,2", b""),
             ("https://www.repsol.es/bin/repsol/searchmiddleware/station-search.json?action=search&idioma=es&tipo=3&x=1", b""),
@@ -222,7 +223,7 @@ class RepsolTests(unittest.TestCase):
 class AdapterRegistrationTests(unittest.TestCase):
     def test_operator_feeds_are_active(self):
         names = [fn.__name__ for fn in ing.ACTIVE_SOURCE_ADAPTERS]
-        for name in ("source_etecnic", "source_atlante", "source_zunder", "source_repsol"):
+        for name in ("source_etecnic", "source_atlante", "source_zunder"):
             self.assertIn(name, names)
 
 

@@ -2,19 +2,13 @@
 """Reviewed source transport policy (Python standard library only).
 
 Volta's collection boundary is public, read-only retrieval. GET is the default. The
-owner explicitly approved exactly four read-only data-query POST families that the
+owner explicitly approved exactly two read-only data-query POST families that the
 upstream public web apps themselves use:
 
 * MapaREVE public OCPI map query (``POST /api/public/v1/locations?page=N&per_page=M``
   with a JSON bbox/filter body), and
 * Feníe Energía public marker list (``POST /punto-recarga/todos`` with an empty body,
-  after an anonymous GET of the public map page for its session/CSRF pair), and
-* Repsol public charging-point finder list (``POST /bin/repsol/searchmiddleware/
-  station-search.json?action=search&idioma=es&tipo=3`` with an empty body; owner
-  decision 2026-10-12), and
-* Place to Plug public charging-zone query (``POST https://api.placetoplug.com/v2/graphql``
-  with one fixed read-only GraphQL ``query`` document, bbox + page variables and no
-  credentials; owner decision 2026-10-12).
+  after an anonymous GET of the public map page for its session/CSRF pair).
 
 Everything else that is not GET is refused before a socket is opened. An exception only
 matches an exact HTTPS host + exact path + allowed query keys + a bounded, read-only body
@@ -44,25 +38,6 @@ MAPAREVE_HOST = "www.mapareve.es"
 MAPAREVE_LOCATIONS_PATH = "/api/public/v1/locations"
 FENIE_HOST = "recarga.fenieenergia.es"
 FENIE_MARKERS_PATH = "/punto-recarga/todos"
-REPSOL_HOST = "www.repsol.es"
-REPSOL_SEARCH_PATH = "/bin/repsol/searchmiddleware/station-search.json"
-REPSOL_SEARCH_QUERY = {"action": ["search"], "idioma": ["es"], "tipo": ["3"]}
-PLACETOPLUG_HOST = "api.placetoplug.com"
-PLACETOPLUG_PATH = "/v2/graphql"
-PLACETOPLUG_URL = f"https://{PLACETOPLUG_HOST}{PLACETOPLUG_PATH}"
-PLACETOPLUG_OPERATION = "probe"
-# The only GraphQL document the exception accepts, byte for byte: a read-only list query.
-PLACETOPLUG_QUERY = (
-    "query probe($query: FindChargingZone!) { findChargingZones(query: $query) "
-    "{ totalCount hasNextPage chargingZones { id name coordinates address { street city country } "
-    "powerRange { min max } status } } }"
-)
-# The API silently falls back to 10 rows per page above 50, so 50 is the useful bound.
-PLACETOPLUG_MAX_LIMIT = 50
-PLACETOPLUG_MAX_PAGE = 2000
-PLACETOPLUG_MAX_BODY_BYTES = 2048
-# Headers a Place to Plug POST may carry: nothing that identifies an account or session.
-_PLACETOPLUG_ALLOWED_HEADERS = {"content-type", "accept", "user-agent", "platform", "accept-language"}
 
 # Hard upper bounds, independent of any caller's own (smaller) configuration.
 MAX_POST_TIMEOUT_SECONDS = 45.0
@@ -90,9 +65,6 @@ _FORBIDDEN_POST_HEADERS = {"authorization", "proxy-authorization", "x-api-key", 
 POST_BUDGETS: Dict[str, Tuple[float, int]] = {
     "mapareve-locations-query": (600.0, 1000),
     "fenie-markers-list": (600.0, 3),
-    "repsol-charging-points-list": (600.0, 3),
-    # A national walk is ~580 pages of 50 zones; the process-wide window is a hard ceiling.
-    "placetoplug-zones-query": (600.0, 1000),
 }
 _BUDGET_LOCK = threading.Lock()
 _BUDGET_EVENTS: Dict[str, Deque[float]] = {}
@@ -160,52 +132,6 @@ def _validate_mapareve_body(body: bytes) -> None:
                 raise _blocked(f"MapaREVE query field '{key}' must stay empty")
 
 
-def _is_finite_int(value: Any, *, minimum: int, maximum: int) -> bool:
-    return isinstance(value, int) and not isinstance(value, bool) and minimum <= value <= maximum
-
-
-def _validate_placetoplug_request(request: urllib.request.Request, body: bytes) -> None:
-    headers = {name.lower(): str(value) for name, value in request.headers.items()}
-    headers.update({name.lower(): str(value) for name, value in request.unredirected_hdrs.items()})
-    if set(headers) - _PLACETOPLUG_ALLOWED_HEADERS:
-        raise _blocked("Place to Plug query carries headers outside the reviewed anonymous set")
-    if not headers.get("content-type", "").lower().startswith("application/json"):
-        raise _blocked("Place to Plug query must be application/json")
-    if not body or len(body) > PLACETOPLUG_MAX_BODY_BYTES:
-        raise _blocked("Place to Plug query body must be a non-empty bounded JSON object")
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError) as exc:
-        raise _blocked("Place to Plug query body is not valid JSON") from exc
-    if not isinstance(payload, dict) or set(payload) != {"operationName", "variables", "query"}:
-        raise _blocked("Place to Plug query body must be exactly operationName, variables and query")
-    if payload["operationName"] != PLACETOPLUG_OPERATION or payload["query"] != PLACETOPLUG_QUERY:
-        raise _blocked("Place to Plug accepts only the reviewed read-only zone query document")
-    variables = payload["variables"]
-    if not isinstance(variables, dict) or set(variables) != {"query"} or not isinstance(variables["query"], dict):
-        raise _blocked("Place to Plug variables must be exactly {query: {...}}")
-    query = variables["query"]
-    if set(query) != {"filters", "params", "limit", "page"}:
-        raise _blocked("Place to Plug query variables have unreviewed fields")
-    if not _is_finite_int(query["limit"], minimum=1, maximum=PLACETOPLUG_MAX_LIMIT):
-        raise _blocked("Place to Plug query limit is outside the reviewed bound")
-    if not _is_finite_int(query["page"], minimum=1, maximum=PLACETOPLUG_MAX_PAGE):
-        raise _blocked("Place to Plug query page is outside the reviewed bound")
-    filters, params = query["filters"], query["params"]
-    if not isinstance(filters, dict) or set(filters) != {"bounds"} or not isinstance(filters["bounds"], dict):
-        raise _blocked("Place to Plug filters must be exactly a bounds box")
-    bounds = filters["bounds"]
-    if set(bounds) != {"minLat", "maxLat", "minLon", "maxLon"} or not all(_is_finite_number(v) for v in bounds.values()):
-        raise _blocked("Place to Plug bounds must be four finite numbers")
-    if not (-90 <= bounds["minLat"] <= bounds["maxLat"] <= 90 and -180 <= bounds["minLon"] <= bounds["maxLon"] <= 180):
-        raise _blocked("Place to Plug bounds are not a valid box")
-    if not isinstance(params, dict) or set(params) != {"location"} or not isinstance(params["location"], dict):
-        raise _blocked("Place to Plug params must be exactly a location")
-    location = params["location"]
-    if set(location) != {"latitude", "longitude"} or not all(_is_finite_number(v) for v in location.values()):
-        raise _blocked("Place to Plug location must be two finite numbers")
-
-
 def classify_post_exception(request: urllib.request.Request) -> str:
     """Return the matching reviewed POST-exception id or raise SourcePolicyBlocked."""
     method = request.get_method()
@@ -239,15 +165,6 @@ def classify_post_exception(request: urllib.request.Request) -> str:
         if parsed.query or body:
             raise _blocked("Feníe marker list takes no query string or body")
         return "fenie-markers-list"
-    if host == REPSOL_HOST and parsed.path == REPSOL_SEARCH_PATH:
-        if query != REPSOL_SEARCH_QUERY or body:
-            raise _blocked("Repsol charging-point list takes exactly action=search&idioma=es&tipo=3 and no body")
-        return "repsol-charging-points-list"
-    if host == PLACETOPLUG_HOST and parsed.path == PLACETOPLUG_PATH:
-        if parsed.query:
-            raise _blocked("Place to Plug query takes no query string")
-        _validate_placetoplug_request(request, body)
-        return "placetoplug-zones-query"
     raise _blocked("POST is not an approved read-only source query for this origin/path")
 
 
@@ -299,3 +216,14 @@ def policy_urlopen(
         raise _blocked("POST exception timeout must be positive and bounded")
     _charge_budget(exception_id)
     return _build_post_opener(cookiejar).open(request, timeout=timeout)
+
+# Dormant Place to Plug parser fixtures use this fixed query shape. These constants
+# do not grant a POST exception; acquisition remains blocked pending review.
+PLACETOPLUG_URL = "https://api.placetoplug.com/v2/graphql"
+PLACETOPLUG_OPERATION = "probe"
+PLACETOPLUG_QUERY = (
+    "query probe($query: FindChargingZone!) { findChargingZones(query: $query) "
+    "{ totalCount hasNextPage chargingZones { id name coordinates address { street city country } "
+    "powerRange { min max } status } } }"
+)
+PLACETOPLUG_MAX_LIMIT = 50

@@ -1,6 +1,6 @@
 {
-  "version": 7,
-  "updated_at": "2026-10-12",
+  "version": 8,
+  "updated_at": "2026-10-13",
   "normalization": "unicode-casefold-strip-diacritics",
   "granted_reuse": [
     {
@@ -23,9 +23,11 @@
       "attribution_required": "Feníe Energía — Red de recarga (public map)",
       "audit_note": "The written permission is retained by the owner off-repo and was recorded from the owner's explicit in-session attestation; it was not independently verified in this workspace. As of 2026-10-06 the separate request-method block is lifted by the owner's narrow read-only query exception.",
       "revocation_gate": "Remove this record and restore a Feníe exclusion if the permission is withdrawn or its scope no longer covers public redistribution."
-    },
+    }
+  ],
+  "exclusions": [
     {
-      "id": "electromaps-owner-decision",
+      "id": "electromaps-reuse-rights",
       "family": "Electromaps",
       "source_family_terms": [
         "electromaps"
@@ -33,39 +35,41 @@
       "origin_hosts": [
         "electromaps.com"
       ],
-      "status": "permitted",
-      "basis": "owner decision to collect public, no-login web-map data regardless of the site's terms of use",
-      "granted_on": "2026-10-12",
-      "attested_by": "owner in-session (Hermes desktop): build connectors for all public sources, no licensing",
+      "match_scope": "structured-source-origin-only",
+      "status": "link-only-rights-blocked",
       "homepage_url": "https://www.electromaps.com/",
       "terms_url": "https://www.electromaps.com/es/terms-and-conditions",
-      "access_method_note": "Anonymous GET requests to the public web map's own JSON endpoints only. No login, account, token, payment or session-start action.",
-      "attribution_required": "Electromaps (community directory)",
-      "audit_note": "Replaces exclusion 'electromaps-reuse-rights'. The site's terms still reserve reuse rights; this is the owner's product decision, not a licence.",
-      "revocation_gate": "Restore exclusion 'electromaps-reuse-rights' to stop collection and purge its evidence."
+      "reason": "Electromaps' public terms reserve extraction, sharing, and exploitation rights absent express permission. Public GET access and permissive robots rules do not grant storage, transformation, or redistribution rights.",
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
+      "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence."
     },
     {
-      "id": "chargemap-owner-decision",
+      "id": "chargemap-reuse-and-robots",
       "family": "Chargemap",
       "source_family_terms": [
-        "chargemap public web map"
+        "chargemap public map api"
       ],
       "origin_hosts": [
         "chargemap.com"
       ],
-      "status": "permitted",
-      "basis": "owner decision to collect public, no-login web-map data regardless of the site's terms of use",
-      "granted_on": "2026-10-12",
-      "attested_by": "owner in-session (Hermes desktop): build connectors for all public sources, no licensing",
+      "match_scope": "structured-source-origin-only",
+      "status": "removed-rights-blocked",
       "homepage_url": "https://chargemap.com/",
       "terms_url": "https://chargemap.com/es-es/about/legal",
-      "access_method_note": "Anonymous GET requests to the public web map's own JSON endpoints only. No login, account, token, payment or session-start action.",
-      "attribution_required": "Chargemap (community directory)",
-      "audit_note": "Replaces exclusion 'chargemap-reuse-and-robots'. The site's terms still reserve reuse rights; this is the owner's product decision, not a licence.",
-      "revocation_gate": "Restore exclusion 'chargemap-reuse-and-robots' to stop collection and purge its evidence."
-    }
-  ],
-  "exclusions": [
+      "reason": "Chargemap's generic robots rule disallows crawling and its terms withhold extraction, reproduction, and reuse rights absent written authorization. Volta therefore retains no Chargemap station evidence.",
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
+      "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review."
+    },
     {
       "id": "consum-locator-reuse-permission",
       "family": "Consum store locator",
@@ -87,6 +91,27 @@
         "source-family-canaries"
       ],
       "reintroduction_gate": "Written permission covering periodic retrieval, caching, transformation, redistribution, attribution, and deep links; homepage links alone are not station evidence."
+    },
+    {
+      "id": "plugshare-unreviewed-credential",
+      "family": "PlugShare",
+      "source_family_terms": [
+        "plugshare"
+      ],
+      "origin_hosts": [
+        "plugshare.com"
+      ],
+      "match_scope": "structured-source-origin-only",
+      "status": "blocked-unreviewed-auth",
+      "homepage_url": "https://www.plugshare.com/",
+      "reason": "The experimental collector depended on a provider web-client credential. Collection and cached station evidence are disabled.",
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
+      "reintroduction_gate": "A documented public API or export grant and reviewed adapter without extracted provider credentials."
     }
   ]
 }

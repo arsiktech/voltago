@@ -10,10 +10,8 @@ import json
 import os
 import sys
 import tempfile
-import threading
 import unittest
 import urllib.request
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -100,11 +98,17 @@ class PlaceToPlugParseTests(unittest.TestCase):
 
 
 class PlaceToPlugWalkTests(unittest.TestCase):
+    def setUp(self):
+        # Explicitly test the dormant acquisition algorithm with mocked I/O.
+        guard = mock.patch.object(ing, "require_reviewed_query")
+        guard.start()
+        self.addCleanup(guard.stop)
+
     def _zone(self, zid, lon=-3.7, lat=40.4):
         return {"id": zid, "name": f"Z{zid}", "coordinates": [lon, lat], "address": {"street": "C/ X", "city": "Madrid", "country": "Spain"},
                 "powerRange": {"min": 7, "max": 22}, "status": "UNKNOWN"}
 
-    def _run(self, pages, *, budget):
+    def _run(self, pages, *, budget, dates=None, expect_error=False):
         """pages: {(box_index, page): zones}; records every POST body."""
         bodies = []
 
@@ -116,7 +120,7 @@ class PlaceToPlugWalkTests(unittest.TestCase):
             box_index = int(cache_name.split("box")[1].split("_")[0])
             zones = pages.get((box_index, q["page"]), [])
             payload = {"data": {"findChargingZones": {"totalCount": 99, "hasNextPage": (box_index, q["page"] + 1) in pages, "chargingZones": zones}}}
-            artifact = fake_artifact(cache_name)
+            artifact = fake_artifact(cache_name, (dates or {}).get((box_index, q["page"]), "2026-10-12T08:00:00Z"))
             return (payload, artifact) if with_artifact else payload
 
         records = []
@@ -126,7 +130,12 @@ class PlaceToPlugWalkTests(unittest.TestCase):
                 mock.patch.object(ing, "PTP_PAGE_PAUSE_SECONDS", 0), \
                 mock.patch.dict(os.environ, {"VOLTA_PTP_PAGE_BUDGET": str(budget)}):
             ing.ADAPTER_STATUS.clear()
-            ing.source_place_to_plug(records)
+            if expect_error:
+                with self.assertRaisesRegex(RuntimeError, "refusing a partial walk"):
+                    ing.source_place_to_plug(records)
+                self.assertEqual(records, [])
+            else:
+                ing.source_place_to_plug(records)
         return records, bodies
 
     def test_walk_is_paginated_at_limit_50_with_lon_lat_bounds_and_dedupes_ids(self):
@@ -144,14 +153,51 @@ class PlaceToPlugWalkTests(unittest.TestCase):
         self.assertTrue(status["complete"])
         self.assertEqual(status["rows"], 4)
 
-    def test_budget_exhaustion_leaves_a_visible_partial_walk(self):
+    def test_budget_exhaustion_refuses_a_partial_walk_above_the_row_floor(self):
         pages = {(0, p): [self._zone(f"z{p}")] for p in range(1, 6)}
         pages[(1, 1)] = [self._zone("c1", lon=-16.2, lat=28.5)]
-        records, bodies = self._run(pages, budget=2)
+        records, bodies = self._run(pages, budget=2, expect_error=True)
         self.assertEqual(len(bodies), 2)
         status = ing.ADAPTER_STATUS["source_place_to_plug"]
         self.assertFalse(status["complete"])
         self.assertEqual(status["network_fetches"], 2)
+
+    def test_each_page_and_repeated_zone_keep_their_own_artifact_timestamp(self):
+        pages = {(0, 1): [self._zone("a"), self._zone("repeat")],
+                 (0, 2): [self._zone("b"), {**self._zone("repeat"), "name": "Older page copy"}]}
+        records, _ = self._run(pages, budget=50, dates={(0, 1): "2026-10-12T08:00:00Z", (0, 2): "2026-01-01T08:00:00Z"})
+        by_id = {row["raw"]["ptp_zone_id"]: row for row in records}
+        self.assertEqual(by_id["a"]["source_fetched_at"], "2026-10-12T08:00:00Z")
+        self.assertEqual(by_id["b"]["source_fetched_at"], "2026-01-01T08:00:00Z")
+        self.assertEqual(by_id["repeat"]["source_fetched_at"], "2026-01-01T08:00:00Z")
+        self.assertEqual(by_id["repeat"]["name"], "Older page copy")
+
+    def test_empty_page_with_has_next_or_bad_shape_does_not_claim_completion(self):
+        cases = ({"chargingZones": [], "hasNextPage": True},
+                 {"chargingZones": [self._zone("a")], "hasNextPage": "false"},
+                 {"chargingZones": "wrong", "hasNextPage": False},
+                 {"chargingZones": [{"broken": True}], "hasNextPage": False})
+        for body in cases:
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as tmp, \
+                    mock.patch.object(ing, "CACHE", Path(tmp)), \
+                    mock.patch.object(ing, "PTP_MIN_ROWS", 0), \
+                    mock.patch.object(ing, "budgeted_cached_json", return_value=({"data": {"findChargingZones": body}}, fake_artifact("page"))):
+                records = []
+                with self.assertRaisesRegex(RuntimeError, "refusing a partial walk"):
+                    ing.source_place_to_plug(records)
+                self.assertEqual(records, [])
+                self.assertFalse(ing.ADAPTER_STATUS["source_place_to_plug"]["complete"])
+
+    def test_page_limit_and_fetch_failure_publish_nothing(self):
+        with mock.patch.object(ing, "PTP_MAX_PAGES_PER_BOX", 1):
+            self._run({(0, 1): [self._zone("a")], (0, 2): [self._zone("b")]}, budget=50, expect_error=True)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(ing, "CACHE", Path(tmp)), \
+                mock.patch.object(ing, "PTP_MIN_ROWS", 0), \
+                mock.patch.object(ing, "budgeted_cached_json", side_effect=OSError("fixture unavailable")):
+            records = []
+            with self.assertRaisesRegex(RuntimeError, "refusing a partial walk"):
+                ing.source_place_to_plug(records)
+            self.assertEqual(records, [])
 
 
 class PlaceToPlugTransportTests(unittest.TestCase):
@@ -170,8 +216,9 @@ class PlaceToPlugTransportTests(unittest.TestCase):
         h.update(headers or {})
         return urllib.request.Request(url, data=data, headers=h, method="POST")
 
-    def test_exact_graphql_query_is_the_only_allowed_post(self):
-        self.assertEqual(transport.classify_post_exception(self._request()), "placetoplug-zones-query")
+    def test_even_the_exact_graphql_query_requires_transport_review(self):
+        with self.assertRaises(transport.SourcePolicyBlocked):
+            transport.classify_post_exception(self._request())
 
     def test_exact_host_path_scheme_and_no_query_string(self):
         for url in (
@@ -220,7 +267,8 @@ class PlaceToPlugTransportTests(unittest.TestCase):
             transport.classify_post_exception(self._request(headers={"X-Custom-Thing": "1"}))
         with self.assertRaises(transport.SourcePolicyBlocked):
             transport.classify_post_exception(self._request(headers={"Content-Type": "text/plain"}))
-        transport.classify_post_exception(self._request(headers={"Platform": "WEB"}))
+        with self.assertRaises(transport.SourcePolicyBlocked):
+            transport.classify_post_exception(self._request(headers={"Platform": "WEB"}))
 
     def test_get_and_other_methods_on_the_endpoint_are_not_exceptions(self):
         with self.assertRaises(transport.SourcePolicyBlocked):
@@ -228,22 +276,11 @@ class PlaceToPlugTransportTests(unittest.TestCase):
         with self.assertRaises(transport.SourcePolicyBlocked):
             transport.classify_post_exception(urllib.request.Request(transport.PLACETOPLUG_URL, data=b"{}", method="PUT"))
 
-    def test_budget_is_bounded_and_the_family_has_its_own_entry(self):
-        self.assertIn("placetoplug-zones-query", transport.POST_BUDGETS)
-        window, limit = transport.POST_BUDGETS["placetoplug-zones-query"]
-        self.assertGreater(limit, 600, "a national walk needs ~580 pages")
-        for _ in range(limit):
-            transport._charge_budget("placetoplug-zones-query", now=1.0)
-        with self.assertRaises(transport.SourcePolicyBlocked):
-            transport._charge_budget("placetoplug-zones-query", now=1.0)
-        transport.reset_budgets()
-
-    def test_four_post_families_are_documented(self):
-        self.assertEqual(len(transport.POST_BUDGETS), 4)
-        self.assertIn("exactly four", (transport.__doc__ or ""))
+    def test_only_main_approved_post_families_remain(self):
+        self.assertEqual(set(transport.POST_BUDGETS), {"mapareve-locations-query", "fenie-markers-list"})
+        self.assertIn("exactly two", transport.__doc__ or "")
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("four owner-approved read-only data queries", agents.replace("\n  ", " "))
-        self.assertNotIn("three owner-approved read-only data queries", agents.replace("\n  ", " "))
+        self.assertIn("two owner-approved read-only data queries", agents.replace("\n  ", " "))
 
 
 # --------------------------------------------------------------------------------------
@@ -510,112 +547,38 @@ class PlugShareGridTests(unittest.TestCase):
         for part in ("access=1", "count=1000", "radius=30000", "latitude=41.39", "longitude=2.17"):
             self.assertIn(part, url)
 
-    def test_overlapping_cells_are_deduped_by_id_and_foreign_records_dropped(self):
-        a = {"id": 1, "name": "A", "latitude": 40.4, "longitude": -3.7, "connector_types": ["Type 2"], "stations": []}
-        b = {"id": 2, "name": "B", "latitude": 40.41, "longitude": -3.71, "connector_types": ["CCS2"], "stations": []}
-        lisbon = {"id": 3, "name": "PT", "latitude": 38.72, "longitude": -9.14, "connector_types": ["Type 2"], "stations": []}
-        payloads = {}
-        cells = ing.plugshare_grid_cells()[:3]
-        payloads[ing.plugshare_cell_cache_name(*cells[0])] = [a, b]
-        payloads[ing.plugshare_cell_cache_name(*cells[1])] = [b, lisbon]
-        payloads[ing.plugshare_cell_cache_name(*cells[2])] = []
-        fetched = []
-
-        def fake_cached_json(url, cache_name, ttl_hours=24, *, with_artifact=False, **kw):
-            fetched.append((url, cache_name, kw))
-            artifact = fake_artifact(cache_name)
-            payload = payloads.get(cache_name, [])
-            return (payload, artifact) if with_artifact else payload
-
-        records = []
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(ing, "CACHE", Path(tmp)), \
-                mock.patch.object(ing, "cached_json", fake_cached_json), \
-                mock.patch.object(ing, "plugshare_grid_cells", lambda: cells), \
-                mock.patch.object(ing, "PLUGSHARE_MIN_ROWS", 1), \
-                mock.patch.object(ing, "PLUGSHARE_PAUSE_SECONDS", 0), \
-                mock.patch.dict(os.environ, {"VOLTA_PLUGSHARE_NEARBY_BUDGET": "10", "VOLTA_PLUGSHARE_DETAIL_BUDGET": "0"}):
-            ing.ADAPTER_STATUS.clear()
-            ing.source_plugshare(records)
-        self.assertEqual(sorted(r["raw"]["plugshare_location_id"] for r in records), ["1", "2"])
-        self.assertEqual(len(fetched), 3)
-        for _url, _name, kw in fetched:
-            self.assertTrue(kw["headers"]["Authorization"].startswith("Basic "))
-        status = ing.ADAPTER_STATUS["source_plugshare"]
-        self.assertTrue(status["complete"])
-        self.assertEqual(status["cells"], 3)
-
-    def test_nearby_budget_limits_network_and_marks_partial(self):
-        cells = ing.plugshare_grid_cells()[:4]
-        fetched = []
-
-        def fake_cached_json(url, cache_name, ttl_hours=24, *, with_artifact=False, **kw):
-            fetched.append(cache_name)
-            payload = [{"id": len(fetched), "name": "A", "latitude": 40.4, "longitude": -3.7, "connector_types": [], "stations": []}]
-            return (payload, fake_artifact(cache_name)) if with_artifact else payload
-
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(ing, "CACHE", Path(tmp)), \
-                mock.patch.object(ing, "cached_json", fake_cached_json), \
-                mock.patch.object(ing, "plugshare_grid_cells", lambda: cells), \
-                mock.patch.object(ing, "PLUGSHARE_MIN_ROWS", 1), \
-                mock.patch.object(ing, "PLUGSHARE_PAUSE_SECONDS", 0), \
-                mock.patch.dict(os.environ, {"VOLTA_PLUGSHARE_NEARBY_BUDGET": "2", "VOLTA_PLUGSHARE_DETAIL_BUDGET": "0"}):
-            ing.ADAPTER_STATUS.clear()
-            ing.source_plugshare([])
-        self.assertEqual(len(fetched), 2)
-        self.assertFalse(ing.ADAPTER_STATUS["source_plugshare"]["complete"])
-        self.assertEqual(ing.ADAPTER_STATUS["source_plugshare"]["cells_without_data"], 2)
 
 
-class _Recorder(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
-    seen = []
 
-    def do_GET(self):  # noqa: N802
-        _Recorder.seen.append({"version": self.request_version, "auth": self.headers.get("Authorization"), "ua": self.headers.get("User-Agent")})
-        body = b"[]"
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+class PlugShareDisabledTests(unittest.TestCase):
+    def test_collection_is_blocked_before_cache_or_network_even_with_env_credential(self):
+        records = [{"id": "unrelated"}]
+        with mock.patch.object(ing, "budgeted_cached_json") as cached, \
+                mock.patch.object(ing, "plugshare_grid_cells") as grid, \
+                mock.patch.dict(os.environ, {"VOLTA_PLUGSHARE_BASIC_AUTH": "fixture-only"}):
+            with self.assertRaises(transport.SourcePolicyBlocked):
+                ing.source_plugshare(records)
+            with self.assertRaises(transport.SourcePolicyBlocked):
+                ing.plugshare_cached_detail(123, [99])
+            with self.assertRaises(transport.SourcePolicyBlocked):
+                ing.plugshare_headers()
+        cached.assert_not_called()
+        grid.assert_not_called()
+        self.assertEqual(records, [{"id": "unrelated"}])
+        self.assertFalse(ing.ADAPTER_STATUS["source_plugshare"]["enabled"])
+        self.assertFalse(hasattr(ing, "PLUGSHARE_DEFAULT_BASIC_AUTH"))
 
-    def log_message(self, *args):  # noqa: D401
-        pass
-
-
-class PlugShareTransportTests(unittest.TestCase):
-    def test_default_credential_is_the_sites_public_web_client_value_and_env_overrides(self):
-        self.assertEqual(ing.PLUGSHARE_DEFAULT_BASIC_AUTH, "d2ViX3YyOkVOanNuUE54NHhXeHVkODU=")
-        with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("VOLTA_PLUGSHARE_BASIC_AUTH", None)
-            self.assertEqual(ing.plugshare_headers()["Authorization"], "Basic d2ViX3YyOkVOanNuUE54NHhXeHVkODU=")
-        with mock.patch.dict(os.environ, {"VOLTA_PLUGSHARE_BASIC_AUTH": "b3ZlcnJpZGU="}):
-            self.assertEqual(ing.plugshare_headers()["Authorization"], "Basic b3ZlcnJpZGU=")
-
-    def test_headers_are_browser_like_json_without_cookies(self):
-        headers = ing.plugshare_headers()
-        self.assertIn("Mozilla/5.0", headers["User-Agent"])
-        self.assertEqual(headers["Accept"], "application/json")
-        self.assertNotIn("Cookie", headers)
-
-    def test_request_goes_out_as_http_1_1_with_the_basic_header(self):
-        server = HTTPServer(("127.0.0.1", 0), _Recorder)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        _Recorder.seen = []
-        try:
-            url = f"http://127.0.0.1:{server.server_address[1]}/v3/locations/nearby"
-            self.assertEqual(json.loads(ing.fetch(url, headers=ing.plugshare_headers())), [])
-        finally:
-            server.shutdown()
-        self.assertEqual(_Recorder.seen[0]["version"], "HTTP/1.1", "h2 is WAF-blocked on this host; urllib speaks HTTP/1.1 only")
-        self.assertTrue(_Recorder.seen[0]["auth"].startswith("Basic "))
-
-    def test_plugshare_is_a_get_only_source_needing_no_post_exception(self):
-        req = urllib.request.Request(ing.plugshare_nearby_url(40.4, -3.7), headers=ing.plugshare_headers())
-        self.assertEqual(req.get_method(), "GET")
-        with self.assertRaises(transport.SourcePolicyBlocked):
-            transport.classify_post_exception(urllib.request.Request(ing.plugshare_nearby_url(40.4, -3.7), data=b"", method="POST"))
+    def test_external_ids_are_checked_before_cache_paths(self):
+        invalid = ("../secret", "../../outside", "/tmp/absolute", "1/2", "1\\2", "01", "0", "-1", "1?x", "1#x", "1%2F2", True, None, 1.5, "9" * 21)
+        with mock.patch.object(ing.Path, "stat") as stat:
+            for value in invalid:
+                with self.subTest(value=value):
+                    with self.assertRaises(ValueError):
+                        ing.plugshare_cached_detail(value, [1])
+                    with self.assertRaises(ValueError):
+                        ing.plugshare_detail_priority(value)
+        stat.assert_not_called()
+        self.assertEqual(ing.plugshare_location_id(123), "123")
 
 
 # --------------------------------------------------------------------------------------
@@ -726,8 +689,11 @@ class InterparkingTests(unittest.TestCase):
 class RegistrationTests(unittest.TestCase):
     def test_new_adapters_are_active_in_dependency_order(self):
         names = [fn.__name__ for fn in ing.ACTIVE_SOURCE_ADAPTERS]
-        for name in ("source_place_to_plug", "source_mot_aparcar", "source_plugshare", "source_interparking_papp"):
+        for name in ("source_mot_aparcar", "source_interparking_papp"):
             self.assertIn(name, names)
+        self.assertNotIn("source_plugshare", names)
+        self.assertNotIn("source_place_to_plug", names)
+        self.assertNotIn("source_repsol", names)
         self.assertLess(names.index("source_etecnic"), names.index("source_mot_aparcar"), "MOT cross-references Etecnic rows already collected")
 
     def test_directory_lifecycle_includes_the_new_community_directories(self):
@@ -738,9 +704,9 @@ class RegistrationTests(unittest.TestCase):
 
     def test_data_readme_carries_the_provenance_lines(self):
         text = (ROOT / "data" / "README.md").read_text(encoding="utf-8")
-        for needle in ("Place to Plug: anonymous GraphQL, verified 2026-10-12.", "Reus: municipal public GIS (no licence stated).",
+        for needle in ("Place to Plug acquisition is dormant", "Reus: municipal public GIS (no licence stated).",
                        "Tarragona: Ajuntament de Tarragona open data (CKAN).", "free flags are community claims",
-                       "P-APP", "VOLTA_PLUGSHARE_BASIC_AUTH"):
+                       "P-APP", "PlugShare collection and cached station evidence are disabled"):
             self.assertIn(needle, text)
 
 

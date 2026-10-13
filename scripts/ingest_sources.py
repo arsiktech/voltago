@@ -4359,6 +4359,10 @@ def apply_source_policy_exclusions_to_payload(
         },
         "artifacts": retained_artifacts,
     }
+    for field in ("source_adapter_counts", "source_adapter_status"):
+        if isinstance(payload.get(field), dict):
+            cleaned[field] = {name: value for name, value in payload[field].items()
+                              if not metadata_is_excluded(name)}
     cleaned["errors"] = [
         error for error in (payload.get("errors") or [])
         if not metadata_is_excluded(error)
@@ -4368,7 +4372,7 @@ def apply_source_policy_exclusions_to_payload(
         if not metadata_is_excluded(note)
     ]
     cleaned["license_notes"].append(
-        "Evidence from sources still excluded by structured source policy is removed; enabled directory snapshots remain subject to their recorded owner decisions and unresolved third-party rights."
+        "Rights-blocked commercial map/locator station ingestion is retired; direct and merged source evidence is excluded by structured source policy."
     )
     if any(value_is_excluded(row, SOURCE_POLICY_EXCLUSIONS) for row in cleaned["records"]):
         raise RuntimeError("source-policy terms remain outside filtered records")
@@ -5384,7 +5388,8 @@ def source_zunder(records: List[Dict[str, Any]]) -> None:
 
 
 # Repsol (Waylet): the public station finder's charging-point list. Its own web client asks
-# for it with an empty-body POST; scripts/source_transport.py allows exactly that request.
+# for it with an empty-body POST. Acquisition is dormant: the current policy grants
+# only MapaREVE and Feníe query exceptions; this parser grants no extra exception.
 REPSOL_SOURCE = "Repsol public charging point finder"
 REPSOL_FINDER_URL = "https://www.repsol.es/buscador-eess-y-puntos-de-recarga/"
 REPSOL_SEARCH_URL = "https://www.repsol.es/bin/repsol/searchmiddleware/station-search.json?action=search&idioma=es&tipo=3"
@@ -5441,6 +5446,7 @@ def parse_repsol_charging_points(items: List[Any], *, source_artifact: Optional[
 
 
 def source_repsol(records: List[Dict[str, Any]]) -> None:
+    require_reviewed_query("source_repsol")
     artifact = cached_fetch(REPSOL_SEARCH_URL, "repsol_charging_points.json", ttl_hours=24, timeout=45, data=b"",
                             headers={"Accept": "application/json", "Referer": REPSOL_FINDER_URL})
     payload = json.loads(artifact.decode("utf-8", "replace"))
@@ -5451,14 +5457,14 @@ def source_repsol(records: List[Dict[str, Any]]) -> None:
     records.extend(parsed)
 
 
-# --- Place to Plug, MOT (Reus/Tarragona), PlugShare and P-APP (owner decision 2026-10-12) ---
-# All four are public, anonymous collection: no login, no user credential, no app-traffic
-# interception, no CAPTCHA bypass. None of them is an official tariff source; their price
-# fields stay unknown unless a source says otherwise, and community "free" flags stay
-# community claims.
+# --- Place to Plug, MOT (Reus/Tarragona) and P-APP ---
+# PlugShare is disabled. Active collectors use reviewed public retrieval surfaces.
+# Price fields stay unknown unless a source says otherwise; community "free" flags
+# remain community claims.
 
-# Place to Plug: the public web app's GraphQL list. One exact read-only POST document is
-# allowed by scripts/source_transport.py (api.placetoplug.com/v2/graphql). `coordinates` is
+# Place to Plug: the public web app's GraphQL list uses a POST query that is not an
+# approved transport exception. Acquisition is dormant; pagination is retained for
+# offline fixtures. `coordinates` is
 # [lon, lat] (confirmed with Aranjuez [-3.619, 40.023] and L'Hospitalet [2.105, 41.352]).
 # Verified anonymously on 2026-10-12. The API silently serves only 10 rows per page above
 # limit 50, so pages are 50 zones.
@@ -5553,10 +5559,11 @@ def parse_place_to_plug_zones(zones: List[Any], *, source_artifact: Optional[Fet
 
 
 def source_place_to_plug(records: List[Dict[str, Any]]) -> None:
+    require_reviewed_query("source_place_to_plug")
     budget_start = int(os.environ.get("VOLTA_PTP_PAGE_BUDGET", "700"))
     budget = [budget_start]
-    zones: Dict[str, Dict[str, Any]] = {}
-    artifact: Optional[FetchArtifact] = None
+    # Data and provenance are inseparable: duplicate zones replace both together.
+    zones: Dict[str, Tuple[Dict[str, Any], FetchArtifact]] = {}
     pages = failures = boxes_complete = 0
     for index, box in enumerate(DIRECTORY_SPAIN_LIST_BOXES):
         for page in range(1, PTP_MAX_PAGES_PER_BOX + 1):
@@ -5573,34 +5580,45 @@ def source_place_to_plug(records: List[Dict[str, Any]]) -> None:
                 print(f"place_to_plug: box {index} page {page} failed: {type(exc).__name__}: {exc}")
                 break
             if result is None:
-                break  # no budget left and nothing cached for this page
+                break  # The box remains incomplete when budget and cache are exhausted.
             if budget[0] < spent_before:
                 time.sleep(PTP_PAGE_PAUSE_SECONDS)
             payload, page_artifact = result
-            artifact = artifact or page_artifact
-            body = (payload.get("data") or {}).get("findChargingZones") if isinstance(payload, dict) else None
+            data = payload.get("data") if isinstance(payload, dict) else None
+            body = data.get("findChargingZones") if isinstance(data, dict) else None
             if not isinstance(body, dict) or payload.get("errors"):
                 failures += 1
                 break
+            page_zones, has_next = body.get("chargingZones"), body.get("hasNextPage")
+            if (not isinstance(page_zones, list) or type(has_next) is not bool
+                    or not isinstance(page_artifact, FetchArtifact)
+                    or any(not isinstance(zone, dict) or zone.get("id") in (None, "") for zone in page_zones)
+                    or (has_next and not page_zones)):
+                failures += 1
+                break
             pages += 1
-            page_zones = [z for z in body.get("chargingZones") or [] if isinstance(z, dict) and z.get("id") not in (None, "")]
             for zone in page_zones:
-                zones[str(zone["id"])] = zone
-            if not body.get("hasNextPage") or not page_zones:
+                zones[str(zone["id"])] = (zone, page_artifact)
+            if not has_next:
                 boxes_complete += 1
                 break
-    parsed = parse_place_to_plug_zones(list(zones.values()), source_artifact=artifact)
+    parsed = []
+    by_artifact: Dict[str, Tuple[List[Dict[str, Any]], FetchArtifact]] = {}
+    for zone, artifact in zones.values():
+        batch, _ = by_artifact.setdefault(artifact.cache_name, ([], artifact))
+        batch.append(zone)
+    for batch, artifact in by_artifact.values():
+        parsed.extend(parse_place_to_plug_zones(batch, source_artifact=artifact))
+    complete = boxes_complete == len(DIRECTORY_SPAIN_LIST_BOXES) and failures == 0
     ADAPTER_STATUS["source_place_to_plug"] = {
-        "zones": len(zones),
-        "rows": len(parsed),
-        "pages": pages,
-        "network_fetches": budget_start - budget[0],
-        "boxes_complete": boxes_complete,
-        "failed_pages": failures,
-        "complete": boxes_complete == len(DIRECTORY_SPAIN_LIST_BOXES) and failures == 0,
+        "zones": len(zones), "rows": len(parsed), "pages": pages,
+        "network_fetches": budget_start - budget[0], "boxes_complete": boxes_complete,
+        "failed_pages": failures, "complete": complete,
     }
-    if len(parsed) < PTP_MIN_ROWS:
-        raise RuntimeError(f"Place to Plug walk yielded {len(parsed)} Spanish rows (<{PTP_MIN_ROWS}); refusing a partial walk")
+    if not complete or len(parsed) < PTP_MIN_ROWS:
+        raise RuntimeError(f"Place to Plug walk yielded {len(parsed)} Spanish rows; "
+                           f"complete={complete}, minimum={PTP_MIN_ROWS}; refusing a partial walk")
+    # Publish only after all boxes and pages have passed, even above the row floor.
     records.extend(parsed)
 
 
@@ -5828,18 +5846,11 @@ def source_mot_aparcar(records: List[Dict[str, Any]]) -> None:
         raise RuntimeError("; ".join(errors))
 
 
-# PlugShare: the public web client (www.plugshare.com) calls api.plugshare.com with a Basic
-# credential that ships in the site's own public bundle and is sent by every visitor's
-# browser; no user account is involved. It is configurable (VOLTA_PLUGSHARE_BASIC_AUTH) and
-# defaults to that public value. The host's WAF rejects h2, so requests stay HTTP/1.1 (the
-# urllib path used by fetch() speaks HTTP/1.1 only). The API 429s on bursts, hence the long
-# pause between live requests. PlugShare is a community directory: `cost: false` is a
-# community "free" claim, never an official tariff.
+# PlugShare ingestion is disabled. The historical parser remains for offline evidence
+# inspection only; no provider web-client credential or cached contribution is permitted.
 PLUGSHARE_SOURCE = "PlugShare community web map"
 PLUGSHARE_API = "https://api.plugshare.com/v3"
 PLUGSHARE_STATION_URL = "https://www.plugshare.com/location/{id}"
-PLUGSHARE_DEFAULT_BASIC_AUTH = "d2ViX3YyOkVOanNuUE54NHhXeHVkODU="
-PLUGSHARE_BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 PLUGSHARE_GRID_STEP_DEGREES = 0.38
 PLUGSHARE_RADIUS_METERS = 30000
 PLUGSHARE_COUNT = 1000
@@ -5854,14 +5865,7 @@ PLUGSHARE_CONNECTOR_LABELS = {
 
 
 def plugshare_headers() -> Dict[str, str]:
-    credential = os.environ.get("VOLTA_PLUGSHARE_BASIC_AUTH") or PLUGSHARE_DEFAULT_BASIC_AUTH
-    return {
-        "Authorization": f"Basic {credential}",
-        "User-Agent": PLUGSHARE_BROWSER_UA,
-        "Accept": "application/json",
-        "Referer": "https://www.plugshare.com/",
-        "Origin": "https://www.plugshare.com",
-    }
+    raise SourcePolicyBlocked("PlugShare collection is disabled; no reviewed public API grant")
 
 
 def plugshare_nearby_url(lat: float, lon: float) -> str:
@@ -5993,26 +5997,21 @@ def parse_plugshare_location(item: Dict[str, Any], detail: Optional[Dict[str, An
     return out
 
 
+def plugshare_location_id(value: Any) -> str:
+    """Validate an external identifier before it can become a path or URL component."""
+    if type(value) not in (int, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", str(value)):
+        raise ValueError("invalid PlugShare location ID")
+    return str(value)
+
+
 def plugshare_cached_detail(location_id: Any, budget: List[int]) -> Optional[Tuple[Dict[str, Any], FetchArtifact]]:
-    cache_name = f"plugshare_locations/{location_id}.json"
-    (CACHE / cache_name).parent.mkdir(parents=True, exist_ok=True)
-    before = budget[0]
-    try:
-        result = budgeted_cached_json(
-            f"{PLUGSHARE_API}/locations/{location_id}", cache_name, ttl_hours=PLUGSHARE_DETAIL_TTL_HOURS,
-            budget=budget, headers=plugshare_headers(), timeout=30,
-        )
-    except Exception:
-        return None
-    if budget[0] < before:
-        time.sleep(PLUGSHARE_PAUSE_SECONDS)
-    if not result or not isinstance(result[0], dict):
-        return None
-    return result[0], result[1]
+    plugshare_location_id(location_id)
+    raise SourcePolicyBlocked("PlugShare collection and cached evidence are disabled")
 
 
 def plugshare_detail_priority(key: str) -> Tuple[int, float]:
     """Missing details first (newest id first), then the oldest cached; fresh ones cost nothing."""
+    key = plugshare_location_id(key)
     path = CACHE / f"plugshare_locations/{key}.json"
     if not path.exists():
         return (0, -float(int(key) if key.isdigit() else 0))
@@ -6020,77 +6019,10 @@ def plugshare_detail_priority(key: str) -> Tuple[int, float]:
 
 
 def source_plugshare(records: List[Dict[str, Any]]) -> None:
-    cells = plugshare_grid_cells()
-    nearby_start = int(os.environ.get("VOLTA_PLUGSHARE_NEARBY_BUDGET", "500"))
-    nearby_budget = [nearby_start]
-    items: Dict[str, Dict[str, Any]] = {}
-    item_artifacts: Dict[str, FetchArtifact] = {}
-    cells_with_data = capped = consecutive_failures = 0
-
-    def cell_priority(cell: Tuple[float, float]) -> Tuple[int, float]:
-        path = CACHE / plugshare_cell_cache_name(*cell)
-        return (0, 0.0) if not path.exists() else (1, path.stat().st_mtime)
-
-    for lat, lon in sorted(cells, key=cell_priority):
-        cache_name = plugshare_cell_cache_name(lat, lon)
-        (CACHE / cache_name).parent.mkdir(parents=True, exist_ok=True)
-        before = nearby_budget[0]
-        try:
-            result = budgeted_cached_json(
-                plugshare_nearby_url(lat, lon), cache_name, ttl_hours=PLUGSHARE_NEARBY_TTL_HOURS,
-                budget=nearby_budget, headers=plugshare_headers(), timeout=60,
-            )
-        except Exception as exc:
-            consecutive_failures += 1
-            print(f"plugshare: cell {lat},{lon} failed: {type(exc).__name__}: {exc}")
-            if consecutive_failures >= PLUGSHARE_MAX_CONSECUTIVE_FAILURES:
-                print("plugshare: stopping the walk after consecutive failures (rate limit?)")
-                break
-            time.sleep(PLUGSHARE_PAUSE_SECONDS)
-            continue
-        consecutive_failures = 0
-        if nearby_budget[0] < before:
-            time.sleep(PLUGSHARE_PAUSE_SECONDS)
-        if result is None or not isinstance(result[0], list):
-            continue
-        payload, artifact = result
-        cells_with_data += 1
-        capped += 1 if len(payload) >= PLUGSHARE_COUNT else 0
-        for item in payload:
-            if isinstance(item, dict) and item.get("id") is not None:
-                items[str(item["id"])] = item
-                item_artifacts.setdefault(str(item["id"]), artifact)
-    candidates = [k for k, v in items.items() if likely_in_spain(fnum(v.get("latitude")), fnum(v.get("longitude")))]
-    detail_start = int(os.environ.get("VOLTA_PLUGSHARE_DETAIL_BUDGET", "100"))
-    detail_budget = [detail_start]
-    details: Dict[str, Tuple[Dict[str, Any], FetchArtifact]] = {}
-    for key in sorted(candidates, key=plugshare_detail_priority):
-        result = plugshare_cached_detail(key, detail_budget)
-        if result:
-            details[key] = result
-    parsed: List[Dict[str, Any]] = []
-    for key in sorted(candidates, key=lambda k: int(k) if k.isdigit() else 0):
-        detail, detail_artifact = details.get(key, (None, None))
-        parse_plugshare_location(items[key], detail, source_artifact=item_artifacts.get(key),
-                                 detail_artifact=detail_artifact, out=parsed)
-    with_detail = sum(1 for row in parsed if row["raw"].get("detail_fetched"))
-    ADAPTER_STATUS["source_plugshare"] = {
-        "cells": len(cells),
-        "cells_with_data": cells_with_data,
-        "cells_without_data": len(cells) - cells_with_data,
-        "capped_cells": capped,
-        "nearby_network_fetches": nearby_start - nearby_budget[0],
-        "listings": len(items),
-        "rows": len(parsed),
-        "rows_with_detail": with_detail,
-        "rows_without_detail": len(parsed) - with_detail,
-        "detail_network_fetches": detail_start - detail_budget[0],
-        "complete": cells_with_data == len(cells) and capped == 0,
-    }
-    print(f"plugshare: {len(parsed)} Spanish rows from {len(items)} listings in {cells_with_data}/{len(cells)} cells ({with_detail} with details)")
-    if len(parsed) < PLUGSHARE_MIN_ROWS:
-        raise RuntimeError(f"PlugShare walk yielded {len(parsed)} Spanish rows (<{PLUGSHARE_MIN_ROWS}); refusing a partial walk")
-    records.extend(parsed)
+    """Block both network and historical cache ingestion before any work begins."""
+    ADAPTER_STATUS["source_plugshare"] = {"complete": False, "enabled": False, "rows": 0,
+                                          "reason": "source-policy-blocked"}
+    raise SourcePolicyBlocked("PlugShare collection and cached evidence are disabled")
 
 
 # P-APP (Interparking): the public car park finder embeds its Next.js (RSC flight) data in the
@@ -6446,6 +6378,7 @@ def electromaps_detail_priority(key: str) -> Tuple[int, float]:
 
 
 def source_electromaps_national(records: List[Dict[str, Any]]) -> None:
+    require_allowed_source("Electromaps")
     items: Dict[str, Tuple[Dict[str, Any], Optional[FetchArtifact]]] = {}
     for index, box in enumerate(DIRECTORY_SPAIN_LIST_BOXES):
         payload, box_artifact = unpack_json_artifact(cached_json(
@@ -6605,6 +6538,7 @@ def source_chargemap_national(records: List[Dict[str, Any]]) -> None:
     cached for 7 days and only uncached boxes count against the per-run network budget, so
     a national pass completes over a few refreshes without a burst of thousands of calls.
     """
+    require_allowed_source("Chargemap")
     budget = [int(os.environ.get("VOLTA_CHARGEMAP_NETWORK_BUDGET", "1200"))]
     pools: Dict[str, Tuple[Dict[str, Any], Optional[FetchArtifact]]] = {}
     incomplete = [0]
@@ -6709,6 +6643,17 @@ def source_telpark(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     return status
 
 
+def require_reviewed_query(adapter: str) -> None:
+    ADAPTER_STATUS[adapter] = {"enabled": False, "complete": False, "rows": 0,
+                               "reason": "transport-review-required"}
+    raise SourcePolicyBlocked(f"{adapter}: acquisition and cached ingestion require transport review")
+
+
+def require_allowed_source(family: str) -> None:
+    if value_is_excluded({"source": family}, SOURCE_POLICY_EXCLUSIONS):
+        raise SourcePolicyBlocked(f"{family} collection and cached evidence are excluded")
+
+
 ACTIVE_SOURCE_ADAPTERS = (
     source_valencia_municipal,
     source_lidl,
@@ -6725,13 +6670,8 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_etecnic,
     source_atlante,
     source_zunder,
-    source_repsol,
     source_mot_aparcar,
-    source_place_to_plug,
-    source_plugshare,
     source_interparking_papp,
-    source_electromaps_national,
-    source_chargemap_national,
     source_telpark,
 )
 
@@ -6755,6 +6695,9 @@ def build_payload() -> Dict[str, Any]:
             source_adapter_counts[fn.__name__] = len(records) - before
             errors.append({"source": fn.__name__, "error": f"{type(e).__name__}: {e}"})
             print(f"{fn.__name__}: ERROR {type(e).__name__}: {e}")
+    # Remove prohibited source contributions before price/hardware/identity union.
+    # A post-merge primary-label filter cannot reconstruct untainted allowed facts.
+    records, excluded_inputs = partition_records(records, SOURCE_POLICY_EXCLUSIONS)
     merged = dedupe(records)
     merged, cross_merged = merge_cross_source_duplicates(merged)
     print(f"cross-source duplicate merge: -{cross_merged} rows (corroborating sources unioned)")
@@ -6764,6 +6707,7 @@ def build_payload() -> Dict[str, Any]:
         "generated_at": now_iso(),
         "total_records": len(merged),
         "raw_records": len(records),
+        "source_policy_excluded_input_records": len(excluded_inputs),
         "cross_source_merged": cross_merged,
         "source_adapter_counts": source_adapter_counts,
         "source_adapter_status": {name: dict(status) for name, status in sorted(ADAPTER_STATUS.items())},
@@ -6773,7 +6717,6 @@ def build_payload() -> Dict[str, Any]:
             "OSM/Overpass data is ODbL; keep attribution and share-alike obligations in mind.",
             "Barcelona Endolla and Madrid official datasets are reused under CC BY 4.0; Zaragoza municipal facts follow its published reuse conditions. Preserve source/update attribution.",
             "Red MOVEM's €0.25/kWh regulation is attached only to unambiguous OSM locations at or below 22 kW; Moraleja Green is a single static Verify-first official-policy lead.",
-            "Electromaps and Chargemap anonymous public-map snapshots are enabled by owner decision 2026-10-12; that product policy is not a third-party reuse licence or proof of Apple Guideline 5.2.2 permission.",
             "Feníe snapshots retain owner-attested written redistribution permission and the narrow read-only marker-list POST exception; neither establishes independent legal certification.",
             "Provider apps/onsite signs override every cached intelligence record.",
         ],

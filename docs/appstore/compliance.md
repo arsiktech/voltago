@@ -128,11 +128,10 @@ Public technical access is not a redistribution license. The owner must complete
 photos, before selecting a paid model or submitting. A rights gap is a release blocker,
 not merely a review-notes issue.
 
-The current source policy enables Electromaps and Chargemap anonymous public web-map
-snapshots as directory leads by owner decision dated 2026-10-12. The decision authorizes
-collection as product policy; it does not create a third-party reuse licence or establish
-Apple App Review Guideline 5.2.2 permission. Resolve the rights gap against the exact
-submitted source/data revision before submission. Consum locator evidence remains excluded.
+Electromaps, Chargemap and Consum locator evidence remain excluded by structured source
+policy. PlugShare collection and cached evidence are disabled because the experimental
+adapter depended on an unreviewed provider credential. No extracted credentials or
+non-permitted source contributions may enter a release.
 
 Feníe's snapshot adapter is enabled under the narrow read-only marker-list POST exception
 approved on 2026-10-06 and the recorded owner-attested written redistribution permission

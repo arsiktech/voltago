@@ -54,14 +54,12 @@ than after every edit. Report the result, checks run, and material remaining gap
   can annotate or downgrade a decision, never grant live authority. Track charging
   and parking provenance separately; keep network calls bounded and fallback labeled.
 - Upstream integrations use public, user-verifiable GET surfaces. The only non-GET
-  exceptions are four owner-approved read-only data queries (MapaREVE bbox query, Feníe
-  marker list, Repsol charging-point list, Place to Plug zone query), enforced in `scripts/source_transport.py` (exact HTTPS host/path/body, no
+  exceptions are two owner-approved read-only data queries (MapaREVE bbox query, Feníe
+  marker list), enforced in `scripts/source_transport.py` (exact HTTPS host/path/body, no
   redirects, bounded budget); any other POST must raise `SourcePolicyBlocked`, so prefer
   GET (e.g. Overpass `?data=`) and never widen the allowlist without a new owner decision.
-  Preserve the Consum exclusion. Electromaps and Chargemap public web maps are collected
-  as directory leads by owner decision (2026-10-12), recorded in
-  `data/source_policy_exclusions.json`. No authenticated scraping, app traffic interception,
-  extracted credentials, anti-bot bypass, login bypass, or provider session/payment actions.
+  Preserve source exclusions (Electromaps, Chargemap, Consum); no authenticated scraping,
+  login bypass, or provider session/payment actions.
 - Python backend/scripts/tests use only the standard library; iOS uses native
   frameworks only. Keep frontend dependencies purposeful and the list usable without maps.
 - Rebuild intelligence to a candidate and pass delta/canary checks before promotion.

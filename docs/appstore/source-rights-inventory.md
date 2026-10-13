@@ -5,13 +5,10 @@ This inventory is not a legal opinion and does not infer permission from technic
 
 Research update 2026-07-15: `docs/source-research-2026-07-15-national.md` records current
 official URLs, access observations, and conservative product verdicts. It is evidence for the
-owner's decision, **not** the owner's certification. Plan 011 historically implemented
-Electromaps and Consum as link-only and removed Chargemap. The current source policy
-supersedes that engineering state: Electromaps and Chargemap anonymous public maps are enabled
-as directory snapshots by owner decision dated 2026-10-12. Consum locator evidence remains
-excluded. The owner decision is product policy, not a third-party reuse licence or proof of
-Apple App Review Guideline 5.2.2 permission. The historical terms findings remain relevant;
-rights certification for the exact submitted revision is still required.
+owner's decision, **not** the owner's certification. Plan 011 implemented the conservative
+verdicts: Electromaps and Consum are link-only, Chargemap is removed, and the canonical database
+contains no direct or nested station/claim/media evidence from those families. Reintroduction
+requires written permission plus a new source-policy and adapter review.
 
 Volta's public/read-only collection boundary protects users and providers from private
 API or transaction abuse. It does **not** answer whether a database, page, status field,
@@ -45,8 +42,9 @@ Acceptable owner decisions are: `APPROVED WITH CONDITIONS`, `WRITTEN PERMISSION`
 | MapaREVE | Public OCPI/web API; live bounded-area fetch | Station identity, coordinates, tariff/status/connectors/operator fields | **UNVERIFIED FOR APP REDISTRIBUTION/COMMERCIAL USE** — review [MapaREVE](https://www.mapareve.es/), endpoint terms, OCPI producer rights, and operator-field provenance | N/A unless media appears | `[FILL]` | `[REQUIRED]` |
 | Gaia Charge | Public start-session HTML pages; GET-only parsing; no session start or payment | Seeded station, connector status, tariff/session-display facts | **UNVERIFIED** — public availability is not permission; request written API/export permission if terms do not authorize reuse | N/A in current direct parser unless added later | `[FILL]` | `[REQUIRED]` |
 | Feníe Energía Recarga | **Permitted (owner-attested) offline snapshot, 2026-10-06.** Anonymous GET of the public map for a session/CSRF value, then one read-only marker-list POST; the owner approved that single POST as a narrow exception enforced by `scripts/source_transport.py` (exact host/path, empty body, no redirects, bounded budget). Only Feníe's own `gratuito=1`, in-service, non-test stations are ingested; rows are cached snapshots, never live | Station identity, coordinates, connectors, free flag, parking count from Feníe's own public map (no status as live) | Owner attested on 2026-07-18 to written redistribution permission retained off-repo (not independently verified in this workspace); the request-method block was lifted by the owner on 2026-10-06. The permission record in `data/source_policy_exclusions.json` `granted_reuse` is the revocation gate. | No Feníe photos/logos are copied | Attribution `Feníe Energía — Red de recarga (public map)` is stamped on each row; weekly snapshot, no live status inferred; withdrawal restores the exclusion record | `OWNER-ATTESTED PERMISSION + READ-ONLY POST EXCEPTION 2026-10-06; RE-CERTIFY BEFORE RELEASE` |
-| Electromaps | **Enabled directory snapshot by owner decision 2026-10-12.** Anonymous public web-map GET collection; historical regional/live-refresh adapters remain disabled | Station identity, coordinates, directory tariff/parking text, connectors and update metadata; no live authority | **OWNER PRODUCT-POLICY DECISION, NOT A THIRD-PARTY LICENCE.** The 2026-07-15 terms findings remain relevant: reserved exploitation/reuse rights and reachable endpoints are not a reuse grant. Apple Guideline 5.2.2 permission is not established. | No class-wide media approval; per-item rights gate remains | Preserve source attribution and list/detail acquisition dates; directory claims require onsite/provider verification; resolve reuse rights before submission | `OWNER DECISION 2026-10-12; RIGHTS CERTIFICATION STILL REQUIRED BEFORE SUBMISSION` |
-| Chargemap | **Enabled directory snapshot by owner decision 2026-10-12.** Anonymous public web-map GET collection; historical regional adapter remains disabled | Station identity, coordinates, directory free flag and connectors; no live authority | **OWNER PRODUCT-POLICY DECISION, NOT A THIRD-PARTY LICENCE.** The 2026-07-15 robots/CGU extraction and reuse findings remain relevant. Apple Guideline 5.2.2 permission is not established. | No class-wide media approval; per-item rights gate remains | Preserve source attribution and acquisition dates; directory claims require onsite/provider verification; resolve reuse rights before submission | `OWNER DECISION 2026-10-12; RIGHTS CERTIFICATION STILL REQUIRED BEFORE SUBMISSION` |
+| Electromaps | **Link-only in this build.** Direct ingestion/live-refresh adapters are disabled; structured source-origin policy excludes direct and nested evidence | Conventional homepage/source attribution only; zero station/location/price/status/connector/media records | **2026-07-15 RESEARCH VERDICT IMPLEMENTED: LINK-ONLY pending express permission.** Current terms reserve exploitation/reuse rights; reachable endpoints/robots rules are not a reuse grant. | None from Electromaps | Preserve only conventional external links; reintroduce data/media only with express written permission covering caching, transformation, and redistribution | `LINK-ONLY IMPLEMENTED 2026-07-15; WRITTEN PERMISSION + SEPARATE ADAPTER/MEDIA REVIEW REQUIRED TO REINTRODUCE` |
+| Chargemap | **Removed in this build.** Direct ingestion is disabled and structured source-origin policy excludes direct and nested evidence | No station/location/status/connector/media records; zero retained evidence | **2026-07-15 RESEARCH VERDICT IMPLEMENTED: SKIP without written API/data permission.** Generic robots rules disallow crawling and the current CGU withholds extraction/reuse absent authorization. | None from Chargemap | No extraction or copied content; a future adapter requires written permission and a fresh GET-only/source-policy review | `REMOVED 2026-07-15; WRITTEN PERMISSION REQUIRED TO REINTRODUCE` |
+| PlugShare | **Disabled.** Both network collection and historical cache ingestion are blocked | No station evidence or credential retained by the active adapter | Experimental credential-based access is not a reviewed integration grant | None | Exclude primary and merged provenance; a future integration needs a documented public API/export grant | `BLOCKED; REVIEWED ADAPTER REQUIRED` |
 | OpenChargeMap | Public snapshot/API-derived intelligence | Station/location/cost/status/connectors and possible photos | **UNVERIFIED** — capture the exact current [OpenChargeMap](https://openchargemap.org/site/develop/api) license/attribution/API conditions and upstream contributor terms | Verify each photo license/author/attribution; do not assume the station-data license covers media | `[FILL]` | `[REQUIRED]` |
 | OpenStreetMap | Public-tag snapshot/intelligence | Station/location/tags | **UNVERIFIED IN THIS KIT** — capture current [OSM copyright and license](https://www.openstreetmap.org/copyright), database/Produced Work analysis, attribution, and share-alike decision | N/A unless linked media is later used | `[FILL]` | `[REQUIRED]` |
 | València OpenData | Public municipal dataset | Station/location/public infrastructure facts | **UNVERIFIED** — record exact dataset page, publisher, version, license, attribution, update date, and commercial-use permission | N/A unless dataset includes media | `[FILL]` | `[REQUIRED]` |
@@ -67,11 +65,12 @@ Acceptable owner decisions are: `APPROVED WITH CONDITIONS`, `WRITTEN PERMISSION`
 - Feníe's request-method exclusion was lifted on 2026-10-06 by the owner's narrow read-only
   marker-list POST exception; the owner-attested redistribution grant is the active rights
   basis and the revocation gate (remove it and restore the exclusion to turn Feníe off).
-  Submission text must reflect the exact bundled and served data, not the old link-only state.
-- Plan 011 historically removed Electromaps, Chargemap and Consum evidence. The current
-  source policy enables anonymous Electromaps and Chargemap directory snapshots by owner
-  decision dated 2026-10-12. This does not establish a third-party licence or Apple 5.2.2
-  permission. Consum locator evidence remains excluded, including nested claims and media.
+  Public-facing submission text (review notes, release runbook, goal status) still describes
+  Feníe as link-only until a Feníe-bearing data promotion is actually made.
+- Electromaps and Consum remediation is implemented as link-only, and Chargemap is removed.
+  Their adapters, runtime promotion, cached/assembled responses, generated records, nested
+  claims/media/connectors, and public source metadata are policy-partitioned. The canonical
+  Plan 011 database has zero retained evidence from all three families.
 - If factual-data reuse is uncertain, prefer a user-verifiable **link-only lead** with no
   copied protected text/media, or remove the source until permission is documented.
 - If photo rights are uncertain, omit the photo even if the station facts remain usable.

@@ -73,7 +73,7 @@ interface SearchOrigin {
 }
 
 const HONESTY =
-  'Volta combines public registry, municipal, operator and community-directory data for chargers in Spain. Electromaps and Chargemap listings are directory leads, not verified tariffs or live availability. Cached records are not live status. Only fresh, verified responses from the live-data sources can show current availability. Public pages only: no logins, session starts or payment actions. Charging price and parking cost are separate. Check the source, operator app and onsite signs before driving.'
+  'Volta combines public registry, municipal, operator and community-directory data for chargers in Spain. Cached records are not live status. Only fresh, verified responses from the live-data sources can show current availability. Public pages only: no logins, session starts or payment actions. Charging price and parking cost are separate. Check the source, operator app and onsite signs before driving.'
 
 function boxAround(c: Coords, d = 0.16): Bbox {
   return { south: c.lat - d, north: c.lat + d, west: c.lon - d * 1.35, east: c.lon + d * 1.35 }
