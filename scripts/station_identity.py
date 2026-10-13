@@ -226,6 +226,76 @@ def _alias_origin(alias: dict) -> dict:
     return {k: v for k, v in alias.items() if k != 'contributions'}
 
 
+def _previous_references(baseline: dict) -> tuple[dict, dict]:
+    """Immutable origins survive canonical, alias and unavailable states."""
+    origins, aliases = {}, {}
+    for row in baseline.get('records') or []:
+        sid = row['id']
+        if sid in origins:
+            raise ValueError('duplicate previous reference')
+        origins[sid] = anchor(row)
+    for row in baseline.get('records') or []:
+        for alias in row.get('identity_aliases') or []:
+            if not isinstance(alias, dict) or not isinstance(alias.get('id'), str) or not alias['id']:
+                raise ValueError('malformed previous alias')
+            sid = alias['id']
+            if sid in origins:
+                raise ValueError('duplicate previous reference')
+            origins[sid] = _alias_origin(alias)
+            aliases[sid] = alias
+    for entry in (baseline.get('station_references') or {}).get('unavailable') or []:
+        if not isinstance(entry, dict) or not isinstance(entry.get('id'), str) or not entry['id']:
+            raise ValueError('malformed previous unavailable reference')
+        sid = entry['id']
+        if sid in origins:
+            raise ValueError('duplicate previous reference')
+        origin = entry.get('anchor')
+        if origin is not None and (not isinstance(origin, dict) or origin.get('id') != sid):
+            raise ValueError('unavailable anchor identity mismatch')
+        origins[sid] = origin
+        if origin and 'owner' in origin:
+            aliases[sid] = origin
+    return origins, aliases
+
+
+def _previous_primary_index(origins: dict) -> dict:
+    index = defaultdict(set)
+    for sid, origin in origins.items():
+        if origin and origin.get('primary_identifiers'):
+            for key in evidence_keys(origin['primary_identifiers']):
+                index[key].add(sid)
+    return index
+
+
+def _reactivation_error(origin: dict | None, target: dict, index: dict, previous_ownership: dict) -> str | None:
+    """An old app ID cannot bypass ownership checks by first going unavailable."""
+    try:
+        if origin is None:
+            return 'reactivation lacks previous reference anchor'
+        primary = evidence_keys(origin.get('primary_identifiers'))
+        if not primary <= evidence_keys(origin.get('source_identifiers')):
+            return 'reactivation primary is not bound to source evidence'
+        if origin.get('source') != target.get('source') or primary != primary_keys(target):
+            return 'reactivation primary identity changed'
+        if distance_m(origin, target) > 250:
+            return 'reactivation moved beyond 250m'
+        if not _unique(primary, index, target['id']):
+            return 'reactivation primary missing or split'
+        if not _unique(primary, previous_ownership, target['id']):
+            return 'reactivation previous primary is ambiguous'
+        return None
+    except (ValueError, TypeError, KeyError):
+        return 'malformed reactivation proof'
+
+
+def _include_unavailable_aliases(index: dict, baseline: dict, aliases: dict) -> None:
+    unavailable_ids = {e['id'] for e in (baseline.get('station_references') or {}).get('unavailable') or []}
+    for sid in unavailable_ids & aliases.keys():
+        alias = aliases[sid]
+        for key in evidence_keys(alias.get('source_identifiers')):
+            index[key].add((alias.get('owner') or {}).get('id'))
+
+
 def _alias_error(alias: dict, target: dict, index: dict, baseline_rows=None, previous_index=None, prior_aliases=None, payload=None) -> str | None:
     try:
         if not isinstance(alias.get("id"), str) or not alias["id"] or alias["id"] == target["id"]:
@@ -327,6 +397,11 @@ def validate_references(payload: dict, baseline: dict | None = None) -> Referenc
     seen = set(by_id)
     baseline_rows = {r["id"]: r for r in (baseline or {}).get("records", [])}
     previous_index = _index(list(baseline_rows.values()))
+    previous_origins, prior_aliases = _previous_references(baseline or {})
+    previous_ownership = _previous_primary_index(previous_origins)
+    # An unavailable alias retains its original source/owner proof. Current
+    # evidence still has to pass every ordinary alias check below.
+    _include_unavailable_aliases(previous_index, baseline or {}, prior_aliases)
     for sid, row in by_id.items():
         if sid in baseline_rows and distance_m(baseline_rows[sid], row) > 250:
             raise ValueError("station ID moved beyond 250m")
@@ -334,12 +409,10 @@ def validate_references(payload: dict, baseline: dict | None = None) -> Referenc
             error = _canonical_error(baseline_rows[sid], row, index, previous_index, payload)
             if error:
                 raise ValueError(error)
-    prior_aliases = {}
-    for r in baseline_rows.values():
-        for a in r.get("identity_aliases", []):
-            if not isinstance(a, dict) or a.get("id") in prior_aliases:
-                raise ValueError("malformed or duplicate previous alias")
-            prior_aliases[a.get("id")] = a
+        elif sid in previous_origins:
+            error = _reactivation_error(previous_origins[sid], row, index, previous_ownership)
+            if error:
+                raise ValueError(error)
     claims = defaultdict(set)
     for row in rows:
         for sid in row.get('merged_ids') or []:
@@ -370,10 +443,10 @@ def validate_references(payload: dict, baseline: dict | None = None) -> Referenc
             if not isinstance(sid, str) or not sid or sid in seen or "canonical_id" in entry:
                 raise ValueError("unavailable reference ownership conflict")
             if baseline is not None:
-                old = baseline_rows.get(sid)
-                inherited_entry = next((e for e in ((baseline.get("station_references") or {}).get("unavailable") or []) if e.get("id") == sid), None)
-                expected_anchor = anchor(old) if old else (inherited_entry or {}).get("anchor")
-                if entry["state"] == "withheld" and (expected_anchor is None or entry.get("anchor") != expected_anchor):
+                expected_anchor = previous_origins.get(sid)
+                if sid in previous_origins and entry.get('anchor') != expected_anchor:
+                    raise ValueError('unavailable reference not bound to previous anchor')
+                if entry["state"] == "withheld" and expected_anchor is None:
                     raise ValueError("withdrawal not bound to previous reference")
             if entry["state"] == "withheld":
                 try:
@@ -385,6 +458,8 @@ def validate_references(payload: dict, baseline: dict | None = None) -> Referenc
                 raise ValueError("missing unresolved reason")
             seen.add(sid)
             entries.append(deepcopy(entry))
+    if set(previous_origins) - set(baseline_rows) - seen:
+        raise ValueError('previous noncanonical reference disappeared')
     entries.sort(key=lambda e: e["id"])
     if len(entries) > MAX_REFERENCES:
         raise ValueError("reference catalogue exceeds bound")
@@ -405,20 +480,14 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     previous = baseline.get("records") or []
     rows = result.get("records") or []
     old_by_id = {r["id"]: r for r in previous}
+    previous_origins, inherited = _previous_references(baseline)
+    previous_ownership = _previous_primary_index(previous_origins)
     current_ids = {r["id"] for r in rows}
     if len(old_by_id) != len(previous) or len(current_ids) != len(rows):
         raise ValueError("duplicate station IDs cannot be reconciled")
     for row in rows:
         if row["id"] in old_by_id and distance_m(old_by_id[row["id"]], row) > 250:
             raise ValueError(f"station ID moved beyond 250m: {row['id']}")
-    inherited = {}
-    for row in previous:
-        for alias in row.get("identity_aliases") or []:
-            if not isinstance(alias, dict) or not isinstance(alias.get("id"), str):
-                raise ValueError("malformed canonical alias")
-            if alias["id"] in inherited:
-                raise ValueError("duplicate canonical alias owners")
-            inherited[alias["id"]] = alias
     failures = {}
     claims = defaultdict(set)
     for row in rows:
@@ -434,6 +503,7 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     result.pop("reference_errors", None)
     index = _index(rows)
     previous_index = _index(previous)
+    _include_unavailable_aliases(previous_index, baseline, inherited)
     # A source's primary identity may survive while its former corroboration splits
     # into separate pins. These pins remain separate and explicitly accounted for.
     primary_proposals = []
@@ -445,7 +515,7 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
         if len(matches) != 1:
             continue
         target = next(r for r in rows if r['id'] in matches)
-        if target['id'] in old_by_id:
+        if target['id'] in previous_origins:
             continue
         try:
             accounting = _primary_transition(old, target, index, previous_index, result)
@@ -516,6 +586,11 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     for sid, alias in inherited.items():
         if sid in failures:
             continue
+        if sid in by_id:
+            error = _reactivation_error(previous_origins[sid], by_id[sid], index, previous_ownership)
+            if error:
+                failures[sid] = error
+            continue
         alias = deepcopy(alias)
         try:
             alias['contributions'] = _contribution_accounting(evidence_keys(alias.get('source_identifiers')), index, result)
@@ -525,7 +600,7 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
         owner_id = (alias.get("owner") or {}).get("id")
         target = by_id.get(owner_id)
         error = _alias_error(alias, target, index, old_by_id, previous_index, inherited, result) if target else "independent owner absent"
-        if sid in by_id or claims[sid] - {owner_id}:
+        if claims[sid] - {owner_id}:
             error = "canonical/alias conflict or competing claims"
         if error:
             failures[sid] = error
@@ -554,14 +629,14 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     for sid in sorted((missing_ids | set(inherited) | set(failures)) - aliases):
         if sid in by_id:
             continue  # conflicts still block via report; never emit duplicate catalogue keys
-        old = old_by_id.get(sid) or next((e.get("anchor") for e in prior_unavailable if e["id"] == sid), None)
+        old = previous_origins.get(sid)
         withdrawn = withdrawal_for(old, result) if old else None
         if withdrawn:
             unavailable.append(withdrawn)
             failures.pop(sid, None)
         else:
             unavailable.append({"id": sid, "state": "unresolved", "reason": failures.get(sid, "reference not revalidated"),
-                                **({"anchor": anchor(old) if "source_identifiers" not in old else old} if old else {})})
+                                **({"anchor": old} if old else {})})
     entries = [{"id": a["id"], "state": "alias", "canonical_id": r["id"]}
                for r in rows for a in r.get("identity_aliases", [])] + unavailable
     entries.sort(key=lambda e: e["id"])
@@ -569,6 +644,10 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     result["recordset_sha256"] = recordset_sha256(rows)
     for sid in set(old_by_id) & set(by_id):
         error = _canonical_error(old_by_id[sid], by_id[sid], index, previous_index, result)
+        if error:
+            failures[sid] = error
+    for sid in (set(previous_origins) - set(old_by_id)) & set(by_id):
+        error = _reactivation_error(previous_origins[sid], by_id[sid], index, previous_ownership)
         if error:
             failures[sid] = error
     canonical_errors = {sid: reason for sid, reason in failures.items() if sid in by_id}

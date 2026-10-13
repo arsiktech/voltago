@@ -43,7 +43,10 @@ Unidentified duplicate source keys still fail validation. Repeated map pages do 
 absorb a neighboring registry station through proximity alone.
 
 Both merge stages reject conflicting explicit charging operators, including conflicts
-through a third contribution. Charging-brand aliases are normalized; venue-owner
+through a third contribution. Each contribution keeps its own operator assertion:
+a row mentioning both Tesla and Ionity cannot bridge a Tesla-only row and an
+Ionity-only row. This pairwise check also applies to repeated page markers and
+already-merged input evidence. Charging-brand aliases are normalized; venue-owner
 fields are not charging-operator evidence. Current OCM coordinate checks exclude
 conflicting historical postcodes without restoring historical facts.
 
@@ -58,6 +61,19 @@ states:
 
 A withheld reference does not assert that a physical charger closed. Neither
 unavailable state is a pin, price claim, navigation target, or community-write target.
+
+Unavailable references retain their original identity anchors, including a former
+alias's independent owner. A reference cannot disappear from the next catalogue,
+change its unavailable anchor, or return as an unrelated canonical row. Returning
+canonical rows require the same source and primary identifiers, unique historical
+and current ownership, and coordinates within 250 metres of the retained anchor.
+A former alias may return only with fresh source and original-owner evidence, or
+as its own canonical station under those same primary-identity checks. An
+unavailable reference without a retained anchor cannot reactivate automatically.
+An unavailable former canonical reference is not automatically converted to a new
+alias; it must first re-establish its own canonical identity. These checks run in
+both reconciliation and independent gate validation, even if the incoming payload
+omits its reference catalogue.
 
 ## Wire version 1
 

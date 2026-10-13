@@ -3918,7 +3918,8 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         if rep:
             page_groups[(rep['map_id'], rep['page'])].append(row)
     copies = [items for items in page_groups.values() if len(items) > 1
-              and all(_dist_km(a, b) <= .25 for a in items for b in items)]
+              and all(_dist_km(a, b) <= .25 and not operator_conflict(a, b)
+                      for a in items for b in items)]
     copy_ids = {id(row) for items in copies for row in items}
     partitions = []
     for items in groups.values():
@@ -4084,9 +4085,23 @@ def charging_operators(row: Dict[str, Any]) -> set:
     return operators
 
 
+def charging_operator_evidence(row: Dict[str, Any]) -> set[frozenset]:
+    """Retain each origin's operator assertion instead of unioning away conflicts."""
+    own = charging_operators({k: v for k, v in row.items() if k != 'reference_inputs'})
+    groups = {frozenset(own)} if own else set()
+    for evidence in row.get('reference_inputs') or []:
+        if evidence.get('operators'):
+            groups.add(frozenset(evidence['operators']))
+    return groups
+
+
+def operator_evidence_conflict(groups: set[frozenset]) -> bool:
+    groups = list(groups)
+    return any(left.isdisjoint(right) for i, left in enumerate(groups) for right in groups[i+1:])
+
+
 def operator_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
-    left, right = charging_operators(a), charging_operators(b)
-    return bool(left and right and left.isdisjoint(right))
+    return operator_evidence_conflict(charging_operator_evidence(a) | charging_operator_evidence(b))
 
 
 def repeated_page(row: Dict[str, Any]) -> bool:
@@ -4357,14 +4372,14 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
     # Same-family rows never merge, including through a third row: one registry listing two
     # nearby sites (for example two operators in one car park) keeps two pins.
     families = [{record_source_family(r)} | {record_source_family(e) for e in r.get('reference_inputs') or []} for r in records]
-    operators = [charging_operators(r) for r in records]
+    operators = [charging_operator_evidence(r) for r in records]
     repeated_pages = [repeated_page(r) for r in records]
 
     def union(x: int, y: int) -> None:
         rx, ry = find(x), find(y)
         if rx == ry or families[rx] & families[ry]:
             return
-        if operators[rx] and operators[ry] and operators[rx].isdisjoint(operators[ry]):
+        if operator_evidence_conflict(operators[rx] | operators[ry]):
             return
         parent[ry] = rx
         families[rx] |= families[ry]
@@ -4384,7 +4399,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
                 b = records[j]
                 if record_source_family(a) == record_source_family(b):
                     continue
-                if (operators[i] and operators[j] and operators[i].isdisjoint(operators[j])) or repeated_pages[i] or repeated_pages[j]:
+                if operator_evidence_conflict(operators[i] | operators[j]) or repeated_pages[i] or repeated_pages[j]:
                     continue
                 distance = _dist_km(a, b)
                 corroboration_pair = bool(
