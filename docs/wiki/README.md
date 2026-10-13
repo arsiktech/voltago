@@ -38,6 +38,8 @@ deployment details in [DEPLOY.md](../../DEPLOY.md) and frontend details in
 
 - [server.py](../../server.py) - Python stdlib HTTP server, JSON API, live source
   adapters, source-honesty enrichment, and static SPA serving.
+- [agent_mcp.py](../../agent_mcp.py) - read-only MCP endpoint (`POST /mcp`) for AI
+  agents; usage in [MCP server](../mcp.md).
 - [frontend/src/main.tsx](../../frontend/src/main.tsx) - React root and TanStack
   Query provider.
 - [frontend/src/App.tsx](../../frontend/src/App.tsx) - SPA orchestrator for map,

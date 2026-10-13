@@ -50,6 +50,7 @@ from station_truth import (
     source_candidates,
 )
 
+import agent_mcp
 import community as community_store
 
 ROOT = Path(__file__).resolve().parent
@@ -273,6 +274,12 @@ LIVE_FETCH_SEMAPHORE_ACQUIRE_TIMEOUT_SECONDS = 2.0
 # limiter above; narrowing CORS is defense-in-depth, not the fix) but is now env-gated
 # so an owner who DOES want to lock it to a single origin can, without a code change.
 CORS_ORIGIN = os.environ.get("VOLTA_CORS_ORIGIN", "*")
+# Extra browser origins allowed to call POST /mcp besides HTTPS and loopback origins
+# (comma-separated, exact match). Server-side MCP clients send no Origin at all.
+MCP_ALLOWED_ORIGINS = tuple(
+    origin.strip() for origin in os.environ.get("VOLTA_MCP_ALLOWED_ORIGINS", "").split(",") if origin.strip()
+)
+MCP_RATE_LIMIT_RPM = max(1, int(os.environ.get("VOLTA_MCP_RATE_LIMIT_RPM", "30")))
 # Content-Security-Policy is OFF by default: it can break MapLibre's worker/tile
 # loading and this build cannot verify that in a browser in every environment. Empty
 # = no CSP header at all. The owner sets the full directive string at deploy time
@@ -5072,6 +5079,9 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/":
             path = "/index.html"
+        if path == agent_mcp.MCP_PATH:
+            self._send_mcp_method_not_allowed(head=True)
+            return
         if path.startswith("/api/"):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5134,6 +5144,9 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+        if path == agent_mcp.MCP_PATH:
+            # MCP is POST-only: no standalone SSE stream, so GET is 405 (never the SPA).
+            return self._send_mcp_method_not_allowed()
         if path == "/api/chargers":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
@@ -5240,10 +5253,68 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Volta-Community, X-Volta-Admin")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, Accept, X-Volta-Community, X-Volta-Admin, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
+        )
         self.send_header("Access-Control-Max-Age", "600")
         self.end_headers()
         self._headers_sent = True
+
+    def do_DELETE(self) -> None:
+        # Legacy Streamable HTTP clients DELETE their session on exit; this server
+        # mints no sessions, so the specification's answer is 405.
+        if urllib.parse.urlparse(self.path).path == agent_mcp.MCP_PATH:
+            return self._send_mcp_method_not_allowed()
+        self.send_json(404, {"error": "not_found"})
+
+    def _send_mcp_method_not_allowed(self, head: bool = False) -> None:
+        body = json.dumps(
+            {"error": "method_not_allowed", "warning": "The MCP endpoint accepts JSON-RPC over POST only."},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        self.send_response(405)
+        self.send_header("Allow", "POST, OPTIONS")
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self._headers_sent = True
+        if not head:
+            try:
+                self.wfile.write(body)
+            except BrokenPipeError:
+                return
+
+    def _route_mcp_post(self) -> None:
+        try:
+            body = self._read_body(agent_mcp.MAX_BODY_BYTES)
+        except community_store.CommunityError as exc:
+            return self.send_json(exc.status, {"jsonrpc": "2.0", "id": None, "error": {"code": agent_mcp.INVALID_REQUEST, "message": exc.message}})
+        client_key = self._rate_limit_key()
+
+        def rate_limit() -> Tuple[bool, float]:
+            # Only tool calls reach live sources; discovery and listing stay unthrottled.
+            if client_key is None:
+                return True, 0.0
+            return _check_rate_limit(f"mcp:{client_key}", MCP_RATE_LIMIT_RPM)
+
+        status, payload = agent_mcp.handle_http_post(
+            body,
+            {name: value for name, value in self.headers.items()},
+            backend=sys.modules[__name__],
+            rate_limit=rate_limit,
+            allowed_origins=MCP_ALLOWED_ORIGINS,
+        )
+        if payload is None:
+            self.send_response(status)
+            self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            self._headers_sent = True
+            return
+        return self.send_json(status, payload)
 
     def do_POST(self) -> None:
         try:
@@ -5291,6 +5362,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+        if path == agent_mcp.MCP_PATH:
+            return self._route_mcp_post()
         if not path.startswith("/api/community/"):
             return self.send_json(404, {"error": "not_found"})
         if not COMMUNITY_WRITES_ENABLED:

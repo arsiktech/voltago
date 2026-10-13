@@ -9,6 +9,7 @@ from __future__ import annotations
 
 RUNTIME_FILES = (
     "server.py",
+    "agent_mcp.py",
     "community.py",
     "station_truth.py",
     "scripts/source_policy.py",
