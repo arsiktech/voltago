@@ -31,7 +31,7 @@ class IngestionCanaryTests(unittest.TestCase):
                 "records": 390,
                 "raw_records": 396,
                 "errors": 0,
-                "sources": [["Electromaps web-map API", 233]],
+                "sources": [["Consum store locator", 233]],
             },
             "delta": {
                 "missing_ids": 0,
@@ -46,7 +46,7 @@ class IngestionCanaryTests(unittest.TestCase):
 
         self.assertTrue(summary["ok"])
         self.assertEqual(summary["records"], 390)
-        self.assertEqual(summary["sources"], [["Electromaps web-map API", 233]])
+        self.assertEqual(summary["sources"], [["Consum store locator", 233]])
         self.assertEqual(summary["missing_ids"], 0)
 
     def test_append_history_writes_jsonl(self):
@@ -128,8 +128,8 @@ class IngestionCanaryTests(unittest.TestCase):
             path = pathlib.Path(tmp) / "db.json"
             path.write_text(json.dumps({"records": [
                 {
-                    "source": "Electromaps web-map API",
-                    "sources": [{"name": "Electromaps web-map API"}],
+                    "source": "Consum store locator",
+                    "sources": [{"name": "Consum store locator"}],
                 },
                 {
                     "source": "OpenChargeMap public snapshot",
@@ -150,14 +150,14 @@ class IngestionCanaryTests(unittest.TestCase):
     def test_source_family_threshold_ignores_explicit_policy_exclusions(self):
         failures, checked = qa_ingestion_canary.source_family_threshold_failures(
             [["OpenChargeMap public snapshot", 100]],
-            [["Electromaps web-map API", 189], ["OpenChargeMap public snapshot", 100]],
+            [["Consum store locator", 189], ["OpenChargeMap public snapshot", 100]],
             min_ratio=0.85,
             min_count=5,
             label="baseline",
         )
 
         self.assertEqual(failures, [])
-        self.assertNotIn("Electromaps web-map API", checked)
+        self.assertNotIn("Consum store locator", checked)
         self.assertIn("OpenChargeMap public snapshot", checked)
 
     def test_existing_candidate_skips_rebuild_and_audits_exact_path(self):
@@ -255,7 +255,7 @@ class IngestionCanaryTests(unittest.TestCase):
                 json.dumps({
                     "ok": True,
                     "source_family_metric": "record-evidence-v2",
-                    "policy_exclusions": {"ids": ["electromaps-reuse-rights"]},
+                    "policy_exclusions": {"ids": ["consum-locator-reuse-permission"]},
                     "source_evidence": [["OpenChargeMap public snapshot", 13]],
                 }),
             ]) + "\n", encoding="utf-8")
@@ -265,7 +265,7 @@ class IngestionCanaryTests(unittest.TestCase):
                     path,
                     field="source_evidence",
                     metric="record-evidence-v2",
-                    policy_ids=["electromaps-reuse-rights"],
+                    policy_ids=["consum-locator-reuse-permission"],
                 ),
                 [["OpenChargeMap public snapshot", 13]],
             )

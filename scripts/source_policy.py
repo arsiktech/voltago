@@ -77,6 +77,12 @@ def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
     """Return provenance fields only, never station/operator/instruction text."""
     families: List[Any] = [record.get("source"), record.get("source_type")]
     urls: List[Any] = [record.get("source_url")]
+    # Display sources may be truncated after merging; provenance summary fields
+    # must still block a prohibited contributor even when another source is primary.
+    families.extend(record.get("merged_source_families") or [])
+    for key in record.get("merged_source_identifiers") or []:
+        if isinstance(key, (list, tuple)) and key:
+            families.append(key[0])
     primary = record.get("primary_source")
     if isinstance(primary, dict):
         families.extend(primary.get(key) for key in ("name", "source_type"))
@@ -152,6 +158,13 @@ def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
                 continue
             if parsed.hostname and (parsed.path not in ("", "/") or parsed.query or parsed.fragment):
                 urls.append(value)
+    # Future/full contribution containers carry source rows, not station prose.
+    for key in ("reference_inputs", "source_contributions"):
+        for contributor in record.get(key) or []:
+            if isinstance(contributor, dict):
+                nested = _record_origin_values(contributor)
+                families.extend(nested["families"])
+                urls.extend(nested["urls"])
     return {
         "families": [value for value in families if value not in (None, "")],
         "urls": [value for value in urls if value not in (None, "")],

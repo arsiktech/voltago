@@ -265,6 +265,8 @@ class MergedRecordProvenanceTests(unittest.TestCase):
             reliability="community-free",
             source_artifact=fetch_artifact_at(stale_at),
         )
+        # Two snapshots of the same station need explicit identity, not proximity alone.
+        records[1]["id"] = records[0]["id"]
         records[1]["sources"][0]["source_fetched_at"] = stale_at
 
         merged = ing.dedupe(records)

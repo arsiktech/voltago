@@ -128,12 +128,17 @@ Public technical access is not a redistribution license. The owner must complete
 photos, before selecting a paid model or submitting. A rights gap is a release blocker,
 not merely a review-notes issue.
 
-Feníe is attribution/link-only in the submitted architecture. Its public station listing
-requires a POST-backed web session, so the executable adapter and all direct or nested
-Feníe-origin station evidence are excluded even though the owner previously attested to a
-written redistribution permission. Rights permission and collection-method permission are
-separate gates: Feníe data may return only after a compliant public GET surface and the retained
-rights evidence are both reviewed. No Feníe media is copied.
+Electromaps, Chargemap and Consum locator evidence remain excluded by structured source
+policy. PlugShare collection and cached evidence are disabled because the experimental
+adapter depended on an unreviewed provider credential. No extracted credentials or
+non-permitted source contributions may enter a release.
+
+Feníe's snapshot adapter is enabled under the narrow read-only marker-list POST exception
+approved on 2026-10-06 and the recorded owner-attested written redistribution permission
+of 2026-07-18. The written permission is retained off-repo and is not independently verified
+here. Rights permission and collection-method permission remain separate gates. Feníe's
+cached status is never live authority, and no Feníe media is copied. These engineering
+changes do not authorize App Store submission.
 
 ## Agreements, tax, banking, pricing, and territories
 

@@ -1,0 +1,98 @@
+{
+ "id": 226433,
+ "name": "X-Madrid",
+ "address": "28922 Alcorcón, Madrid, España",
+ "latitude": 40.340321,
+ "longitude": -3.848667,
+ "connector_types": [
+  "Type 2"
+ ],
+ "cost": false,
+ "cost_description": "",
+ "station_count": 8,
+ "under_repair": false,
+ "coming_soon": false,
+ "enabled": true,
+ "payment_enabled": null,
+ "url": "https://www.plugshare.com/location/226433",
+ "score": 7.0,
+ "is_fast_charger": false,
+ "access": 1,
+ "open247": false,
+ "hours": "10-22",
+ "updated_at": "2024-12-22T07:57:44Z",
+ "valid_outlets": [
+  {
+   "connector": 20,
+   "power": 0
+  },
+  {
+   "connector": 13,
+   "power": 0
+  },
+  {
+   "connector": 3,
+   "power": 0
+  },
+  {
+   "connector": 2,
+   "power": 0
+  },
+  {
+   "connector": 4,
+   "power": 0
+  },
+  {
+   "connector": 7,
+   "power": 0
+  },
+  {
+   "connector": 8,
+   "power": 0
+  },
+  {
+   "connector": 14,
+   "power": 0
+  },
+  {
+   "connector": 15,
+   "power": 0
+  },
+  {
+   "connector": 10,
+   "power": 0
+  },
+  {
+   "connector": 24,
+   "power": 0
+  }
+ ],
+ "stations": [
+  {
+   "id": 494913,
+   "outlets": [
+    {
+     "id": 1217887,
+     "connector": 7,
+     "connector_name": "Type 2",
+     "kilowatts": null,
+     "is_dc": false,
+     "power_type": "AC"
+    }
+   ]
+  },
+  {
+   "id": 494914,
+   "outlets": [
+    {
+     "id": 1217888,
+     "connector": 7,
+     "connector_name": "Type 2",
+     "kilowatts": null,
+     "is_dc": false,
+     "power_type": "AC"
+    }
+   ]
+  }
+ ]
+}

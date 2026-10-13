@@ -299,7 +299,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         # The three rights-blocked families must stay excluded, unchanged and enforced.
         self.assertEqual(
             exclusion_ids,
-            {"electromaps-reuse-rights", "chargemap-reuse-and-robots", "consum-locator-reuse-permission"},
+            {"electromaps-reuse-rights", "chargemap-reuse-and-robots", "consum-locator-reuse-permission", "plugshare-unreviewed-credential"},
         )
         for blocked_row in (
             {"id": "em", "source": "Electromaps web-map API", "source_url": "https://www.electromaps.com/es/punto-de-carga/1"},

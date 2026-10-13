@@ -208,7 +208,7 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
             payload, identity_report = preserve_record_ids(
                 json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
             receipt["identity_reconciliation"] = identity_report
-            if identity_report["preserved_ids"]:
+            if identity_report["preserved_ids"] or identity_report.get("historical_aliases_added", 0):
                 shared.atomic_json(candidate, payload)
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha

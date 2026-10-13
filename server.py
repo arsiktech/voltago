@@ -868,7 +868,7 @@ def tesla_compatibility(item: Dict[str, Any]) -> Optional[bool]:
     labels += [str(c.get("label")) for c in item.get("connectors") or [] if isinstance(c, dict) and c.get("label")]
     if any(c.get("tesla_ok") for c in item.get("connectors") or [] if isinstance(c, dict)) or any(x in TESLA_OK_LABELS for x in labels):
         return True
-    known = [x for x in labels if x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "other"}]
+    known = [x for x in labels if x.strip() and "unspecified" not in x.lower() and x.strip().lower() not in {"unknown", "unknown connector", "connector", "other", "n/a", "none"}]
     return False if known else None
 
 
@@ -3201,6 +3201,20 @@ def load_seed_leads() -> List[Dict[str, Any]]:
 # Parsed intel DB cached by file mtime — at national scale we must NOT re-read/re-parse the
 # (large) JSON on every request. Normalize lazily and only for in-viewport records.
 _INTEL_RAW: Dict[str, Any] = {"mtime": None, "data": None}
+# CPU/file builds are single-flight, separately from short cache-state locks.
+# Lock order: enriched build -> raw build -> intel metadata. Never acquire a
+# build lock while holding metadata; no network work runs under these locks.
+_INTEL_RAW_BUILD_LOCK = threading.Lock()
+_INTEL_ENRICHED_BUILD_LOCK = threading.Lock()
+
+
+def _intel_file_identity(path: Path) -> Any:
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (str(path), stat.st_dev, stat.st_ino, stat.st_size,
+            stat.st_mtime_ns, stat.st_ctime_ns)
 
 
 def intelligence_path() -> Path:
@@ -3227,27 +3241,35 @@ def _interning_object_hook() -> Any:
     return hook
 
 
+def _load_intelligence_meta_snapshot(p: Path) -> Tuple[Any, Dict[str, Any]]:
+    """Bind the policy-clean rows and their hash to the same immutable file read."""
+    with _INTEL_RAW_BUILD_LOCK:
+        while True:
+            identity = _intel_file_identity(p)
+            if identity is None:
+                return None, {"generated_at": None, "total_records": 0, "records": [], "errors": ["Run scripts/ingest_sources.py to build intelligence DB"]}
+            with _CACHE_LOCKS["intel"]:
+                if _INTEL_RAW.get("mtime") == identity and _INTEL_RAW.get("data") is not None:
+                    return identity, _INTEL_RAW["data"]
+            with p.open("r", encoding="utf-8") as f:
+                payload = json.load(f, object_pairs_hook=_interning_object_hook())
+            allowed, excluded = partition_records(payload.get("records") or [], SOURCE_POLICY_EXCLUSIONS)
+            payload["records"] = allowed
+            payload["total_records"] = len(allowed)
+            # Never trust a stored digest: hash the actual policy-clean canonical rows.
+            payload["recordset_sha256"] = recordset_sha256(allowed)
+            payload["recordset_records"] = len(allowed)
+            payload["source_policy_excluded_records"] = len(excluded)
+            if _intel_file_identity(p) != identity:
+                continue
+            with _CACHE_LOCKS["intel"]:
+                _INTEL_RAW.update(mtime=identity, data=payload)
+            return identity, payload
+
+
 def load_intelligence_meta() -> Dict[str, Any]:
-    """Raw intel dict (records NOT normalized) — for summary counts. mtime-cached."""
-    p = intelligence_path()
-    if not p.exists():
-        return {"generated_at": None, "total_records": 0, "records": [], "errors": ["Run scripts/ingest_sources.py to build intelligence DB"]}
-    mtime = (str(p), p.stat().st_mtime_ns)
-    if _INTEL_RAW.get("mtime") != mtime:
-        with p.open("r", encoding="utf-8") as f:
-            payload = json.load(f, object_pairs_hook=_interning_object_hook())
-        allowed, excluded = partition_records(payload.get("records") or [], SOURCE_POLICY_EXCLUSIONS)
-        payload["records"] = allowed
-        payload["total_records"] = len(allowed)
-        # Expose the fingerprint of the raw policy-clean canonical rows. /api/intel
-        # replaces records with enriched/time-derived UI rows, so hashing the response
-        # body itself would never match the deployment artifact even on this checkout.
-        payload["recordset_sha256"] = recordset_sha256(allowed)
-        payload["recordset_records"] = len(allowed)
-        payload["source_policy_excluded_records"] = len(excluded)
-        _INTEL_RAW["data"] = payload
-        _INTEL_RAW["mtime"] = mtime
-    return _INTEL_RAW["data"] or {"records": []}
+    """Raw, policy-clean intel metadata; single-flight per file identity."""
+    return _load_intelligence_meta_snapshot(intelligence_path())[1]
 
 
 Coords = List[Tuple[Optional[float], Optional[float]]]
@@ -3285,47 +3307,43 @@ def _intel_enriched_pool() -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str,
     seeds mtime). Returns (intel_records, intel_coords, seed_records, seed_coords) -- a
     consistent snapshot taken under the lock. Never mutate the returned lists/dicts in
     place; slice + deepcopy (see load_intelligence/load_all_leads/load_seed_leads)."""
-    db_path = intelligence_path()
-    seeds_path = DATA / "seed_leads.json"
-    key = (
-        (str(db_path), db_path.stat().st_mtime_ns) if db_path.exists() else None,
-        seeds_path.stat().st_mtime if seeds_path.exists() else None,
-    )
-    with _CACHE_LOCKS["intel"]:
-        if _INTEL_ENRICHED.get("key") == key and _INTEL_ENRICHED.get("intel") is not None:
-            return (
-                _INTEL_ENRICHED["intel"], _INTEL_ENRICHED["intel_coords"],
-                _INTEL_ENRICHED["seeds"], _INTEL_ENRICHED["seeds_coords"],
-            )
-
-    # Enrichment is CPU-only and idempotent for a given key -- build outside the lock
-    # (the same fetch-outside-lock pattern the network caches use: only the dict
-    # read-decide and the publish/write happen under lock, never the expensive part).
-    raw = load_intelligence_meta()
-    intel_records = [
-        normalized for r in raw.get("records", [])
-        for normalized in [_normalize_lead(deepcopy(r), "free/cheap intelligence DB")]
-        if not reject_station_reason(normalized)
-    ]
-    seed_records: List[Dict[str, Any]] = []
-    if seeds_path.exists():
-        with seeds_path.open("r", encoding="utf-8") as f:
-            raw_seeds = json.load(f)
-        seed_records = [
-            normalized for lead in raw_seeds
-            for normalized in [_normalize_lead(lead, "manual research lead")]
-            if source_policy_record_allowed(lead)
-            if not reject_station_reason(normalized)
-        ]
-    intel_coords = _coords_for(intel_records)
-    seed_coords = _coords_for(seed_records)
-    with _CACHE_LOCKS["intel"]:
-        _INTEL_ENRICHED["key"] = key
-        _INTEL_ENRICHED["intel"] = intel_records
-        _INTEL_ENRICHED["intel_coords"] = intel_coords
-        _INTEL_ENRICHED["seeds"] = seed_records
-        _INTEL_ENRICHED["seeds_coords"] = seed_coords
-    return intel_records, intel_coords, seed_records, seed_coords
+    with _INTEL_ENRICHED_BUILD_LOCK:
+        while True:
+            db_path = intelligence_path()
+            seeds_path = DATA / "seed_leads.json"
+            key = (_intel_file_identity(db_path), _intel_file_identity(seeds_path))
+            with _CACHE_LOCKS["intel"]:
+                if _INTEL_ENRICHED.get("key") == key and _INTEL_ENRICHED.get("intel") is not None:
+                    return (
+                        _INTEL_ENRICHED["intel"], _INTEL_ENRICHED["intel_coords"],
+                        _INTEL_ENRICHED["seeds"], _INTEL_ENRICHED["seeds_coords"],
+                    )
+            raw_identity, raw = _load_intelligence_meta_snapshot(db_path)
+            if raw_identity != key[0]:
+                continue
+            intel_records = [
+                normalized for r in raw.get("records", [])
+                for normalized in [_normalize_lead(deepcopy(r), "free/cheap intelligence DB")]
+                if not reject_station_reason(normalized)
+            ]
+            seed_records: List[Dict[str, Any]] = []
+            if seeds_path.exists():
+                with seeds_path.open("r", encoding="utf-8") as f:
+                    raw_seeds = json.load(f)
+                seed_records = [
+                    normalized for lead in raw_seeds
+                    for normalized in [_normalize_lead(lead, "manual research lead")]
+                    if source_policy_record_allowed(lead)
+                    if not reject_station_reason(normalized)
+                ]
+            intel_coords = _coords_for(intel_records)
+            seed_coords = _coords_for(seed_records)
+            if key != (_intel_file_identity(intelligence_path()), _intel_file_identity(seeds_path)):
+                continue
+            with _CACHE_LOCKS["intel"]:
+                _INTEL_ENRICHED.update(key=key, intel=intel_records, intel_coords=intel_coords,
+                                       seeds=seed_records, seeds_coords=seed_coords)
+            return intel_records, intel_coords, seed_records, seed_coords
 
 
 def _refresh_time_derived_fields(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -3364,10 +3382,14 @@ def load_intelligence(bbox: Optional[Dict[str, float]] = None) -> Dict[str, Any]
     return data
 
 
-def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+def load_all_leads(bbox: Optional[Dict[str, float]] = None, *, _overview_copy: bool = False) -> List[Dict[str, Any]]:
     intel_records, intel_coords, seed_records, seed_coords = _intel_enriched_pool()
-    intel = deepcopy(_filter_by_coords(intel_records, intel_coords, bbox))
-    manual = deepcopy(_filter_by_coords(seed_records, seed_coords, bbox))
+    # Overview only replaces top-level fields (community, age, score and
+    # corroboration). Keep nested evidence read-only until the final selection is
+    # projected and deep-copied. Other callers still receive fully private rows.
+    copy_rows = (lambda rows: [dict(row) for row in rows]) if _overview_copy else deepcopy
+    intel = copy_rows(_filter_by_coords(intel_records, intel_coords, bbox))
+    manual = copy_rows(_filter_by_coords(seed_records, seed_coords, bbox))
     seen = set()
     out: List[Dict[str, Any]] = []
     for lead in intel + manual:
@@ -3727,7 +3749,7 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
     free_only = (params.get("free_only") or ["false"])[0].lower() == "true"
     price_cap = 0.0 if free_only else max_price
     out: List[Dict[str, Any]] = []
-    for lead in load_all_leads(bbox):
+    for lead in load_all_leads(bbox, _overview_copy=compact):
         price = safe_float(lead.get("price_min"))
         if price is None and lead.get("is_free") is True:
             price = 0.0
@@ -3746,9 +3768,13 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         # this per-request corroboration boost is attached, so re-score explicitly
         # before compacting/sorting (compact_station_for_ui copies fields as-is).
         lead["recommendation_score"] = recommendation_score(lead)
-        out.append(compact_station_for_ui(lead) if compact else lead)
+        out.append(lead)
     out.sort(key=lambda s: -(s.get("recommendation_score") or 0))
     out = out[:2500]
+    if compact:
+        # Project only after all filtering/corroboration/ranking, then detach every
+        # nested field before returning a public payload. No cached row escapes.
+        out = deepcopy([compact_station_for_ui(lead) for lead in out])
     coverage = live_coverage_profile([], out)
     coverage["mode"] = "overview"
     coverage["warning"] = None  # intentionally leads-only; not a live-coverage problem

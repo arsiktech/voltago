@@ -500,8 +500,9 @@ class AssembledPayloadReuseTests(unittest.TestCase):
             mapareve_payload = {"stations": [self._station()], "raw_count": 1, "fetched_at": server.now_iso()}
             em_lead = {
                 "id": "em-lead-1", "name": "Electromaps lead", "lat": 39.47, "lon": -0.37,
-                "reliability": "community-free", "status": "VERIFY", "source": "Electromaps web-map API",
-                "sources": [{"name": "Electromaps web-map API", "url": "https://electromaps.example/p/123"}],
+                # Consum stays rights-excluded; Electromaps itself is permitted since 2026-10-12.
+                "reliability": "community-free", "status": "VERIFY", "source": "Consum store locator",
+                "sources": [{"name": "Consum store locator", "url": "https://www.consum.es/supermercados/p/123"}],
                 "raw": {"electromaps_id": "123"}, "last_seen": server.now_iso(),
             }
 

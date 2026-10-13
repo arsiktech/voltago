@@ -216,3 +216,14 @@ def policy_urlopen(
         raise _blocked("POST exception timeout must be positive and bounded")
     _charge_budget(exception_id)
     return _build_post_opener(cookiejar).open(request, timeout=timeout)
+
+# Dormant Place to Plug parser fixtures use this fixed query shape. These constants
+# do not grant a POST exception; acquisition remains blocked pending review.
+PLACETOPLUG_URL = "https://api.placetoplug.com/v2/graphql"
+PLACETOPLUG_OPERATION = "probe"
+PLACETOPLUG_QUERY = (
+    "query probe($query: FindChargingZone!) { findChargingZones(query: $query) "
+    "{ totalCount hasNextPage chargingZones { id name coordinates address { street city country } "
+    "powerRange { min max } status } } }"
+)
+PLACETOPLUG_MAX_LIMIT = 50
