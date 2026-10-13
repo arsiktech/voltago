@@ -311,6 +311,10 @@ class OpenChargeMapExportTests(unittest.TestCase):
                 "IsOpenDataLicensed": True, "License": "CC BY 4.0",
             }],
             "ConnectionTypes": [{"ID": 32, "Title": "CCS (Type 1)"}],
+            "StatusTypes": [{"ID": 50, "Title": "Operational", "IsOperational": True}],
+            "UsageTypes": [{"ID": 1, "Title": "Public"}],
+            "Operators": [{"ID": 1, "Title": "Independent operator"}],
+            "SubmissionStatusTypes": [{"ID": 200, "Title": "Published", "IsLive": True}],
         }
         compact_poi = {
             "ID": 123, "DataProviderID": 1,
@@ -323,10 +327,10 @@ class OpenChargeMapExportTests(unittest.TestCase):
         # Place reference data after the POIs, as archive order must not decide
         # whether country, connector, and provider attribution can be resolved.
         members = [
-            ("ocm-export-master/data/US/OCM-123.json", compact_poi),
-            ("ocm-export-master/data/CA/OCM-124.json", canada),
-            ("ocm-export-master/data/referencedata.json", reference),
-            ("ocm-export-master/README.json", {"not": "a station"}),
+            ("ocm-export-8e3bedca48ca94807d96b2f5e7ee02cffe63ae54/data/US/OCM-123.json", compact_poi),
+            ("ocm-export-8e3bedca48ca94807d96b2f5e7ee02cffe63ae54/data/CA/OCM-124.json", canada),
+            ("ocm-export-8e3bedca48ca94807d96b2f5e7ee02cffe63ae54/data/referencedata.json", reference),
+            ("ocm-export-8e3bedca48ca94807d96b2f5e7ee02cffe63ae54/README.json", {"not": "a station"}),
         ]
         with tarfile.open(self.archive_path, "w:gz") as archive:
             for name, payload in members:
@@ -627,7 +631,7 @@ class CandidateBuildIntegrationTests(unittest.TestCase):
         self.assertEqual(self.candidate()["records"][0], self.original_row)
         self.assertEqual(report["coverage_status"], "partial")
 
-    def test_partial_ocm_stream_keeps_accepted_rows_and_reports_incomplete_source(self) -> None:
+    def test_partial_ocm_stream_rolls_back_accepted_rows_and_reports_failure(self) -> None:
         def pois():
             yield ocm_poi()
             raise ValueError("truncated archive")
@@ -637,9 +641,13 @@ class CandidateBuildIntegrationTests(unittest.TestCase):
              mock.patch.object(global_ingestion, "iter_ocm_export", side_effect=lambda *args, **kwargs: pois()):
             report = global_builder.build(self.args())
         manifest = report["source_manifests"][0]
-        self.assertEqual((manifest["status"], manifest["accepted"]), ("partial", 1))
+        self.assertEqual((manifest["status"], manifest["accepted"]), ("failed", 0))
+        self.assertEqual(manifest["rolled_back_records"], 1)
+        self.assertEqual(manifest["admission"], "rolled_back")
+        self.assertEqual(manifest["accepted_by_provider_id"], {})
         self.assertIn("truncated archive", manifest["errors"][0])
-        self.assertEqual(len(self.candidate()["records"]), 2)
+        self.assertEqual(self.candidate()["records"], [self.original_row])
+        self.assertEqual(report["stats"].get("added", 0), 0)
         self.assertTrue(report["baseline_preserved"])
 
     def test_manifest_collision_is_rejected_before_any_candidate_or_baseline_write(self) -> None:
@@ -707,9 +715,21 @@ class CandidateBuildIntegrationTests(unittest.TestCase):
 
     def ocm_archive(self, root: str) -> Path:
         path = self.directory / "fixture-export.tar.gz"
+        reference = {
+            "Countries": [{"ID": 2, "ISOCode": "US"}],
+            "DataProviders": [{"ID": 1, "Title": "Contributors", "IsOpenDataLicensed": True, "License": "CC BY 4.0"}],
+            "ConnectionTypes": [{"ID": 32, "Title": "CCS (Type 1)"}],
+            "StatusTypes": [{"ID": 50, "Title": "Operational", "IsOperational": True}],
+            "UsageTypes": [{"ID": 1, "Title": "Public"}],
+            "Operators": [{"ID": 1, "Title": "Independent operator"}],
+            "SubmissionStatusTypes": [{"ID": 200, "Title": "Published", "IsLive": True}],
+        }
+        poi = ocm_poi()
+        poi["DataProviderID"] = 1
+        poi["AddressInfo"]["CountryID"] = 2
         members = [
-            (f"{root}/data/referencedata.json", {}),
-            (f"{root}/data/US/OCM-1234.json", ocm_poi()),
+            (f"{root}/data/referencedata.json", reference),
+            (f"{root}/data/US/OCM-1234.json", poi),
         ]
         with tarfile.open(path, "w:gz") as archive:
             for name, payload in members:

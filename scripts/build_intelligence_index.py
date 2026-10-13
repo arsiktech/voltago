@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from scripts.intelligence_index import APPLICATION_ID, SCHEMA_VERSION, IntelligenceIndex, file_sha256, indexed_fields
 from scripts.json_recordset import load_json_recordset
+from scripts.global_source_catalog import ADAPTER_IDS
 from scripts.source_policy import load_source_policy_exclusions, partition_records
 
 
@@ -146,7 +147,7 @@ def build_index(source: str | Path, output: str | Path, *, policy_path: str | Pa
             connection.executemany("INSERT OR IGNORE INTO identifiers VALUES (?,?)",
                                    [(str(alias), count) for alias in aliases if alias])
             source_counts = summaries["global_source_counts"]
-            for adapter in ("ocm", "osm", "france_irve", "germany_bnetza", "hk_clp", "afdc"):
+            for adapter in ADAPTER_IDS:
                 if identifier.startswith(f"global_{adapter}_"):
                     source_counts["adapters"][adapter] = source_counts["adapters"].get(adapter, 0) + 1
                     break

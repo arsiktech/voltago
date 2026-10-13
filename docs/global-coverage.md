@@ -14,6 +14,11 @@ generated candidate's manifest and `/api/source-health` response.
 | Germany Bundesnetzagentur | Germany | Official download-page discovery, CSV preamble/schema handling | Implemented and fixture-tested; direct full feed not fetched in the current restricted environment |
 | Hong Kong CLP | CLP's published Hong Kong locations | Public JSON schema adapter | Implemented and fixture-tested; direct feed not fetched in the current restricted environment |
 | AFDC / NLR | United States and Canada | Documented official GET API, header-only key, no redirects, USD/CAD and connector normalization | Implemented and fixture-tested; `NLR_API_KEY` or `NREL_API_KEY` required; no credential configured for this check |
+| Etecnic / EVcharge, Zunder | Spain | Public operator feeds/pages, stable upstream IDs | Implemented and fixture-tested; direct collection blocked by this environment's outbound proxy; tariffs and live availability unknown |
+| Atlante | Spain, France, Italy, Portugal | Public location export, OCPI connector units, explicit countries | Implemented and fixture-tested; direct collection blocked here; unfinished sites excluded |
+| MOT / Reus and Tarragona | These municipalities in Spain | Public GIS and CSV, independent source provenance | Implemented and fixture-tested; direct collection blocked here; no proximity-only merge with Etecnic |
+| Interparking / P-APP, Telpark | Spain | Public parking pages; an explicit EV feature is required | Implemented and fixture-tested; direct collection blocked here; parking position/price do not establish exact charging bays or charging tariffs |
+| Elektrum Drive | Estonia, Latvia, Lithuania | Public location-page parser, published connector/power evidence | Implemented and fixture-tested; direct collection blocked here; a Baltic source, not Spanish coverage |
 | Existing Spain sources | Spain, source-specific regions | Valencia, Lidl, OSM, OCM, Endolla, Madrid, Zaragoza, DGT, Feníe, Moraleja, Canarias, MapaREVE Tenerife | Existing evidence preserved; source-specific prices and freshness still vary |
 | MapaREVE public map | Its Spain coverage envelope | Existing bounded read-only map query | Regional live evidence only; snapshot directory records cannot inherit its authority |
 | Gaia Charge | Configured Alboraia location and its connectors | Existing public station-page integration | A seed integration, not the whole Gaia network |
@@ -22,10 +27,24 @@ generated candidate's manifest and `/api/source-health` response.
 | EVRoam (New Zealand), NOBIL direct, additional operator OCPI feeds | Provider-specific | Research/connection candidates | Registration, credentials, agreement or a verified current contract still required |
 | Switzerland ich-tanke-so | Switzerland | Research candidate | Commercial reuse requires the relevant permission; do not treat a future OCPI feed as current |
 | Electromaps, Chargemap, Consum | Provider-specific | Excluded by existing source policy | Technical access does not establish reuse rights |
+| PlugShare | Provider-specific | No collector in the worldwide build | The old PR collector's embedded credential was removed and acquisition disabled; no credential-based fallback |
+| Repsol, Place to Plug | Spain in the reviewed adapters | Parsers retained in the source-expansion PR; collection dormant | Their additional POST requests are outside the current transport exceptions |
 
 Some national/operator data also arrives through OpenChargeMap. That is attributed
 OCM snapshot coverage, not proof that the direct provider API is connected. There
 is no claim that every station or every country is covered.
+
+The OCM importer validates archive structure, references and resource bounds before
+atomic source admission; see [OCM intake](ocm-global-intake.md). A failed source rolls
+back its staged additions and counters. Subsequent builds retain earlier source
+manifests when they collect a different source, preserving previous acquisition
+dates and distinguishing a failed attempt from existing retained records.
+
+The public operator adapters were adapted from PR #4 without its identity migration
+or excluded collectors. Their rows add to the existing world catalogue; they do not
+rename canonical IDs or transfer favorites and community history. Generic operator
+links gain coordinate eligibility only with the matching parsed source, artifact and
+identity; they never gain live or price authority.
 
 ## Build and serve a candidate
 
@@ -48,6 +67,18 @@ Use `--baseline` on the builder to preserve a different existing full dataset;
 use the same baseline for both gates. The committed sample is deliberately small.
 The environment override serves a local candidate without replacing canonical
 data. Production data, deployment and native distribution remain distinct actions.
+
+To collect the public operator and parking sources on a host that can reach their endpoints:
+
+```bash
+python3 scripts/build_global_intelligence.py --all-countries \
+  --sources etecnic,atlante,zunder,mot_reus,mot_tarragona,interparking,telpark,elektrum_drive \
+  --baseline data/global_intelligence.candidate.json \
+  --out data/operator_expansion.candidate.json
+```
+
+Run the delta/canary gates against that same baseline before considering activation.
+Do not replace a working dataset with a candidate whose requested sources failed.
 
 For eligible national sources on a network that permits their official endpoints:
 

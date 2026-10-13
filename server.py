@@ -43,6 +43,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import hmac
 
 from scripts.json_recordset import load_json_recordset
+from scripts.global_source_catalog import ADAPTERS as GLOBAL_ADAPTERS, ADAPTER_IDS as GLOBAL_ADAPTER_IDS
 from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_sha256
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
@@ -4903,7 +4904,7 @@ _SOURCE_INVENTORY: Dict[str, Any] = {}
 def intelligence_health_fingerprint() -> str:
     """Bind offline evidence aggregates to the code that classifies their rows."""
     digest = hashlib.sha256()
-    for name in ("server.py", "station_truth.py"):
+    for name in ("server.py", "station_truth.py", "scripts/global_source_catalog.py"):
         digest.update((ROOT / name).read_bytes())
     return digest.hexdigest()
 
@@ -5127,7 +5128,7 @@ def global_source_counts(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     gaia_pattern = re.compile(r"\bgaia\b", re.I)
     for row in records:
         identifier = str(row.get("id") or "")
-        for adapter in ("ocm", "osm", "france_irve", "germany_bnetza", "hk_clp", "afdc"):
+        for adapter in GLOBAL_ADAPTER_IDS:
             if identifier.startswith(f"global_{adapter}_"):
                 counts["adapters"][adapter] = counts["adapters"].get(adapter, 0) + 1
                 break
@@ -5144,21 +5145,13 @@ def global_adapter_catalog() -> List[Dict[str, Any]]:
     manifests = (meta.get("global_coverage") or {}).get("source_manifests") or []
     last_runs = {row.get("source"): row for row in manifests if isinstance(row, dict)}
     counts = global_source_counts(meta.get("records") or [])["adapters"]
-    adapters = [
-        ("ocm", "OpenChargeMap", "Worldwide", "Public repository export; provider licence and source-policy filters", None),
-        ("osm", "OpenStreetMap", "Worldwide by selected country or area", "Public Overpass GET queries; bounded area and request budgets", None),
-        ("france_irve", "France IRVE", "FR", "Official national public dataset", None),
-        ("germany_bnetza", "Bundesnetzagentur", "DE", "Official national public dataset", None),
-        ("hk_clp", "CLP Hong Kong", "HK", "Official public dataset", None),
-        ("afdc", "US AFDC / NREL", "US and CA", "Documented official API", "Requires an authorized API key for collection"),
-    ]
     return [{"id": identifier, "name": name, "scope": scope, "implemented": True,
              "method": method, "credential_requirement": credential,
              "live_status_integrated": False,
              "records_added_by_global_adapter": counts.get(identifier, 0),
              "last_collection": {key: last_runs.get(identifier, {}).get(key) for key in ("scope", "accepted", "rejected", "duplicates", "errors")},
              "status": last_runs.get(identifier, {}).get("status", "not_run")}
-            for identifier, name, scope, method, credential in adapters]
+            for identifier, name, scope, method, credential in GLOBAL_ADAPTERS]
 
 
 def requested_source_strategy() -> Dict[str, Any]:

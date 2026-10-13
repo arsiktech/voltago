@@ -14,6 +14,7 @@ RUNTIME_FILES = (
     "station_truth.py",
     "scripts/source_policy.py",
     "scripts/json_recordset.py",
+    "scripts/global_source_catalog.py",
     "scripts/intelligence_index.py",
     "scripts/source_transport.py",
     "data/free_intelligence.json",

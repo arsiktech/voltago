@@ -7,6 +7,7 @@ const byId = id => document.getElementById(id);
 const count = value => Number.isFinite(value) && value >= 0 ? numberFormat.format(value) : 'Not reported';
 const text = value => typeof value === 'string' ? value : '';
 const list = value => Array.isArray(value) ? value : [];
+const scopeText = value => Array.isArray(value) ? value.map(text).filter(Boolean).join(', ') : text(value);
 const entries = value => value && typeof value === 'object' && !Array.isArray(value) ? Object.entries(value) : [];
 const statuses = {
   not_run: 'Not run', complete: 'Collected', completed: 'Collected', success: 'Collected', ok: 'Collected',
@@ -95,7 +96,7 @@ function render(payload) {
   const manifests = (list(global.source_manifests).length ? global.source_manifests : list(payload.source_manifest)).filter(manifest => manifest && typeof manifest === 'object');
   byId('manifest-details').hidden = !manifests.length;
   table('manifests', manifests.map(manifest => row([
-    cell(description(text(manifest.source), text(manifest.scope)), { heading: true }), cell(badge(manifest.status)),
+    cell(description(text(manifest.source), scopeText(manifest.scope)), { heading: true }), cell(badge(manifest.status)),
     cell(count(manifest.accepted), { numeric: true }),
     cell(list(manifest.errors).map(error => typeof error === 'string' ? error : text(error?.message)).filter(Boolean).join(' · ') || 'No collection error reported'),
   ])), 4, 'No collection manifest reported.');

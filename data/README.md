@@ -1,5 +1,12 @@
 # Charger data
 
+`spain_boundary.geojson` is the unchanged simplified Spain ADM0 boundary from
+[geoBoundaries](https://www.geoboundaries.org/api/current/gbOpen/ESP/ADM0/), originally
+provided by Instituto Geográfico Nacional under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Attribution and the pinned revision are retained in the file. It filters only
+Spanish adapters whose upstream omits country information; it does not restrict
+the worldwide catalogue or establish charger evidence.
+
 `free_intelligence.json` in this repository is a **sample**: 162 records whose sources
 publish open reuse terms. It keeps tests, the Docker image and local runs working
 offline. It is not the dataset served at [voltago.app](https://voltago.app).

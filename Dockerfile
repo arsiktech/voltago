@@ -20,6 +20,7 @@ WORKDIR /app
 # this install is the real fix for correct Madrid-local pricing windows in production.
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 COPY server.py agent_mcp.py community.py station_truth.py ./
+COPY scripts/global_source_catalog.py ./scripts/global_source_catalog.py
 COPY scripts/source_policy.py ./scripts/source_policy.py
 COPY scripts/json_recordset.py ./scripts/json_recordset.py
 COPY scripts/intelligence_index.py ./scripts/intelligence_index.py

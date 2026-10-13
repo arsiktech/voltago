@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 import time
@@ -48,6 +49,15 @@ def national_module():
         return None
 
 
+def directory_modules():
+    if __package__:
+        from . import operator_sources, public_parking_sources
+    else:
+        import operator_sources
+        import public_parking_sources
+    return operator_sources, public_parking_sources
+
+
 def atomic_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
@@ -79,12 +89,48 @@ def source_manifest(source_id: str, scope: str) -> dict:
             "rejected": 0, "duplicates": 0, "errors": [], "fetches": []}
 
 
+def retained_manifests(baseline: dict, current: list[dict]) -> list[dict]:
+    """Keep earlier source observations when a later build collects other sources."""
+    previous = (baseline.get("global_coverage") or {}).get("source_manifests") or []
+    combined = {}
+    for item in [*previous, *current]:
+        if isinstance(item, dict) and item.get("source"):
+            key = (item["source"], json.dumps(item.get("scope"), sort_keys=True))
+            combined[key] = item
+    return list(combined.values())
+
+
+def run_directory(module, source: str, args: argparse.Namespace, countries: set[str] | None,
+                  store: gs.CandidateStore) -> dict:
+    """Admission is atomic even when an adapter reports a late failure."""
+    class RejectedSource(Exception):
+        pass
+
+    manifest = None
+    try:
+        with store.source_transaction():
+            manifest = module.run_source(source, args.cache_dir, countries, args.offline, store.add)
+            if manifest.get("status") not in {"ok", "stale", "not_applicable"}:
+                raise RejectedSource()
+    except RejectedSource:
+        manifest["rolled_back_records"] = manifest.get("accepted", 0)
+        manifest.update(accepted=0, duplicates=0, records=0, admission="rolled_back")
+    except Exception as exc:
+        manifest = source_manifest(source, "selected countries")
+        manifest.update(status="failed", admission="rolled_back", errors=[type(exc).__name__])
+    else:
+        manifest["admission"] = "complete"
+    return manifest
+
+
 def run_ocm(args: argparse.Namespace, countries: set[str] | None, store: gs.CandidateStore) -> dict:
     manifest = source_manifest("ocm", "all-countries" if countries is None else ",".join(sorted(countries)))
     provider_counts: Counter = Counter()
     rejection_counts: Counter = Counter()
     try:
         revision = getattr(args, "ocm_revision", gs.OCM_EXPORT_REVISION)
+        if not re.fullmatch(r"[0-9a-f]{40}", revision):
+            raise ValueError("OCM archive requires an immutable 40-hex revision")
         source_url = f"https://codeload.github.com/openchargemap/ocm-export/tar.gz/{revision}"
         if args.ocm_archive:
             path = args.ocm_archive.resolve()
@@ -93,34 +139,45 @@ def run_ocm(args: argparse.Namespace, countries: set[str] | None, store: gs.Cand
                                         age, True, args.offline, age >= 168 * 3600)
             fetched = gs.FileArtifact(path, artifact)
         else:
-            fetched = gs.fetch_cached_file(source_url, args.cache_dir, f"ocm-export-{revision}.tar.gz", offline=args.offline)
+            fetched = gs.fetch_cached_file(source_url, args.cache_dir, f"ocm-export-{revision}.tar.gz", offline=args.offline,
+                                           max_bytes=gs.OCM_MAX_ARCHIVE_BYTES)
         actual_revision = gs.ocm_export_revision(fetched.path)
         if actual_revision != revision:
             raise ValueError("OCM archive revision differs from --ocm-revision")
         manifest["fetches"].append(fetched.artifact.as_evidence())
         manifest["snapshot"] = {"repository": "openchargemap/ocm-export", "revision": actual_revision,
                                 "sha256": gs.file_sha256(fetched.path), "bytes": fetched.path.stat().st_size}
-        for poi in gs.iter_ocm_export(fetched.path, countries=countries):
-            manifest["seen"] += 1
-            provider = poi.get("DataProvider") or {}
-            provider_id = str(provider.get("ID") or poi.get("DataProviderID") or "unknown") if isinstance(provider, dict) else "malformed"
-            try:
-                row = gs.normalize_ocm(poi, fetched.artifact)
-            except (TypeError, ValueError, AttributeError, KeyError):
-                row = None
-            if row is None:
-                manifest["rejected"] += 1
-                rejection_counts["provider_license_unapproved" if not gs.provider_license_allowed(provider) else "invalid_or_excluded_record"] += 1
-                continue
-            result = store.add(row)
-            manifest["accepted"] += result == "added"
-            if result == "added":
-                provider_counts[provider_id] += 1
-            manifest["duplicates"] += result == "duplicate"
-            manifest["rejected"] += result in {"excluded", "invalid"}
+        with store.source_transaction():
+            for poi in gs.iter_ocm_export(fetched.path, countries=countries):
+                manifest["seen"] += 1
+                provider = poi.get("DataProvider") or {}
+                provider_id = str(provider.get("ID") or poi.get("DataProviderID") or "unknown") if isinstance(provider, dict) else "malformed"
+                try:
+                    row = gs.normalize_ocm(poi, fetched.artifact)
+                except (TypeError, ValueError, AttributeError, KeyError):
+                    row = None
+                if row is None:
+                    manifest["rejected"] += 1
+                    reason = ("unresolved_or_unpublished_reference" if poi.get("_ocm_unresolved_references") else
+                              "provider_license_unapproved" if not gs.provider_license_allowed(provider) else "invalid_or_excluded_record")
+                    rejection_counts[reason] += 1
+                    continue
+                result = store.add(row)
+                manifest["accepted"] += result == "added"
+                if result == "added":
+                    provider_counts[provider_id] += 1
+                manifest["duplicates"] += result == "duplicate"
+                manifest["rejected"] += result in {"excluded", "invalid"}
+            if gs.file_sha256(fetched.path) != manifest["snapshot"]["sha256"]:
+                raise ValueError("OCM source archive changed during validation")
+        manifest["admission"] = "complete"
         manifest["status"] = "stale" if fetched.artifact.stale else "ok"
     except Exception as exc:
-        manifest["status"] = "partial" if manifest["accepted"] else "failed"
+        manifest["rolled_back_records"] = manifest["accepted"]
+        manifest["accepted"] = manifest["duplicates"] = 0
+        provider_counts.clear()
+        manifest["admission"] = "rolled_back"
+        manifest["status"] = "failed"
         manifest["errors"].append(type(exc).__name__ + ": " + str(exc)[:240])
     manifest["accepted_by_provider_id"] = dict(provider_counts)
     manifest["rejection_reasons"] = dict(rejection_counts)
@@ -198,7 +255,8 @@ def build(args: argparse.Namespace) -> dict:
         raise ValueError("--countries must contain ISO 3166-1 alpha-2 codes")
     sources = list(dict.fromkeys(args.sources.split(",")))
     national = national_module()
-    known = {"ocm", "osm"} | (set(national.SOURCES) if national else set())
+    directories = {key: module for module in directory_modules() for key in module.SOURCES}
+    known = {"ocm", "osm"} | (set(national.SOURCES) if national else set()) | set(directories)
     if any(source not in known for source in sources):
         raise ValueError("unknown source; available: " + ",".join(sorted(known)))
     if args.osm_max_requests < 0 or args.osm_max_requests > len(gs.ISO_COUNTRIES) or args.osm_offset < 0 or not 1 <= args.osm_pause_seconds <= 60:
@@ -235,12 +293,7 @@ def build(args: argparse.Namespace) -> dict:
                 elif source == "osm":
                     manifests.extend(run_osm(args, countries, store))
                 else:
-                    try:
-                        manifest = national.run_source(source, args.cache_dir, countries, args.offline, store.add)
-                    except Exception as exc:
-                        manifest = source_manifest(source, "selected countries")
-                        manifest.update(status="failed", errors=[type(exc).__name__ + ": " + str(exc)[:240]])
-                    manifests.append(manifest)
+                    manifests.append(run_directory(directories.get(source, national), source, args, countries, store))
             stats = store.stats()
             issues = [item for item in manifests if item.get("status") not in {"ok", "not_applicable"}]
             report = {
@@ -252,7 +305,8 @@ def build(args: argparse.Namespace) -> dict:
                 "baseline_sha256": baseline_sha256,
                 "coverage_complete": False, "requested_sources_complete": not issues,
                 "coverage_status": "partial" if issues else "selected sources processed; geographic completeness unproven",
-                "stats": stats, "source_manifests": manifests,
+                "stats": stats, "source_manifests": retained_manifests(baseline, manifests),
+                "requested_source_manifests": manifests,
                 "notes": ["Counts describe directory records, not live chargers or complete world coverage.",
                           "Foreign and unstructured prices retain original evidence and are not compared to a euro price cap.",
                           "Stable-source duplicate rows are retained from the baseline without modifying its evidence; new evidence is not promoted automatically.",
@@ -277,7 +331,8 @@ def main() -> int:
     selection = parser.add_mutually_exclusive_group(required=True)
     selection.add_argument("--countries", help="comma-separated ISO alpha-2 countries, e.g. ES,FR,US,JP")
     selection.add_argument("--all-countries", action="store_true")
-    parser.add_argument("--sources", default="ocm", help="comma-separated: ocm,osm" + ("," + ",".join(national.SOURCES) if national else ""))
+    names = [key for module in directory_modules() for key in module.SOURCES]
+    parser.add_argument("--sources", default="ocm", help="comma-separated: ocm,osm," + ",".join([*(national.SOURCES if national else ()), *names]))
     parser.add_argument("--baseline", type=Path, default=CANONICAL)
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--manifest", type=Path)

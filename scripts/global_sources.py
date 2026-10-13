@@ -20,6 +20,7 @@ import time
 import urllib.parse
 import urllib.request
 from collections import Counter
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -162,75 +163,268 @@ def iter_ocm(path: Path) -> Iterator[dict]:
             yield item
 
 
-def _tar_json(archive: tarfile.TarFile, member: tarfile.TarInfo, max_bytes: int = 4 * 1024 * 1024) -> dict:
-    if member.size > max_bytes:
+# Bounds cover the complete worldwide archive, including unselected countries,
+# tar metadata, padding and gzip trailers. No files are extracted to disk.
+OCM_MAX_ARCHIVE_BYTES = 160 * 1024 * 1024
+OCM_MAX_DECOMPRESSED_BYTES = 2 * 1024 * 1024 * 1024
+OCM_MAX_MEMBERS = 600_000
+OCM_MAX_READ_SECONDS = 600
+OCM_MAX_JSON_BYTES = 4 * 1024 * 1024
+OCM_MAX_REFERENCE_BYTES = 16 * 1024 * 1024
+OCM_REFERENCE_TABLES = ("Countries", "DataProviders", "Operators", "ConnectionTypes",
+                        "StatusTypes", "UsageTypes", "SubmissionStatusTypes")
+
+
+def _json_object(pairs: list[tuple]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("OCM JSON contains a duplicate field")
+        result[key] = value
+    return result
+
+
+def _json_constant(value: str):
+    raise ValueError("OCM JSON contains a non-finite value")
+
+
+def _tar_json(archive: tarfile.TarFile, member: tarfile.TarInfo,
+              max_bytes: int = OCM_MAX_JSON_BYTES) -> dict:
+    if not 0 <= member.size <= max_bytes:
         raise ValueError("OCM archive member exceeds JSON byte limit")
     handle = archive.extractfile(member)
     if handle is None:
         raise ValueError("OCM archive member is not a regular file")
     with handle:
-        result = json.load(handle)
+        result = json.loads(handle.read(max_bytes + 1), object_pairs_hook=_json_object,
+                            parse_constant=_json_constant)
     if not isinstance(result, dict):
         raise ValueError("OCM archive JSON must be an object")
     return result
 
 
-def iter_ocm_export(path: Path, countries: set[str] | None = None) -> Iterator[dict]:
-    """Two bounded-memory tar passes hydrate compact IDs without extraction.
+class _OcmTarInfo(tarfile.TarInfo):
+    def _proc_pax(self, archive):
+        # tarfile reads extended headers before exposing members to the caller.
+        # Reject giant metadata before it can allocate the declared payload.
+        if not 0 <= self.size <= 64 * 1024:
+            raise ValueError("OCM archive extended header exceeds byte limit")
+        return super()._proc_pax(archive)
 
-    Reference tables are small. POI bodies and tar member history are discarded
-    after each record, even with older Python tarfile implementations.
+    def _proc_gnulong(self, archive):
+        raise ValueError("OCM archive contains an unsupported GNU extended name")
+
+    def _proc_sparse(self, archive):
+        raise ValueError("OCM archive contains an unsupported sparse member")
+
+    def _proc_gnusparse_00(self, *args):
+        raise ValueError("OCM archive contains an unsupported sparse member")
+
+    _proc_gnusparse_01 = _proc_gnusparse_00
+    _proc_gnusparse_10 = _proc_gnusparse_00
+
+
+class _OcmDecompressedReader:
+    def __init__(self, handle, deadline: float):
+        self.handle, self.deadline, self.total = handle, deadline, 0
+
+    def read(self, size: int = -1) -> bytes:
+        if time.monotonic() > self.deadline:
+            raise ValueError("OCM archive exceeded its read time budget")
+        size = min(size if size >= 0 else 65536, 65536,
+                   OCM_MAX_DECOMPRESSED_BYTES - self.total + 1)
+        chunk = self.handle.read(size)
+        self.total += len(chunk)
+        if self.total > OCM_MAX_DECOMPRESSED_BYTES:
+            raise ValueError("OCM archive exceeds decompressed byte limit")
+        if time.monotonic() > self.deadline:
+            raise ValueError("OCM archive exceeded its read time budget")
+        return chunk
+
+
+def _ocm_archive_members(path: Path, revision: str, deadline: float):
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("OCM archive requires an immutable 40-hex revision")
+    if not 0 < path.stat().st_size <= OCM_MAX_ARCHIVE_BYTES:
+        raise ValueError("OCM archive exceeds compressed byte limit or is empty")
+    root = f"ocm-export-{revision}"
+    with gzip.open(path, "rb") as compressed:
+        reader = _OcmDecompressedReader(compressed, deadline)
+        with tarfile.open(fileobj=reader, mode="r|", tarinfo=_OcmTarInfo) as archive:
+            count = 0
+            for member in archive:
+                archive.members.clear()
+                count += 1
+                if count > OCM_MAX_MEMBERS:
+                    raise ValueError("OCM archive exceeds member count limit")
+                name = member.name
+                parts = name.rstrip("/").split("/")
+                if (not name or "\\" in name or "\x00" in name
+                        or any(part in {"", ".", ".."} for part in parts)
+                        or parts[0] != root):
+                    raise ValueError("OCM archive contains an unsafe path or wrong revision root")
+                if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE) or member.sparse is not None:
+                    raise ValueError("OCM archive contains a non-regular member")
+                if member.size < 0 or member.size > OCM_MAX_DECOMPRESSED_BYTES or (member.isdir() and member.size):
+                    raise ValueError("OCM archive member has an invalid size")
+                if len(parts) == 1 and not member.isdir():
+                    raise ValueError("OCM archive root must be a directory")
+                yield archive, member, "/".join(parts[1:])
+            # tarfile stops at the first zero end block. Consume the remaining
+            # stream through its buffer, checking the second end block, padding,
+            # gzip CRC/trailer and any concatenated gzip members as well.
+            trailing = 0
+            while chunk := archive.fileobj.read(65536):
+                trailing += len(chunk)
+                if chunk.strip(b"\0"):
+                    raise ValueError("OCM archive contains data after its tar end marker")
+            if trailing < tarfile.BLOCKSIZE:
+                raise ValueError("OCM archive lacks complete tar end markers")
+
+
+def _ocm_id(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _ocm_tables(reference: dict) -> dict:
+    tables = {}
+    for name in OCM_REFERENCE_TABLES:
+        rows = reference.get(name)
+        if not isinstance(rows, list) or not rows:
+            raise ValueError(f"OCM reference table {name} is missing or empty")
+        table = {}
+        for row in rows:
+            if not isinstance(row, dict) or not _ocm_id(row.get("ID")) or row["ID"] in table:
+                raise ValueError(f"OCM reference table {name} has a malformed or duplicate ID")
+            if name == "Countries":
+                if not valid_country(row.get("ISOCode")):
+                    raise ValueError("OCM country reference has an invalid ISO code")
+            elif not isinstance(row.get("Title"), str):
+                raise ValueError(f"OCM reference table {name} has an invalid title")
+            for field in ("IsOperational", "IsOpenDataLicensed", "IsPrivateIndividual", "IsLive", "IsAccessKeyRequired"):
+                if row.get(field) is not None and not isinstance(row[field], bool):
+                    raise ValueError(f"OCM reference table {name} has an invalid {field}")
+            if name == "DataProviders" and row.get("License") is not None and not isinstance(row["License"], str):
+                raise ValueError("OCM provider reference has an invalid licence")
+            table[row["ID"]] = row
+        tables[name] = table
+    countries = [row["ISOCode"].upper() for row in tables["Countries"].values()]
+    if len(countries) != len(set(countries)):
+        raise ValueError("OCM country reference has duplicate ISO codes")
+    return tables
+
+
+def _ocm_poi_shape(poi: dict) -> None:
+    for name in ("AddressInfo", "DataProvider", "OperatorInfo", "StatusType", "UsageType", "SubmissionStatus"):
+        if poi.get(name) is not None and not isinstance(poi[name], dict):
+            raise ValueError(f"OCM POI has malformed {name}")
+    addr = poi.get("AddressInfo") or {}
+    if addr.get("Country") is not None and not isinstance(addr["Country"], dict):
+        raise ValueError("OCM POI has malformed Country")
+    for obj, fields in ((poi, ("UsageCost",)), (addr, ("Title", "AddressLine1", "Town"))):
+        if any(obj.get(key) is not None and not isinstance(obj[key], str) for key in fields):
+            raise ValueError("OCM POI has malformed text fields")
+    connections = poi.get("Connections")
+    if connections is not None and (not isinstance(connections, list) or any(not isinstance(c, dict) for c in connections)):
+        raise ValueError("OCM POI has malformed Connections")
+    for connection in connections or []:
+        for name in ("ConnectionType", "StatusType"):
+            if connection.get(name) is not None and not isinstance(connection[name], dict):
+                raise ValueError(f"OCM connection has malformed {name}")
+
+
+def iter_ocm_export(path: Path, countries: set[str] | None = None) -> Iterator[dict]:
+    """Validate the whole snapshot, then hydrate one selected POI at a time.
+
+    Duplicate IDs use a temporary SQLite index, not a world-sized Python set.
+    Callers must admit rows transactionally: a second-pass or source-file change
+    can still fail after yields. Reference data is authoritative for licences,
+    countries and operational/access claims; embedded copies cannot override it.
     """
+    path = Path(path)
+    revision = ocm_export_revision(path)
+    deadline = time.monotonic() + OCM_MAX_READ_SECONDS
     reference = None
-    with tarfile.open(path, "r|gz") as archive:
-        for member in archive:
-            archive.members.clear()
-            if member.isfile() and member.name.endswith("/data/referencedata.json"):
-                reference = _tar_json(archive, member, 16 * 1024 * 1024)
-                break
+    poi_count = 0
+    with tempfile.TemporaryDirectory(prefix="ocm-validation-") as directory:
+        with closing(sqlite3.connect(Path(directory) / "ids.sqlite")) as identifiers:
+            identifiers.execute("CREATE TABLE seen (id INTEGER PRIMARY KEY)")
+            for archive, member, relative in _ocm_archive_members(path, revision, deadline):
+                if not member.isfile():
+                    continue
+                if relative == "data/referencedata.json":
+                    if reference is not None:
+                        raise ValueError("OCM archive repeats referencedata.json")
+                    reference = _ocm_tables(_tar_json(archive, member, OCM_MAX_REFERENCE_BYTES))
+                elif relative.startswith("data/"):
+                    match = re.fullmatch(r"data/([A-Z]{2})/OCM-([1-9][0-9]{0,9})\.json", relative)
+                    if not match or not valid_country(match[1]):
+                        raise ValueError("OCM archive has an unexpected file in its data directory")
+                    identifier = int(match[2])
+                    try:
+                        identifiers.execute("INSERT INTO seen VALUES(?)", (identifier,))
+                    except sqlite3.IntegrityError as exc:
+                        raise ValueError("OCM archive contains a duplicate POI ID") from exc
+                    poi = _tar_json(archive, member)
+                    if not _ocm_id(poi.get("ID")) or poi["ID"] != identifier:
+                        raise ValueError("OCM POI ID differs from its filename")
+                    _ocm_poi_shape(poi)
+                    poi_count += 1
     if reference is None:
         raise ValueError("OCM export archive lacks data/referencedata.json")
-    tables = {key: {row["ID"]: row for row in value if isinstance(row, dict) and "ID" in row}
-              for key, value in reference.items() if isinstance(value, list)}
+    if not poi_count:
+        raise ValueError("OCM export archive has no station files")
 
-    def hydrate(record: dict, field: str, identifier: str, table: str) -> None:
-        if not isinstance(record.get(field), dict):
-            record[field] = tables.get(table, {}).get(record.get(identifier), {})
+    for archive, member, relative in _ocm_archive_members(path, revision, deadline):
+        match = re.fullmatch(r"data/([A-Z]{2})/OCM-([1-9][0-9]{0,9})\.json", relative)
+        if not member.isfile() or not match or (countries is not None and match[1] not in countries):
+            continue
+        poi = _tar_json(archive, member)
+        unresolved = []
 
-    with tarfile.open(path, "r|gz") as archive:
-        for member in archive:
-            archive.members.clear()
-            match = re.search(r"/data/([A-Z]{2})/OCM-\d+\.json$", member.name)
-            if not member.isfile() or not match or (countries is not None and match[1] not in countries):
-                continue
-            poi = _tar_json(archive, member)
-            addr = poi.get("AddressInfo")
-            if not isinstance(addr, dict):
-                yield poi
-                continue
-            hydrate(addr, "Country", "CountryID", "Countries")
-            # Country folder is corroboration, not permission to override a
-            # contradictory explicit country reference.
-            if valid_country((addr.get("Country") or {}).get("ISOCode")) != match[1]:
-                continue
-            for args in (("DataProvider", "DataProviderID", "DataProviders"),
-                         ("OperatorInfo", "OperatorID", "Operators"),
-                         ("StatusType", "StatusTypeID", "StatusTypes"),
-                         ("UsageType", "UsageTypeID", "UsageTypes")):
-                hydrate(poi, *args)
-            for conn in poi.get("Connections") or []:
-                if not isinstance(conn, dict):
-                    continue
-                hydrate(conn, "ConnectionType", "ConnectionTypeID", "ConnectionTypes")
-                hydrate(conn, "StatusType", "StatusTypeID", "StatusTypes")
-            yield poi
+        def hydrate(record: dict, field: str, identifier: str, table: str, *, required: bool = False) -> None:
+            key = record.get(identifier)
+            embedded = record.get(field)
+            row = reference[table].get(key) if _ocm_id(key) else None
+            if (required or key is not None) and row is None:
+                unresolved.append(identifier)
+            if isinstance(embedded, dict) and embedded.get("ID") is not None and embedded["ID"] != key:
+                unresolved.append(identifier)
+            record[field] = row or {}
+
+        addr = poi.get("AddressInfo") or {}
+        poi["AddressInfo"] = addr
+        embedded_country = (addr.get("Country") or {}).get("ISOCode")
+        hydrate(addr, "Country", "CountryID", "Countries", required=True)
+        if (valid_country(addr["Country"].get("ISOCode")) != match[1]
+                or (embedded_country is not None and valid_country(embedded_country) != match[1])):
+            unresolved.append("CountryID")
+        for field, identifier, table in (("DataProvider", "DataProviderID", "DataProviders"),
+                                          ("OperatorInfo", "OperatorID", "Operators"),
+                                          ("StatusType", "StatusTypeID", "StatusTypes"),
+                                          ("UsageType", "UsageTypeID", "UsageTypes"),
+                                          ("SubmissionStatus", "SubmissionStatusTypeID", "SubmissionStatusTypes")):
+            hydrate(poi, field, identifier, table, required=field == "DataProvider")
+        if poi["SubmissionStatus"].get("IsLive") is False:
+            unresolved.append("SubmissionStatusTypeID")
+        for conn in poi.get("Connections") or []:
+            hydrate(conn, "ConnectionType", "ConnectionTypeID", "ConnectionTypes")
+            hydrate(conn, "StatusType", "StatusTypeID", "StatusTypes")
+        if unresolved:
+            poi["_ocm_unresolved_references"] = sorted(set(unresolved))
+        yield poi
 
 
 def ocm_export_revision(path: Path) -> str:
-    """Read the GitHub archive root instead of assigning a guessed revision."""
-    with tarfile.open(path, "r|gz") as archive:
-        member = archive.next()
-        root = member.name.split("/", 1)[0] if member else ""
+    """Read the bounded first header instead of assigning a guessed revision."""
+    path = Path(path)
+    if not 0 < path.stat().st_size <= OCM_MAX_ARCHIVE_BYTES:
+        raise ValueError("OCM archive exceeds compressed byte limit or is empty")
+    with gzip.open(path, "rb") as compressed:
+        reader = _OcmDecompressedReader(compressed, time.monotonic() + OCM_MAX_READ_SECONDS)
+        with tarfile.open(fileobj=reader, mode="r|", tarinfo=_OcmTarInfo) as archive:
+            member = archive.next()
+            root = member.name.split("/", 1)[0] if member else ""
     match = re.fullmatch(r"ocm-export-([0-9a-f]{40})", root)
     if not match:
         raise ValueError("OCM archive root does not identify an immutable export commit")
@@ -339,6 +533,8 @@ def make_record(*, source_id: str, upstream_id: str, source: str, source_url: st
 
 
 def normalize_ocm(poi: dict, artifact: FetchArtifact) -> dict | None:
+    if poi.get("_ocm_unresolved_references"):
+        return None
     addr = poi.get("AddressInfo") or {}
     if not isinstance(addr, dict):
         return None
@@ -517,6 +713,20 @@ class CandidateStore:
         self.connection.execute("CREATE TABLE IF NOT EXISTS identities (country TEXT, identity TEXT, row_no INTEGER, PRIMARY KEY(country,identity,row_no))")
         self.policy = policy or SOURCE_POLICY
         self.counters: Counter = Counter()
+
+    @contextmanager
+    def source_transaction(self):
+        """Admit a complete source or restore both rows and accounting exactly."""
+        previous = self.counters.copy()
+        self.connection.execute("SAVEPOINT source_admission")
+        try:
+            yield
+        except BaseException:
+            self.connection.execute("ROLLBACK TO source_admission")
+            self.counters = previous
+            raise
+        finally:
+            self.connection.execute("RELEASE source_admission")
 
     def add(self, row: dict, baseline: bool = False) -> str:
         if not isinstance(row, dict) or not row.get("id") or not valid_coordinates(row.get("lat"), row.get("lon")):
