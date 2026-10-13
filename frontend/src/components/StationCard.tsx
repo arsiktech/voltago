@@ -1,5 +1,5 @@
 import { providerHandoff, stationTitle } from '../lib/provider'
-import { Component, memo, useState, type ReactNode } from 'react'
+import { Component, lazy, memo, Suspense, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
@@ -32,7 +32,6 @@ import {
   remoteStartAction,
   sourceTier,
   stationAgeText,
-  stationPhoto,
   tariffWindow,
 } from '../lib/format'
 import {
@@ -49,7 +48,20 @@ import {
 import { Badge } from './Badge'
 import { DecisionPill } from './DecisionPill'
 import { ConnectorChips } from './ConnectorChips'
-import { SourceProvenance } from './SourceProvenance'
+const StationDetails = lazy(() => import('./StationDetails'))
+
+/** Keep the card and its source/Maps actions usable if the optional chunk fails. */
+class DetailsBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() { return { failed: true } }
+  render() {
+    return this.state.failed ? (
+      <div role="status" className="mt-3 text-sm text-muted">
+        Details could not load. Check your connection and reload the page, or use the source link above.
+      </div>
+    ) : this.props.children
+  }
+}
 
 function Fact({
   icon: Icon,
@@ -208,7 +220,6 @@ function StationCardBase({
   const windowInfo = tariffWindow(st)
   const conflict = st.claim_conflict?.summary
   const routeReady = isRouteReady(st)
-  const photo = stationPhoto(st)
   const price = priceText(st)
   const unit = priceUnit(st)
   const actionClass =
@@ -457,23 +468,11 @@ function StationCardBase({
             transition={smoothSpring}
             className="relative z-10 overflow-hidden"
           >
-            {photo && (
-              <div
-                className="mt-3 overflow-hidden rounded-xl border border-border bg-surface-2"
-                title={`Public source photo via ${photo.source}. May be stale; onsite view wins.`}
-              >
-                <img
-                  src={photo.src}
-                  alt={`${stationTitle(st)} public source photo`}
-                  loading="lazy"
-                  className="h-28 w-full object-cover"
-                  onError={(e) => {
-                    e.currentTarget.parentElement?.classList.add('hidden')
-                  }}
-                />
-              </div>
-            )}
-            <SourceProvenance st={st} />
+            <DetailsBoundary key={`${st.id}:${st.detail_snapshot ?? 'inline'}`}>
+              <Suspense fallback={<p role="status" className="mt-3 text-sm text-muted">Loading source details…</p>}>
+                <StationDetails st={st} />
+              </Suspense>
+            </DetailsBoundary>
           </motion.div>
         )}
       </AnimatePresence>

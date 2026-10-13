@@ -1,5 +1,5 @@
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
-import type { Bbox, ChargersResponse, Coords, Filters, GeocodeResult } from '../types'
+import type { Bbox, ChargersResponse, Coords, Filters, GeocodeResult, Station } from '../types'
 
 const PUBLIC_TRANSPORT_ERROR =
   'Live data is temporarily unavailable. Check your connection and try again.'
@@ -63,7 +63,7 @@ export interface ChargersQuery {
   bbox?: Bbox | null
   overview?: boolean
   force?: boolean
-  /** Compact overview keeps every rendered card/provenance field but omits ingestion-only bulk. */
+  /** Compact overview requests card summaries; full evidence loads when Details opens. */
   compact?: boolean
   /** Set false to keep the hook mounted but idle (e.g. the instant-leads layer in overview mode). */
   enabled?: boolean
@@ -90,6 +90,7 @@ export function chargersUrl({ filters, coords, bbox, overview, force, compact }:
   }
   if (force) params.set('force', 'true')
   if (compact) params.set('compact', 'true')
+  if (compact && overview) params.set('summary', 'true')
   return `/api/chargers?${params.toString()}`
 }
 
@@ -126,6 +127,24 @@ export function chargersQueryOptions(query: ChargersQuery) {
 
 export function useChargers(query: ChargersQuery) {
   return useQuery(chargersQueryOptions(query))
+}
+
+export function stationDetailsQueryOptions(id: string, snapshot: string) {
+  return queryOptions({
+    queryKey: ['station-details', id, snapshot],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ id, snapshot })
+      const response = await getJSON<{ station: Station; snapshot: string }>(`/api/station?${params}`, 15000, signal)
+      // Never show facts for an alias, a different station, or a replaced catalogue.
+      if (!response || response.station?.id !== id || response.snapshot !== snapshot) {
+        throw new TransportError('invalid-response')
+      }
+      return response.station
+    },
+    staleTime: 0,
+    // A stale snapshot needs a new overview, not repeated requests for the old token.
+    retry: false,
+  })
 }
 
 export interface GeocodeResponse {

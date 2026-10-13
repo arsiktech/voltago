@@ -509,6 +509,7 @@ async function main() {
   await combo.press("Enter");
   const selectedUrl = (await selectedResponse).url();
   if (await combo.inputValue()) failures.push("Enter on a home suggestion did not clear the query");
+  if (await page.getByRole("option").count()) failures.push("selected suggestions remain interactive after the query clears");
   await page.locator('[data-station="go-near"] article.card').waitFor({ timeout: 10000 });
   await page.waitForTimeout(250);
 

@@ -20,7 +20,7 @@
     <!-- Start the default Spain viewport while the app bundle downloads. The href must
          equal the app's first overview request (api.test.ts checks this) or the
          browser fetches it twice. -->
-    <link rel="preload" href="/api/chargers?include_leads=true&amp;max_price=5.0&amp;overview=true&amp;bbox=35.8%2C-9.6%2C43.9%2C3.4&amp;compact=true" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="/api/chargers?include_leads=true&amp;max_price=5.0&amp;overview=true&amp;bbox=35.8%2C-9.6%2C43.9%2C3.4&amp;compact=true&amp;summary=true" as="fetch" crossorigin="anonymous" />
     <!-- Open the basemap connection early without fetching anything: a failed style
          preload would surface as an app error, while MapLibre handles its own. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin="anonymous" />

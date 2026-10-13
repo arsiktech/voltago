@@ -44,6 +44,14 @@ const chromePath = process.env.VOLTA_QA_CHROME;
     assert.deepEqual(searches, ['Valencia'], 'a settled city needs one request');
 
     await pauseClock();
+    await input.press('Escape');
+    assert.equal(await input.getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.getByRole('option').count(), 0, 'dismissed suggestions must leave the DOM immediately');
+    await input.press('ArrowDown');
+    await page.getByRole('option', { name: 'Valencia Valencia, Spain' }).waitFor();
+    await page.clock.resume();
+
+    await pauseClock();
     const requestsBeforeChange = chargerRequests.length;
     await input.fill('Madrid');
     assert.equal(await page.getByRole('option').count(), 0, 'old suggestions must disappear immediately');

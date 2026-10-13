@@ -1,12 +1,12 @@
 const CACHE_PREFIX = 'volta-offline-'
-const CACHE_VERSION = `${CACHE_PREFIX}v5`
+const CACHE_VERSION = `${CACHE_PREFIX}v6`
 const SHELL_CACHE = `${CACHE_VERSION}-shell`
 const OVERVIEW_CACHE = `${CACHE_VERSION}-overview`
 const BUILD_MANIFEST_URL = '/.vite/manifest.json'
 // Only the fixed landing area is cached. User-selected areas and device locations
 // remain network-only; a global catalog must never be prefetched into offline storage.
 const DEFAULT_OVERVIEW_BBOX = '35.8,-9.6,43.9,3.4'
-const DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true'
+const DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true&summary=true'
 const SHELL_URLS = [
   '/',
   '/manifest.webmanifest',
@@ -113,13 +113,14 @@ function isDefaultOverviewRequest(request) {
   if (
     url.searchParams.get('overview') !== 'true' ||
     url.searchParams.get('compact') !== 'true' ||
+    url.searchParams.get('summary') !== 'true' ||
     url.searchParams.get('include_leads') !== 'true' ||
     url.searchParams.get('max_price') !== '5.0' ||
     url.searchParams.get('bbox') !== DEFAULT_OVERVIEW_BBOX
   ) {
     return false
   }
-  const allowed = new Set(['overview', 'compact', 'include_leads', 'max_price', 'bbox', 'force'])
+  const allowed = new Set(['overview', 'compact', 'summary', 'include_leads', 'max_price', 'bbox', 'force'])
   return [...url.searchParams.keys()].every((key) => allowed.has(key))
 }
 

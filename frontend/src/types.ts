@@ -149,6 +149,8 @@ export interface PriceWindowStatus {
 
 export interface Station {
   id: string
+  /** Immutable catalogue/community identity for deferred directory evidence. */
+  detail_snapshot?: string
   name: string
   operator?: string
   /** Source-reported OCPI OWNER party; it is not proof of the station's CPO role. */

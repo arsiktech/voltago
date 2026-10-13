@@ -9,6 +9,7 @@ import {
   getJSON,
   publicTransportErrorMessage,
   TransportError,
+  stationDetailsQueryOptions,
 } from './api'
 import type { Bbox } from '../types'
 import indexHtml from '../../index.html?raw'
@@ -41,8 +42,46 @@ describe('chargers request identity', () => {
 
     expect(url.searchParams.get('overview')).toBe('true')
     expect(url.searchParams.get('compact')).toBe('true')
+    expect(url.searchParams.get('summary')).toBe('true')
     expect(url.searchParams.get('max_price')).toBe('5.0')
     expect(url.searchParams.get('bbox')).toBe('39.401,-0.401,39.481,-0.321')
+  })
+
+  it('keeps live and legacy requests complete', () => {
+    for (const query of [{ overview: false, compact: true }, { overview: true, compact: false }]) {
+      expect(new URL(chargersUrl({ filters: DEFAULT_FILTERS, ...query }), 'http://volta.local')
+        .searchParams.has('summary')).toBe(false)
+    }
+  })
+})
+
+describe('deferred station evidence identity', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it.each([
+    { station: { id: 'other' }, snapshot: 'current' },
+    { station: { id: 'station/1' }, snapshot: 'old' },
+    { snapshot: 'current' },
+    null,
+  ])('rejects mismatched or malformed evidence: %j', async (response) => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => response })))
+    const client = new QueryClient()
+    await expect(client.fetchQuery(stationDetailsQueryOptions('station/1', 'current')))
+      .rejects.toMatchObject({ kind: 'invalid-response' })
+    client.clear()
+  })
+
+  it('encodes exact station identity and never reuses another snapshot', async () => {
+    const fetch = vi.fn(async (_url: string) => ({ ok: true, json: async () => ({ station: { id: 'station/1&x=2' }, snapshot: 'current' }) }))
+    vi.stubGlobal('fetch', fetch)
+    const client = new QueryClient()
+    const options = stationDetailsQueryOptions('station/1&x=2', 'current')
+    await expect(client.fetchQuery(options)).resolves.toEqual({ id: 'station/1&x=2' })
+    const url = new URL(fetch.mock.calls[0][0], 'http://volta.local')
+    expect([...url.searchParams.keys()]).toEqual(['id', 'snapshot'])
+    expect(url.searchParams.get('id')).toBe('station/1&x=2')
+    expect(client.getQueryData(stationDetailsQueryOptions('station/1&x=2', 'new').queryKey)).toBeUndefined()
+    client.clear()
   })
 })
 
@@ -252,7 +291,7 @@ describe('query observer cancellation', () => {
     vi.unstubAllGlobals()
   })
 
-  it.each(['chargers', 'geocode'] as const)('aborts an unused %s query without errors or retries', async (kind) => {
+  it.each(['chargers', 'geocode', 'station-details'] as const)('aborts an unused %s query without errors or retries', async (kind) => {
     vi.useFakeTimers()
     const client = new QueryClient({ defaultOptions: { queries: { retry: 2, retryDelay: 5, gcTime: Infinity } } })
     let requestSignal: AbortSignal | undefined
@@ -263,7 +302,7 @@ describe('query observer cancellation', () => {
     vi.stubGlobal('fetch', fetch)
     const options = kind === 'chargers'
       ? chargersQueryOptions({ filters: DEFAULT_FILTERS })
-      : geocodeQueryOptions('Valencia')
+      : kind === 'geocode' ? geocodeQueryOptions('Valencia') : stationDetailsQueryOptions('station/1', 'current')
     // Both hooks use these exact options; the observer exercises Query's real lifecycle.
     const observer = new QueryObserver(client, options as ReturnType<typeof chargersQueryOptions>)
     const states: string[] = []

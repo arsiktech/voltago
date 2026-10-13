@@ -126,8 +126,9 @@ export function SearchBar({
         )}
       </AnimatePresence>
 
-      <AnimatePresence initial={false}>
-        {showDrop && (
+      {/* Dismiss synchronously: exiting options must not remain clickable or
+          selectable after aria-expanded becomes false. Keep the entrance motion. */}
+      {showDrop && (
           <motion.ul
             id={listId}
             role="listbox"
@@ -135,7 +136,6 @@ export function SearchBar({
             variants={fadeSlide(Boolean(reduceMotion), 6)}
             initial="hidden"
             animate="show"
-            exit="exit"
             className="bg-surface absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-72 overflow-auto rounded-xl border border-border p-1 shadow-[var(--shadow-lg)]"
           >
             {(waitingForInput || geo.isFetching) && results.length === 0 && (
@@ -158,7 +158,6 @@ export function SearchBar({
                 onMouseEnter={() => setActiveIndex(i)}
                 initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -4 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, x: -4 }}
                 transition={{ duration: 0.14, delay: Math.min(i, 4) * 0.025 }}
                 className={`flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 text-left transition active:scale-[0.99] ${activeIndex === i ? 'bg-surface-2' : 'hover:bg-surface-2'}`}
               >
@@ -170,8 +169,7 @@ export function SearchBar({
               </motion.li>
             ))}
           </motion.ul>
-        )}
-      </AnimatePresence>
+      )}
     </div>
   )
 }

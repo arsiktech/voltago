@@ -40,11 +40,11 @@ class PWAOfflineContractTests(unittest.TestCase):
         source = (FRONTEND / "public" / "sw.js").read_text(encoding="utf-8")
 
         self.assertIn(
-            "DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true'",
+            "DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true&summary=true'",
             source,
         )
         self.assertIn("url.searchParams.get('max_price') !== '5.0'", source)
-        self.assertIn("const CACHE_VERSION = `${CACHE_PREFIX}v5`", source)
+        self.assertIn("const CACHE_VERSION = `${CACHE_PREFIX}v6`", source)
 
     def test_only_fixed_landing_area_can_be_cached_not_global_or_user_views(self):
         script = r"""
@@ -53,7 +53,7 @@ const vm = require('node:vm');
 const scope = { URL, Request, self: { location: { origin: 'https://volta.test' }, addEventListener() {} } };
 vm.createContext(scope);
 vm.runInContext(fs.readFileSync('frontend/public/sw.js', 'utf8') + '\nthis.allowed = isDefaultOverviewRequest; this.defaultURL = DEFAULT_OVERVIEW_URL;', scope);
-const query = 'https://volta.test/api/chargers?include_leads=true&max_price=5.0&overview=true&compact=true';
+const query = 'https://volta.test/api/chargers?include_leads=true&max_price=5.0&overview=true&compact=true&summary=true';
 const guard = url => scope.allowed(new Request(url));
 console.log(JSON.stringify([
   guard('https://volta.test' + scope.defaultURL),
@@ -62,10 +62,12 @@ console.log(JSON.stringify([
   guard(query + '&bbox=35.6,139.6,35.8,139.8'),
   guard(query + '&bbox=-90,-180,90,180'),
   guard('https://volta.test' + scope.defaultURL + '&lat=40&lon=-3'),
+  guard('https://volta.test' + scope.defaultURL.replace('&summary=true', '')),
+  guard('https://volta.test/api/station?id=fixture&snapshot=abc'),
 ]));
 """
         result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True, check=True)
-        self.assertEqual(json.loads(result.stdout), [True, True, False, False, False, False])
+        self.assertEqual(json.loads(result.stdout), [True, True, False, False, False, False, False, False])
 
     def test_served_shell_audit_checks_the_same_overview_guard(self):
         audit = (ROOT / "scripts" / "qa_pwa_shell.py").read_text(encoding="utf-8")

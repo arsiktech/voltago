@@ -10,7 +10,8 @@ measurement environment. No physical Android/4G test has been completed.
 - **City search:** wait 250 ms after typing stops before geocoding. Switch away
   from the previous query immediately so cancellation still works and Enter cannot
   select an old city's suggestions during the delay. Clearing the input cancels a
-  pending lookup. Local input feedback stays immediate.
+  pending lookup. Dismissed or selected suggestions unmount immediately so their
+  exit animation cannot leave invisible click targets. Local input feedback stays immediate.
 - **Offline installation:** copy content-hashed assets into Cache Storage using
   their existing immutable HTTP cache. The previous `cache: no-store` downloaded
   the app, map engine and fonts again. Continue fetching mutable shell documents
@@ -22,6 +23,16 @@ measurement environment. No physical Android/4G test has been completed.
 - **Community summaries:** count recent failures for all stations in one grouped
   query instead of querying once per station. Preserve moderation status, time
   windows and recovery after a successful check-in.
+- **Catalogue summaries:** the web overview requests `compact=true&summary=true`.
+  Keep every selected station, its ranking, connectors, filters, decision, warnings,
+  source links and attribution; defer full claims, photos and evidence until Details
+  opens. Legacy and live responses stay complete. The disclosure has its own small
+  JavaScript chunk, loading/error/offline states and a local failure boundary.
+- **Consistent details:** bind each summary to its catalogue, source policy, seeds,
+  process and community generation. An exact canonical-ID lookup reads stored
+  evidence without contacting providers. A changed snapshot offers a catalogue
+  refresh; evidence never replaces the current card or grants live authority.
+  Community changes now invalidate serialized overview caches immediately.
 
 ## Measurements
 
@@ -59,11 +70,22 @@ as a local diagnostic, not a reliable prediction of production scores. The
 basemap was unavailable in these runs, so its unused-JavaScript warning cannot
 justify removing the map dependency.
 
-The full 268,626-record worldwide index was measured separately: the default
+The first four changes above were measured before the catalogue-summary follow-up.
+The full 268,626-record worldwide index was measured separately: the original default
 2,500-row compact overview expands to approximately 11.3 MB of JSON (513 KB gzip).
 A cold response took about 3.6 seconds, while a repeated same-minute serialized
 cache hit took less than 1 ms. These are backend measurements, distinct from the
 browser runs using the small checked-in sample.
+
+The summary follow-up reduces the same 2,500-row default response from 11,295,422
+to 7,797,686 decoded bytes (31%) and from 513,520 to 422,543 gzip bytes (18%). For a
+world bounding box the reduction is 11,188,138 to 7,662,229 decoded bytes (32%) and
+533,255 to 428,482 gzip bytes (20%). IDs, order, coverage and retained driver-facing
+fields match at the same normalization time. All 5,104 unique IDs across the Spain,
+world and Valencia responses loaded matching full details successfully (median
+2.08 ms per lookup on this host). These are backend measurements, not a new
+browser speed claim.
+The response remains substantial: summary transport does not replace pagination.
 
 ## How the checklist applies
 
@@ -74,14 +96,14 @@ browser runs using the small checked-in sample.
 | Lazy images below the fold | Source photos already use `loading="lazy"` and are mounted only when details open. |
 | Static CDN | Hashed assets already have gzip and year-long immutable caching. Verify actual edge-cache behavior on the deployed domain before changing hosting. A tunnel alone does not prove a cache hit. |
 | Remove unused packages | Runtime dependencies have active uses: React, query cache, list virtualization, motion, icons, map and font. Do not remove the map because a blocked-map Lighthouse run reports unused map code. |
-| Split JavaScript | MapLibre, its worker and MapView already have separate chunks. Next evaluate loading detailed station disclosures and optional interaction code on demand. |
+| Split JavaScript | MapLibre, its worker and MapView have separate chunks. Full station disclosures now load their own small chunk when opened. Offline installation still precaches the complete build. |
 | Preload fonts / limit families | One local variable font; primary subset now preloaded. Keep other scripts for international station names. |
 | Database indexes | Coordinate, identifier and community indexes already cover the main lookups. Measure query plans before adding more. |
 | N+1 queries | Fixed the measured per-station query in community summaries. |
-| Pagination | `/api/intel` is paginated; overview queries are capped and result cards virtualized. The 2,500-row overview still needs a smaller initial card payload and separate map summaries. |
+| Pagination | `/api/intel` is paginated; overview queries are capped and result cards virtualized. Smaller summaries now defer full evidence. Separating map results from paginated cards remains a follow-up. |
 | Cache stable APIs | Serialized directory responses and source summaries are cached; writes/data changes invalidate caches. Geocoding is cached. Preserve live freshness and explicit offline labels. |
 | Stream AI answers | No AI-generated answer stream in the driver UI, so this does not apply. |
-| Skeletons / loading states | Station skeletons, search progress and source-inventory loading states already exist. |
+| Skeletons / loading states | Station skeletons, search progress and source-inventory states exist; deferred details now have loading, retry, refresh and offline states. |
 | Background heavy work | Data collection, candidate validation and index building already run outside HTTP requests. The default overview is warmed in a background thread. |
 | Server near users | Static delivery and payload reduction come first. Measure regional latency before moving the service; collection currently depends on where upstream sources remain accessible. |
 | Cold starts | Persistent Python service, not request-launched serverless functions. Cold data-query/cache work remains measurable. |
@@ -92,9 +114,9 @@ browser runs using the small checked-in sample.
 
 ## Next implementation priorities
 
-1. Separate lightweight map summaries from paginated station cards. Fetch full
-   evidence when details open, while keeping price, availability, freshness and
-   uncertainty visible before selection. Preserve station IDs and correct ranking;
+1. Separate map summaries from paginated station cards; deferred full evidence is
+   now implemented. Keep price, availability, freshness and uncertainty visible
+   before selection. Preserve station IDs and correct ranking;
    silently dropping results is not pagination.
 2. Profile React work on a real low-end Android, including scrolling, opening
    details and changing the search area. Use that evidence to split optional UI
@@ -108,7 +130,9 @@ browser runs using the small checked-in sample.
 Run `./scripts/verify.sh --full` for backend/frontend tests, lint and build.
 Against a running production build, run `scripts/qa_search_debounce.js` for
 request suppression, clearing and stale-selection protection;
+`scripts/qa_station_details.js` for deferred loading, retry, snapshot replacement,
+offline evidence and a failed optional chunk;
 `scripts/qa_near_home_first_use.js` for the search/location flow; and
 `scripts/qa_cdn_blocked_ui.js` for the map-free and one-visit offline behavior.
-The search regression also runs in GitHub Verify. Local measurement receipts
+The search and details regressions also run in GitHub Verify. Local measurement receipts
 stay outside Git because they contain environment-specific details.
