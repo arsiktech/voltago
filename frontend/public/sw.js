@@ -47,7 +47,11 @@ function buildAssetUrls(manifest) {
 
 async function fetchIntoCache(cache, url) {
   try {
-    const response = await fetch(url, { cache: 'no-store' })
+    // Vite assets have content-hashed URLs and immutable HTTP caching. Reuse the
+    // browser's download when copying them into offline storage; forcing a reload
+    // used to transfer the app, map engine and fonts twice on the first visit.
+    // Mutable shell documents still come from the network on every installation.
+    const response = await fetch(url, { cache: url.startsWith('/assets/') ? 'default' : 'no-store' })
     if (response.ok) await putBestEffort(cache, url, response.clone())
   } catch {
     // Installation remains non-blocking when one optional shell asset is unavailable.

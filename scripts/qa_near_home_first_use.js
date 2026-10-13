@@ -762,14 +762,14 @@ async function main() {
     readyGuidance: /Go now options? nearby/.test(document.querySelector('[data-driver-guidance]')?.textContent || ''),
     cards: document.querySelectorAll('[data-station]').length,
   }));
-  if (pendingOverview.mode !== "Explore Spain" || pendingOverview.goPills || pendingOverview.liveAvailability || pendingOverview.readyGuidance || pendingOverview.cards) {
+  if (pendingOverview.mode !== "Explore chargers" || pendingOverview.goPills || pendingOverview.liveAvailability || pendingOverview.readyGuidance || pendingOverview.cards) {
     failures.push(`pending region overview retained old live authority under Open now: ${JSON.stringify(pendingOverview)}`);
   }
   releaseRegionOverview();
   await page.getByText("No chargers match these filters", { exact: true }).waitFor({ timeout: 10000 });
   const regionRequests = chargerRequests.length;
   await resolvePending(beforeRegion);
-  await checkLateLocation("region selection", "Explore Spain", regionRequests);
+  await checkLateLocation("region selection", "Explore chargers", regionRequests);
   if (await page.getByText("Location is unavailable", { exact: true }).count()) {
     failures.push("a late geolocation error changed the selected region's guidance");
   }

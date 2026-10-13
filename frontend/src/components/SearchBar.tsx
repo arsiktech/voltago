@@ -30,7 +30,16 @@ export function SearchBar({
     return () => window.removeEventListener('keydown', onKey)
   }, [])
   const listId = `home-place-results-${useId().replace(/:/g, '')}`
-  const geo = useGeocode(value)
+  const query = value.trim()
+  const [settledQuery, setSettledQuery] = useState('')
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettledQuery(query), 250)
+    return () => window.clearTimeout(timer)
+  }, [query])
+  const waitingForInput = query.length >= 3 && query !== settledQuery
+  // Switch away from the previous query immediately: its request is cancelled and
+  // its suggestions cannot be selected while the next city is still being typed.
+  const geo = useGeocode(waitingForInput ? '' : query)
   const results = geo.data?.results ?? []
   const [activeOption, setActiveOption] = useState({ value, resultCount: results.length, index: results.length ? 0 : -1 })
   const optionScopeChanged = activeOption.value !== value || activeOption.resultCount !== results.length
@@ -45,7 +54,7 @@ export function SearchBar({
     Boolean(onPlaceSelect) &&
     focused &&
     value.trim().length >= 3 &&
-    (results.length > 0 || geo.isFetching || geo.isFetched || geo.isError)
+    (waitingForInput || results.length > 0 || geo.isFetching || geo.isFetched || geo.isError)
 
   const pick = (r: GeocodeResult) => {
     onPlaceSelect?.(r)
@@ -129,7 +138,7 @@ export function SearchBar({
             exit="exit"
             className="bg-surface absolute inset-x-0 top-[calc(100%+6px)] z-30 max-h-72 overflow-auto rounded-xl border border-border p-1 shadow-[var(--shadow-lg)]"
           >
-            {geo.isFetching && results.length === 0 && (
+            {(waitingForInput || geo.isFetching) && results.length === 0 && (
               <li className="px-3 py-2.5 text-xs text-muted">Searching…</li>
             )}
             {geo.isError && !geo.isFetching && (

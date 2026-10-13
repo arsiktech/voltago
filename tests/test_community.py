@@ -286,6 +286,82 @@ class CommunityTestCase(unittest.TestCase):
         self.assertEqual(summary["checkins"]["total"], 2)
         self.assertEqual(summary["recent_failure_count"], 2)
 
+    def test_failure_aggregation_preserves_window_recovery_and_moderation(self) -> None:
+        now = datetime(2026, 10, 13, 12, tzinfo=timezone.utc)
+        cutoff = now - timedelta(days=community.DOWNGRADE_WINDOW_DAYS)
+        recent = now - timedelta(days=1)
+        cases = {
+            "window": [("failed", cutoff - timedelta(seconds=1), "active"),
+                       ("offline", cutoff, "active"),
+                       ("blocked", cutoff + timedelta(seconds=1), "active")],
+            "equal-success": [("charged", recent, "active"), ("failed", recent, "active")],
+            "recovered": [("charged", cutoff, "active"), ("failed", recent, "active"),
+                          ("charged", recent + timedelta(seconds=1), "active"),
+                          ("offline", recent + timedelta(seconds=2), "active")],
+            "hidden-success": [("failed", recent, "active"), ("charged", now, "hidden")],
+            "hidden-failure": [("occupied", recent, "active"), ("failed", now, "hidden")],
+            "old-only": [("failed", cutoff - timedelta(seconds=1), "active")],
+        }
+        conn = community._connect()
+        try:
+            conn.executemany(
+                "INSERT INTO checkins(station_id,verdict,created_at,client,status) VALUES(?,?,?,?,?)",
+                [(sid, verdict, iso(when), "fixture", status)
+                 for sid, rows in cases.items() for verdict, when, status in rows],
+            )
+            conn.execute(
+                "INSERT INTO photos(station_id,ext,size,created_at,client) VALUES(?,?,?,?,?)",
+                ("photo-only", "jpg", 1, iso(now), "fixture"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        with patch.object(community, "datetime", wraps=datetime) as clock:
+            clock.now.return_value = now
+            summaries = community._summaries_uncached()["stations"]
+        expected = {"window": 2, "equal-success": 0, "recovered": 1,
+                    "hidden-success": 1, "hidden-failure": 0, "old-only": 0, "photo-only": 0}
+        for sid, count in expected.items():
+            with self.subTest(station=sid):
+                self.assertEqual(summaries[sid]["recent_failure_count"], count)
+                self.assertEqual(summaries[sid]["recent_failure"], bool(count))
+        self.assertEqual(summaries["window"]["checkins"]["total"], 3)
+        self.assertEqual(summaries["photo-only"]["checkins"]["total"], 0)
+        self.assertFalse(summaries["hidden-success"]["recent_success"])
+
+    def test_summary_query_count_does_not_grow_with_station_count(self) -> None:
+        now = iso(datetime.now(timezone.utc))
+        connect = community._connect
+        queries = []
+
+        def traced_connect():
+            connection = connect()
+            connection.set_trace_callback(queries.append)
+            return connection
+
+        def measure(station_count):
+            conn = connect()
+            try:
+                conn.execute("DELETE FROM checkins")
+                conn.executemany(
+                    "INSERT INTO checkins(station_id,verdict,created_at,client) VALUES(?,?,?,?)",
+                    [(str(i), "failed", now, "fixture") for i in range(station_count)],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            queries.clear()
+            with patch.object(community, "_connect", side_effect=traced_connect):
+                summary = community._summaries_uncached()
+            self.assertEqual(len(summary["stations"]), station_count)
+            self.assertTrue(all(row["recent_failure_count"] == 1 for row in summary["stations"].values()))
+            return sum(query.lstrip().upper().startswith("SELECT") for query in queries)
+
+        small_count = measure(2)
+        large_count = measure(100)
+        self.assertEqual(large_count, small_count)
+        self.assertLessEqual(large_count, 8)
+
     def test_free_verification_ladder(self) -> None:
         live_item = {"verification": {"live_verified": True}}
         self.assertEqual(community.free_verification_level(live_item, None), "live")

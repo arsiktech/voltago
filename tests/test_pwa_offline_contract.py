@@ -157,6 +157,45 @@ async function dispatch(url) {
             'writes': ['https://volta.test/assets/maplibre-gl-worker-fresh.js'],
         })
 
+    def test_install_reuses_http_assets_but_fetches_mutable_shell_fresh(self):
+        """Offline completeness must not force repeat downloads of immutable assets."""
+        script = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const requests = [];
+const writes = [];
+const cached = { put: async (url) => writes.push(url) };
+const manifest = {
+  entry: { file: 'assets/app-hash.js', css: ['assets/app-hash.css'], assets: ['assets/font-hash.woff2'] },
+  map: { file: 'assets/map-hash.js', assets: ['assets/worker-hash.js'] },
+};
+const scope = {
+  self: { addEventListener() {} },
+  caches: { open: async () => cached },
+  fetch: async (url, options) => {
+    requests.push([url, options.cache]);
+    return { ok: true, clone() { return this; }, json: async () => manifest };
+  },
+};
+vm.createContext(scope);
+vm.runInContext(fs.readFileSync('frontend/public/sw.js', 'utf8') + '\nthis.prime = primeShell;', scope);
+scope.prime().then(() => console.log(JSON.stringify({requests, writes}))).catch(error => {
+  console.error(error); process.exitCode = 1;
+});
+"""
+        result = subprocess.run(['node', '-e', script], cwd=ROOT, capture_output=True,
+                                text=True, check=True, timeout=10)
+        output = json.loads(result.stdout)
+        requests = dict(output['requests'])
+        for url in ('/assets/app-hash.js', '/assets/app-hash.css', '/assets/font-hash.woff2',
+                    '/assets/map-hash.js', '/assets/worker-hash.js'):
+            self.assertEqual(requests[url], 'default')
+            self.assertIn(url, output['writes'])
+        for url in ('/', '/.vite/manifest.json', '/manifest.webmanifest', '/volta-icon.svg',
+                    '/brand/volta-icon.png'):
+            self.assertEqual(requests[url], 'no-store')
+            self.assertIn(url, output['writes'])
+
     def test_cache_writes_are_best_effort_and_cannot_break_online_fetches(self):
         source = (FRONTEND / "public" / "sw.js").read_text(encoding="utf-8")
         self.assertIn("async function putBestEffort", source)

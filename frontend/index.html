@@ -14,6 +14,9 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/volta-icon.svg" />
     <link rel="apple-touch-icon" href="/brand/volta-icon.png" />
+    <!-- Vite emits the same hashed URL used by the font CSS. Only the primary
+         Latin subset is preloaded; other scripts load when their text needs them. -->
+    <link rel="preload" href="/node_modules/@fontsource-variable/manrope/files/manrope-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
     <!-- Start the default Spain viewport while the app bundle downloads. The href must
          equal the app's first overview request (api.test.ts checks this) or the
          browser fetches it twice. -->
