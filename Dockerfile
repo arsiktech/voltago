@@ -19,7 +19,7 @@ WORKDIR /app
 # overnight/off-peak pricing-window boundaries by 1-2h -- the guard is a safety net,
 # this install is the real fix for correct Madrid-local pricing windows in production.
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
-COPY server.py community.py station_truth.py ./
+COPY server.py agent_mcp.py community.py station_truth.py ./
 COPY scripts/source_policy.py ./scripts/source_policy.py
 COPY scripts/source_transport.py ./scripts/source_transport.py
 COPY data/free_intelligence.json data/seed_leads.json data/source_policy_exclusions.json ./data/

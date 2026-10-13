@@ -16,6 +16,7 @@ Large JSON/static text assets are gzip-compressed when the client advertises
 | `GET /api/sources` | Source categories plus current requested-source strategy. |
 | `GET /api/source-strategy` | Named provider strategy matrix. |
 | `GET /api/source-health` | Engine version + per-source health summary: map-eligible vs hidden-from-map record counts by tier/reliability/source, coordinate/source-link issue counts, and live-cache status per provider. |
+| `POST /mcp` | Read-only MCP server for AI agents (`find_chargers`, `get_charger`, `get_data_status`); see [MCP server](../mcp.md). `GET`/`DELETE` return `405`. |
 | `GET /*` | Static SPA assets from the required `frontend/dist` build. |
 
 ## `/api/chargers`
