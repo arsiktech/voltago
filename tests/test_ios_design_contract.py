@@ -259,7 +259,12 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertIn("private var peekDetent: PresentationDetent { .height(peekHeight) }", self.root_view)
         self.assertIn(".presentationBackground(Theme.canvas)", self.root_view)
         self.assertIn("List {", self.sheet_view)
-        self.assertIn("ForEach(state.listRows) { st in", self.sheet_view)
+        self.assertIn("let currentRows = state.listRows", self.sheet_view)
+        self.assertIn("stationRows(currentRows)", self.sheet_view)
+        self.assertIn("private func stationRows(_ rows: [Station])", self.sheet_view)
+        self.assertIn("ForEach(rows) { st in", self.sheet_view)
+        self.assertNotIn("rows.prefix", self.sheet_view)
+        self.assertLess(self.sheet_view.index("stationRows(currentRows)"), self.sheet_view.index("ForEach(unavailable)"))
         self.assertNotIn("ScrollView(.horizontal", self.sheet_view)
         self.assertNotIn("state.listRows.prefix", self.sheet_view)
         self.assertIn("onSelect(st)", self.sheet_view)
@@ -271,6 +276,14 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertNotIn(".shadow(", self.station_views.split("struct StationCard", 1)[1].split("struct StationCardSkeleton", 1)[0])
         self.assertIn("StationCard(station: st, selected: state.focusedStationID == st.id)", self.sheet_view)
         self.assertIn("selected ? Theme.selectedSurface : Theme.surface", self.theme)
+
+    def test_unavailable_saved_actions_keep_native_contrast_and_accessibility_layout(self):
+        actions = self.sheet_view.split("private func unavailableFavoriteActions", 1)[1].split("// MARK: - Stations", 1)[0]
+        self.assertEqual(actions.count("VoltaActionButtonStyle(prominent: false)"), 2)
+        self.assertEqual(actions.count(".frame(maxWidth: .infinity, minHeight: 44)"), 2)
+        self.assertIn("if dynamicTypeSize.isAccessibilitySize", self.sheet_view)
+        self.assertIn("VStack(spacing: 10) { unavailableFavoriteActions(favorite) }", self.sheet_view)
+        self.assertIn("HStack(spacing: 10) { unavailableFavoriteActions(favorite) }", self.sheet_view)
 
     def test_motion_respects_the_system_reduce_motion_setting(self):
         self.assertIn("accessibilityReduceMotion", self.root_view)

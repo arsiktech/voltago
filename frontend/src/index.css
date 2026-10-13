@@ -608,7 +608,17 @@
   .app-header { gap: 12px; }
   .brand-lockup { font-size: 21px; }
   .brand-lockup img { width: 30px; height: 30px; }
-  .discovery-map { top: var(--header-height); bottom: 58dvh; left: 0; right: 0; border: 0; border-radius: 0; }
+  .discovery-map { top: var(--header-height); bottom: 58dvh; left: 0; right: 0; border: 0; border-radius: 0;
+    overflow: visible; }
+  /* Keep the camera viewport fixed. Only the popup can extend over the mobile
+     sheet, so a full charger card is not clipped by the short map strip. */
+  .discovery-map .maplibregl-map { overflow: visible; }
+  .discovery-map .volta-popup { z-index: 30; }
+  .discovery-map .volta-popup .maplibregl-popup-content {
+    max-height: calc(58dvh - 48px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   .discovery-panel { top: 42dvh; bottom: 0; left: 0; right: 0; width: auto;
     border-radius: 24px 24px 0 0; border-bottom: 0; box-shadow: 0 -8px 28px -22px var(--fg); }
   .discovery-title, .discovery-intro { display: none; }

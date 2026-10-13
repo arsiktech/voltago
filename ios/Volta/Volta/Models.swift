@@ -45,6 +45,7 @@ struct LossyArray<Element: Decodable>: Decodable {
 }
 
 struct ChargersResponse: Decodable {
+    var references: ChargerReferences? = nil
     @LossyArray var stations: [Station]
     @LossyArray var leads: [Station]
     var warning: String?
@@ -76,6 +77,7 @@ struct Station: Decodable, Identifiable, Hashable {
     static func == (a: Station, b: Station) -> Bool { a.id == b.id }
     func hash(into h: inout Hasher) { h.combine(id) }
 
+    var referenceRevision: String? = nil
     var id: String
     var name: String
     /// Source-reported operator text, not verified CPO identity. Optional so older JSON still decodes.
@@ -146,7 +148,7 @@ struct Station: Decodable, Identifiable, Hashable {
     var isLead: Bool { lead ?? false }
 
     enum CodingKeys: String, CodingKey {
-        case id, name
+        case id, name, referenceRevision
         case operatorName = "operator"
         case owner, city, address, lat, lon
         case priceMin, priceLabel, isFree, isCheap

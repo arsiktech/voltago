@@ -51,7 +51,7 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
             )
         return run, json.loads(run.stdout)
 
-    def test_missing_id_absorbed_by_a_pin_with_the_same_source_id_is_merged(self) -> None:
+    def test_raw_shared_source_claim_still_requires_validated_alias(self) -> None:
         old = row("old-ocm", "OpenChargeMap public snapshot", "https://map.openchargemap.io/?mode=details&id=52637")
         keep = row("kept", "OpenChargeMap public snapshot", "https://map.openchargemap.io/?mode=details&id=1")
         new = row("endolla", "Barcelona Endolla open data", "https://opendata-ajuntament.barcelona.cat/x")
@@ -62,10 +62,10 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
 
         run, result = self._run(baseline, rebuilt)
 
-        self.assertEqual(run.returncode, 0, run.stdout)
-        self.assertEqual(result["delta"]["missing_ids"], 0)
-        self.assertEqual(result["delta"]["merged_ids"], 1)
-        self.assertEqual(result["delta"]["merged_sample"], [{"id": "old-ocm", "into": "endolla"}])
+        self.assertNotEqual(run.returncode, 0, run.stdout)
+        self.assertEqual(result["delta"]["missing_ids"], 1)
+        self.assertEqual(result["delta"]["merged_ids"], 0)
+        self.assertEqual(result["delta"]["merged_sample"], [])
 
     def test_merged_ids_claim_without_a_shared_source_id_stays_missing(self) -> None:
         old = row("old-ocm", "OpenChargeMap public snapshot", "https://map.openchargemap.io/?mode=details&id=52637")
@@ -106,7 +106,7 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
         self.assertEqual(result["policy_exclusions"]["rebuilt"]["records"], 1)
         self.assertTrue(any("excluded source-policy" in failure for failure in result["failures"]))
 
-    def test_price_unknown_official_family_may_disappear_only_with_full_adapter_proof(self) -> None:
+    def test_official_family_coverage_does_not_waive_missing_references(self) -> None:
         madrid = row(
             "madrid-old-price-match",
             "Madrid public charger open data",
@@ -122,7 +122,8 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertNotEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertEqual(result["delta"]["missing_ids"], 1)
         self.assertEqual(
             result["corroboration_only_source_losses"],
             ["Madrid public charger open data"],

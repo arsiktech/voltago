@@ -1017,13 +1017,23 @@ def execute(args: argparse.Namespace) -> int:
         receipt["stage"] = "build"
         build = require_command(
             "build",
-            [args.python, "scripts/ingest_sources.py", "--out", str(candidate)],
+            [args.python, "scripts/ingest_sources.py", "--prior", str(canonical), "--out", str(candidate)],
             root=root,
             timeout=args.command_timeout,
         )
         receipt["build"] = compact_run(build)
         if not candidate.is_file() or candidate.stat().st_size == 0:
             raise RefreshFailure("build", "ingestion did not create a non-empty candidate")
+        try:
+            from scripts.station_identity import preserve_record_ids
+        except ModuleNotFoundError:
+            from station_identity import preserve_record_ids
+        reconciled, reference_report = preserve_record_ids(
+            json.loads(canonical.read_text()), json.loads(candidate.read_text()))
+        receipt["identity_reconciliation"] = reference_report
+        if reference_report["unresolved_missing_ids"] or reference_report["unresolved_alias_ids"]:
+            raise RefreshFailure("references", "unresolved charger references block promotion")
+        atomic_json(candidate, reconciled)
         candidate_sha = sha256_file(candidate)
         receipt["candidate_sha256"] = candidate_sha
 

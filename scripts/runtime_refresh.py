@@ -55,7 +55,7 @@ def baseline_paths(root: Path, state: Path) -> dict[str, Path]:
 
 
 def validate_gate_receipts(delta: dict, canary: dict, candidate_sha: str, baseline_sha: str) -> None:
-    if delta.get("ok") is not True or (delta.get("delta") or {}).get("missing_ids") != 0:
+    if delta.get("ok") is not True or (delta.get("delta") or {}).get("missing_ids") != 0 or (delta.get("delta") or {}).get("reference_errors"):
         raise RuntimeError("delta rejected candidate: require ok=true and zero missing IDs")
     if not (
         canary.get("ok") is True and canary.get("candidate_reused") is True
@@ -204,12 +204,13 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
             receipt["baseline_sha256"] = old_hashes
             candidate = run / "free_intelligence.json"
             receipt["stage"] = "build"
-            run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--out", str(candidate)], timeout)
+            run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--prior", str(baseline["free_intelligence.json"]), "--out", str(candidate)], timeout)
             payload, identity_report = preserve_record_ids(
                 json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
             receipt["identity_reconciliation"] = identity_report
-            if identity_report["preserved_ids"]:
-                shared.atomic_json(candidate, payload)
+            if identity_report.get("unresolved_alias_ids") or identity_report.get("unresolved_missing_ids"):
+                raise RuntimeError("identity reconciliation rejected unresolved canonical station aliases")
+            shared.atomic_json(candidate, payload)
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha
             payload = json.loads(candidate.read_text())
@@ -223,7 +224,7 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
                 str(baseline["free_intelligence.json"]), "--rebuilt", str(candidate), "--policy-exclusions", str(policy)], timeout)
             delta = shared.parse_last_json_object(result.stdout)
             # Enforce zero loss before canary and again with bound evidence below.
-            if delta.get("ok") is not True or (delta.get("delta") or {}).get("missing_ids") != 0:
+            if delta.get("ok") is not True or (delta.get("delta") or {}).get("missing_ids") != 0 or (delta.get("delta") or {}).get("reference_errors"):
                 raise RuntimeError("delta rejected candidate: require ok=true and zero missing IDs")
             receipt["delta"] = delta
             history = run / "ingestion-canary-history.jsonl"

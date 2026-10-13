@@ -18,6 +18,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import ingest_sources as ing  # noqa: E402
 
@@ -123,40 +124,30 @@ class CachedFetchProvenanceTests(unittest.TestCase):
         self.assertFalse(artifact.fallback)
         self.assertFalse(artifact.stale)
 
-    def test_openchargemap_record_inherits_cache_mtime(self) -> None:
-        poi = {
-            "ID": 123,
-            "UsageCost": "Free",
-            "AddressInfo": {
-                "Title": "OCM provenance charger",
-                "AddressLine1": "Carrer de la Prova",
-                "Town": "València",
-                "Latitude": 39.47,
-                "Longitude": -0.37,
-                "Country": {"ISOCode": "ES"},
-            },
-            "Connections": [{
-                "ID": 1,
-                "ConnectionType": {"Title": "Type 2 (Socket Only)"},
-                "PowerKW": 22,
-                "Quantity": 1,
-                "StatusType": {"Title": "Operational", "IsOperational": True},
-            }],
-            "NumberOfPoints": 1,
-            "StatusType": {"Title": "Operational"},
-            "UsageType": {"Title": "Public"},
-        }
-        path = ing.CACHE / "ocm_poi.json.gz"
-        with gzip.open(path, "wt", encoding="utf-8") as fh:
-            fh.write(json.dumps(poi) + "\n")
-        cached_at = time.time() - 2 * 86400
-        os.utime(path, (cached_at, cached_at))
+    def test_openchargemap_record_dates_are_snapshot_not_download_time(self) -> None:
+        import test_ocm_export as fx
 
+        archive = ing.CACHE / "fixture.tar.gz"
+        fx.make_archive(archive, {123: fx.compact_poi(123, title="OCM provenance charger", lat=39.47, lon=-0.37, cost="Free")})
+        net = fx.Network(manifest=fx.MANIFEST, archive=archive.read_bytes(), legacy=None)
+        before = time.time()
         records = []
-        ing.source_openchargemap(records)
+        with mock.patch.object(fx.ocm, "MIN_COUNTRY_FILES", 1), mock.patch.object(ing, "policy_urlopen", net):
+            ing.source_openchargemap(records)
+        after = time.time()
 
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]["source_fetched_at"], iso_from_epoch(cached_at))
+        # The record is dated by the export commit (a bulk-export date), never by when we downloaded it.
+        self.assertEqual(records[0]["source_fetched_at"], fx.COMMIT_DATE)
+        lookup = datetime.fromisoformat(records[0]["sources"][0]["source_lookup_at"].replace("Z", "+00:00")).timestamp()
+        self.assertGreaterEqual(lookup, before - 1)
+        self.assertLessEqual(lookup, after + 1)
+        self.assertEqual(records[0]["last_seen"], "2025-10-30T18:01:00Z")
+        # Cached rebuild: the archive provenance records the cache hit and its original fetch time.
+        again = []
+        with mock.patch.object(fx.ocm, "MIN_COUNTRY_FILES", 1), mock.patch.object(ing, "policy_urlopen", side_effect=AssertionError("cache hit must not fetch")):
+            ing.source_openchargemap(again)
+        self.assertEqual(again[0]["source_fetched_at"], fx.COMMIT_DATE)
 
     def test_build_evidence_resets_per_run_and_surfaces_stale_fallback(self) -> None:
         path = ing.CACHE / "build-source.json"

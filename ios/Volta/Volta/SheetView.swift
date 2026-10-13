@@ -9,6 +9,7 @@ struct SheetView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if DEBUG
     @Environment(\.colorScheme) private var colorScheme
     #endif
@@ -24,6 +25,8 @@ struct SheetView: View {
     private var searching: Bool { searchFocused || !state.searchText.isEmpty }
 
     var body: some View {
+        let currentRows = state.listRows
+        let unavailable = state.showingSavedOnly ? state.unavailableFavorites : []
         NavigationStack {
             VStack(spacing: 0) {
                 searchRow
@@ -52,10 +55,15 @@ struct SheetView: View {
                     } else {
                         resultsHeading
                         statusRows
-                        if !state.savedStationsInView.isEmpty || state.showingSavedOnly {
+                        if !state.favoriteIDs.isEmpty || state.showingSavedOnly {
                             savedRow
                         }
-                        stationRows
+                        if !currentRows.isEmpty || unavailable.isEmpty {
+                            stationRows(currentRows)
+                        }
+                        ForEach(unavailable) { favorite in
+                            unavailableFavoriteRow(favorite)
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -340,22 +348,56 @@ struct SheetView: View {
         }
         .tint(Theme.action)
         .frame(minHeight: 44)
+        .accessibilityIdentifier("savedOnlyToggle")
         .accessibilityHint("Limits the list to chargers you saved on this iPhone. Missing saved chargers stay unknown, not invented.")
         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
     }
 
+    private func unavailableFavoriteRow(_ favorite: FavoriteRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(favorite.name).font(.headline)
+            Text("Saved charger").font(.caption).foregroundStyle(.secondary)
+            Text(state.unavailableFavoriteMessage(favorite.id)).font(.footnote)
+            if state.referencesCached { Text("Cached reference · Not live").font(.caption) }
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) { unavailableFavoriteActions(favorite) }
+            } else {
+                HStack(spacing: 10) { unavailableFavoriteActions(favorite) }
+            }
+        }
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private func unavailableFavoriteActions(_ favorite: FavoriteRecord) -> some View {
+        Button { Task { await state.loadOverview() } } label: {
+            Text("Try again")
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(VoltaActionButtonStyle(prominent: false))
+        .accessibilityIdentifier("retrySavedReference-\(favorite.id)")
+        Button { state.removeFavoriteReference(favorite.id) } label: {
+            Text("Remove saved")
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(VoltaActionButtonStyle(prominent: false))
+        .accessibilityIdentifier("removeSavedReference-\(favorite.id)")
+    }
+
     // MARK: - Stations
 
     @ViewBuilder
-    private var stationRows: some View {
+    private func stationRows(_ rows: [Station]) -> some View {
         if overviewFailed {
             EmptyView()
-        } else if state.listRows.isEmpty {
+        } else if rows.isEmpty {
             emptyState
         } else {
-            ForEach(state.listRows) { st in
+            ForEach(rows) { st in
                 Button {
                     rowTapFeedback.toggle()
                     onSelect(st)

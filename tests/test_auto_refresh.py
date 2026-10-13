@@ -48,7 +48,7 @@ class RefreshRepo:
         (root / "qa").mkdir()
         (root / "scripts").mkdir()
         (root / ".gitignore").write_text(
-            ".volta-auto-refresh-dedicated\ndata/cache/\n",
+            ".volta-auto-refresh-dedicated\ndata/cache/\n__pycache__/\n",
             encoding="utf-8",
         )
         (root / ".volta-auto-refresh-dedicated").write_text("dedicated checkout\n", encoding="utf-8")
@@ -58,7 +58,7 @@ class RefreshRepo:
             "total_records": 1,
             "raw_records": 1,
             "errors": [],
-            "records": [{"id": "one"}],
+            "records": [{"id": "one", "lat":39.0, "lon":-.5}],
         }) + "\n", encoding="utf-8")
         (root / "qa" / "ingestion-canary-history.jsonl").write_text(
             json.dumps({"ok": True, "records": 1}) + "\n",
@@ -102,11 +102,13 @@ class RefreshRepo:
 
     def _write_fake_scripts(self) -> None:
         shutil.copy2(SCRIPT, self.root / "scripts" / "auto_refresh.py")
+        for dependency in ("station_identity.py", "source_policy.py", "source_rights.py", "ocm_export.py"):
+            shutil.copy2(SCRIPT.parent / dependency, self.root / "scripts" / dependency)
         (self.root / "scripts" / "ingest_sources.py").write_text(
             """#!/usr/bin/env python3
 import argparse, json
 from pathlib import Path
-p=argparse.ArgumentParser(); p.add_argument('--out', type=Path, required=True); a=p.parse_args()
+p=argparse.ArgumentParser(); p.add_argument('--out', type=Path, required=True); p.add_argument('--prior'); a=p.parse_args()
 root=Path.cwd(); counter=root/'data/cache/build-count'
 counter.write_text(str(int(counter.read_text() or '0')+1) if counter.exists() else '1')
 payload=json.loads((root/'data/free_intelligence.json').read_text())

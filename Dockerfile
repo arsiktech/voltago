@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -r
 COPY server.py agent_mcp.py community.py station_truth.py ./
 COPY scripts/source_policy.py ./scripts/source_policy.py
 COPY scripts/source_transport.py ./scripts/source_transport.py
+COPY scripts/station_identity.py ./scripts/station_identity.py
+COPY scripts/source_rights.py ./scripts/source_rights.py
+COPY scripts/ocm_export.py ./scripts/ocm_export.py
 COPY data/free_intelligence.json data/seed_leads.json data/source_policy_exclusions.json ./data/
 COPY --from=web /web/dist ./frontend/dist
 # Build-time import smoke: catches a syntax/import error in the image itself (not just

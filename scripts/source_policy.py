@@ -83,7 +83,8 @@ def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
         urls.append(primary.get("url"))
     for source in record.get("sources") or []:
         if isinstance(source, dict):
-            families.extend(source.get(key) for key in ("name", "source_type"))
+            families.extend(source.get(key) for key in ("name", "source_type", "data_provider"))
+            urls.append(source.get("data_provider_url"))
             urls.append(source.get("url"))
     for claim_key in ("charge_claim", "parking_claim", "location_claim", "hardware_claim", "access_claim"):
         claim = record.get(claim_key)
@@ -138,6 +139,8 @@ def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
     # as conventional owner metadata under the link-only policy.
     raw = record.get("raw")
     if isinstance(raw, dict):
+        families.append(raw.get("DataProviderTitle"))
+        urls.append(raw.get("DataProviderURL"))
         for key in ("source", "source_url"):
             value = raw.get(key)
             families.append(value)

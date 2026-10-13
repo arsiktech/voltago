@@ -202,6 +202,7 @@ def canary_commands(
     ingest_cmd = None if existing_candidate else [
         python,
         "scripts/ingest_sources.py",
+        "--prior", str(baseline_path),
         "--out",
         str(out_path),
     ]
@@ -278,6 +279,7 @@ def main() -> int:
     parser.add_argument("--min-source-family-ratio", type=float, default=0.85)
     parser.add_argument("--min-source-family-count", type=int, default=5)
     parser.add_argument("--policy-exclusions", type=Path, default=DEFAULT_POLICY)
+    parser.add_argument("--reference-cache", type=Path, default=ROOT / "data" / "cache")
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
 
@@ -303,6 +305,18 @@ def main() -> int:
     if not baseline_path.is_file():
         failures.append(f"baseline does not exist: {baseline_path}")
 
+    if not failures and ingest_cmd is not None:
+        try:
+            from station_identity import preserve_record_ids
+            from auto_refresh import atomic_json
+            reconciled, reference_report = preserve_record_ids(
+                json.loads(baseline_path.read_text()), json.loads(out_path.read_text()))
+            atomic_json(out_path, reconciled)
+            if reference_report["unresolved_alias_ids"] or reference_report["unresolved_missing_ids"]:
+                failures.append("unresolved charger references block canary acceptance")
+        except (ValueError, OSError) as exc:
+            failures.append(f"reference reconciliation failed: {exc}")
+
     candidate_sha_before: Optional[str] = None
     baseline_sha: Optional[str] = None
     if not failures:
@@ -312,6 +326,7 @@ def main() -> int:
         except OSError as exc:
             failures.append(f"could not hash candidate/baseline: {type(exc).__name__}")
 
+    delta_cmd.extend(["--reference-cache", str(args.reference_cache)])
     delta_run = None
     delta_result: Dict[str, Any] = {"ok": False, "failures": ["delta audit not run"]}
     if not failures:

@@ -148,6 +148,7 @@ export interface PriceWindowStatus {
 }
 
 export interface Station {
+  reference_revision?: string
   id: string
   name: string
   operator?: string
@@ -256,6 +257,7 @@ export interface CacheInfo {
 }
 
 export interface ChargersResponse {
+  references?: import('./lib/references').ReferenceCatalogue | null
   stations: Station[]
   leads: Station[]
   meta?: ChargersMeta

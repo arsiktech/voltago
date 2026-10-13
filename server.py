@@ -40,6 +40,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import hmac
 
+from scripts.station_identity import validate_references, AUDIT_FIELDS, ReferenceModel
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from station_truth import (
@@ -3238,6 +3239,7 @@ def load_intelligence_meta() -> Dict[str, Any]:
             payload = json.load(f, object_pairs_hook=_interning_object_hook())
         allowed, excluded = partition_records(payload.get("records") or [], SOURCE_POLICY_EXCLUSIONS)
         payload["records"] = allowed
+        validate_references(payload)
         payload["total_records"] = len(allowed)
         # Expose the fingerprint of the raw policy-clean canonical rows. /api/intel
         # replaces records with enriched/time-derived UI rows, so hashing the response
@@ -3302,6 +3304,7 @@ def _intel_enriched_pool() -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str,
     # (the same fetch-outside-lock pattern the network caches use: only the dict
     # read-decide and the publish/write happen under lock, never the expensive part).
     raw = load_intelligence_meta()
+    model = reference_model(raw)
     intel_records = [
         normalized for r in raw.get("records", [])
         for normalized in [_normalize_lead(deepcopy(r), "free/cheap intelligence DB")]
@@ -3317,6 +3320,10 @@ def _intel_enriched_pool() -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str,
             if source_policy_record_allowed(lead)
             if not reject_station_reason(normalized)
         ]
+    for row in intel_records:
+        for field in AUDIT_FIELDS:
+            row.pop(field, None)
+        row["reference_revision"] = model.revision
     intel_coords = _coords_for(intel_records)
     seed_coords = _coords_for(seed_records)
     with _CACHE_LOCKS["intel"]:
@@ -3361,7 +3368,7 @@ def load_intelligence(bbox: Optional[Dict[str, float]] = None) -> Dict[str, Any]
     data = dict(raw)
     intel_records, intel_coords, _seeds, _seeds_coords = _intel_enriched_pool()
     data["records"] = _refresh_time_derived_fields(attach_community_rows(deepcopy(_filter_by_coords(intel_records, intel_coords, bbox))))
-    return data
+    return bind_reference_response(data)
 
 
 def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
@@ -3396,17 +3403,62 @@ def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, An
 _KNOWN_IDS_CACHE: Dict[str, Any] = {"ts": 0.0, "ids": set()}
 
 
+_REFERENCE_MODEL_CACHE: Tuple[Optional[Dict[str, Any]], Optional[ReferenceModel]] = (None, None)
+
+
+def reference_model(payload=None) -> ReferenceModel:
+    global _REFERENCE_MODEL_CACHE
+    raw = load_intelligence_meta() if payload is None else payload
+    cached_payload, cached_model = _REFERENCE_MODEL_CACHE
+    if cached_model is not None and cached_payload is raw:
+        return cached_model
+    model = validate_references(raw)
+    _REFERENCE_MODEL_CACHE = (raw, model)
+    return model
+
+
+def bind_reference_response(payload):
+    """Project internal audit state once. A refresh race disables alias resolution."""
+    model = reference_model()
+    revisions = {r.get("reference_revision") for field in ("records", "stations", "leads")
+                 for r in payload.get(field, []) if r.get("reference_revision")}
+    payload["references"] = model.public() if not revisions or revisions == {model.revision} else None
+    payload.pop("station_references", None)
+    payload.pop("reference_errors", None)
+    if "source_snapshots" in payload:
+        payload["source_snapshots"] = {name: {k: v for k, v in snap.items() if k != "rights_withdrawals"}
+                                       for name, snap in payload["source_snapshots"].items()}
+    for field in ("records", "stations", "leads"):
+        for row in payload.get(field, []):
+            for audit in AUDIT_FIELDS:
+                row.pop(audit, None)
+    return payload
+
+
+def community_reference_summaries():
+    model = reference_model()
+    mapping = {e["id"]: e.get("canonical_id") if e["state"] == "alias" else None for e in model.entries}
+    return community_store.summaries(mapping if mapping else None)
+
+
+def historical_reference_target(identifier, model=None):
+    """Read stored history by its exact ID; only validated aliases may redirect it."""
+    model = reference_model() if model is None else model
+    if any(entry["id"] == identifier for entry in model.entries):
+        return model.resolve(identifier)
+    return identifier
+
+
 def attach_community_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     try:
-        stations = community_store.summaries()["stations"]
-    except Exception as exc:  # community layer must never break the charger path
+        stations = community_reference_summaries()["stations"]
+    except Exception as exc:
         _log_upstream_error("Community summaries unavailable", exc)
         return rows
-    if stations:
-        for row in rows:
-            summary = stations.get(str(row.get("id") or ""))
-            if summary:
-                community_store.apply_community_evidence(row, summary)
+    for row in rows:
+        summary = stations.get(str(row.get("id") or ""))
+        if summary:
+            community_store.apply_community_evidence(row, summary)
     return rows
 
 
@@ -3414,8 +3466,9 @@ def known_station_ids() -> set:
     """Ids a check-in/photo may reference: intel + seeds + currently cached live rows
     + accepted community suggestions. 60 s memo; new points go through /station."""
     now = time.time()
+    model = reference_model()
     with _CACHE_LOCKS["known_ids"]:
-        if now - _KNOWN_IDS_CACHE["ts"] < 60 and _KNOWN_IDS_CACHE["ids"]:
+        if now - _KNOWN_IDS_CACHE["ts"] < 60 and _KNOWN_IDS_CACHE["ids"] and _KNOWN_IDS_CACHE.get("revision") == model.revision:
             return _KNOWN_IDS_CACHE["ids"]
     ids: set = set()
     try:
@@ -3436,9 +3489,12 @@ def known_station_ids() -> set:
             ids.add(f"community_suggestion_{suggestion['id']}")
     except Exception:
         pass
+    ids -= {e["id"] for e in model.entries if e["state"] != "alias"}
+    ids |= {e["id"] for e in model.entries if e["state"] == "alias" and e["canonical_id"] in ids}
     with _CACHE_LOCKS["known_ids"]:
         _KNOWN_IDS_CACHE["ts"] = now
         _KNOWN_IDS_CACHE["ids"] = ids
+        _KNOWN_IDS_CACHE["revision"] = model.revision
     return ids
 
 
@@ -3534,7 +3590,7 @@ def free_registry_response_bytes(params: Dict[str, List[str]]) -> Tuple[int, byt
         cached = FREE_REGISTRY_BYTES_CACHE.get(key)
         if cached:
             return cached["status"], cached["json"], cached["gz"]
-    payload = free_registry_payload(parse_bbox_param(params), full)
+    payload = bind_reference_response(free_registry_payload(parse_bbox_param(params), full))
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     gz = gzip_lib.compress(body, 6)
     with _CACHE_LOCKS["free_registry"]:
@@ -3661,7 +3717,7 @@ def compact_station_for_ui(station: Dict[str, Any]) -> Dict[str, Any]:
     useful for audits but not rendered by the first-use overview, so compact=true can
     avoid parsing several megabytes before the driver sees the first card.
     """
-    row = {k: v for k, v in station.items() if k not in COMPACT_OVERVIEW_DROP_FIELDS}
+    row = {k: v for k, v in station.items() if k not in COMPACT_OVERVIEW_DROP_FIELDS | AUDIT_FIELDS}
     raw = station.get("raw") or {}
     # `raw` is ingestion/audit bulk and is deliberately not part of the compact client
     # contract. Preserve a usable source-reported operator only at its public field. If
@@ -3766,7 +3822,7 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         "cache": {"hit": False, "overview": True},
         "warning": None,
     }
-    return 200, payload
+    return 200, bind_reference_response(payload)
 
 
 # The national overview is the app's default view and is pure function of (intel DB, seeds,
@@ -5176,7 +5232,7 @@ class Handler(BaseHTTPRequestHandler):
             attach_community_rows(payload.get("stations") or [])
             if status == 200 and (params.get("free_only") or ["false"])[0].lower() == "true":
                 payload = apply_free_only_filter(payload)
-            return self.send_json(status, payload)
+            return self.send_json(status, bind_reference_response(payload))
         if path == "/api/free-registry":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
@@ -5184,13 +5240,19 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json_bytes(status, body, gz)
         if path == "/api/community/summary":
             ids = [sid for sid in (params.get("ids") or [""])[0].split(",") if sid][:200]
-            stations = community_store.summaries()["stations"]
+            stations = community_reference_summaries()["stations"]
+            model = reference_model()
+            resolved = {}
+            for sid in ids:
+                target = historical_reference_target(sid, model)
+                if target is not None and target in stations:
+                    resolved[sid] = stations[target]
             return self.send_json(200, {
-                "stations": {sid: stations[sid] for sid in ids if sid in stations},
+                "stations": resolved,
                 "totals": community_store.stats(),
             })
         if path.startswith("/api/community/photo/"):
-            resolved = community_store.photo_file(path.rsplit("/", 1)[-1])
+            resolved = community_store.photo_file(path.rsplit("/", 1)[-1], readable_reference=lambda sid: historical_reference_target(sid) is not None)
             if not resolved:
                 return self.send_json(404, {"error": "not_found"})
             photo_path, mime = resolved

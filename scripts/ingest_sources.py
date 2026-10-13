@@ -7,6 +7,7 @@ source evidence and confidence instead of pretending that every directory is liv
 from __future__ import annotations
 
 import gzip
+import hashlib
 import html
 import http.cookiejar
 import argparse
@@ -18,6 +19,7 @@ import os
 import re
 import sys
 import time
+import tempfile
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -38,7 +40,8 @@ try:
         value_is_excluded,
     )
     from .source_transport import SourcePolicyBlocked, policy_urlopen
-    from .station_identity import identity_keys
+    from .station_identity import identity_keys, primary_keys, anchor, representation
+    from . import ocm_export
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_policy import (
         load_source_policy_exclusions,
@@ -48,7 +51,8 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
         value_is_excluded,
     )
     from source_transport import SourcePolicyBlocked, policy_urlopen
-    from station_identity import identity_keys
+    from station_identity import identity_keys, primary_keys, anchor, representation
+    import ocm_export
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -350,7 +354,7 @@ def raw_last_seen(raw: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 35) -> bytes:
+def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 35, max_bytes: Optional[int] = None, max_seconds: Optional[float] = None) -> bytes:
     h = {"User-Agent": UA, "Accept": "*/*"}
     if headers:
         h.update(headers)
@@ -360,17 +364,34 @@ def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str,
     # before a socket opens, and exception POSTs never follow redirects.
     req = urllib.request.Request(url, data=data, headers=h, method="POST" if data is not None else "GET")
     with policy_urlopen(req, timeout=timeout) as r:
-        return r.read()
+        if max_bytes is None and max_seconds is None:
+            return r.read()
+        # Bounded read for large artifacts: a hard byte ceiling and wall-clock deadline.
+        started = time.monotonic()
+        chunks: List[bytes] = []
+        total = 0
+        while True:
+            chunk = r.read(1024 * 1024)
+            if not chunk:
+                return b"".join(chunks)
+            total += len(chunk)
+            if max_bytes is not None and total > max_bytes:
+                raise RuntimeError(f"response exceeded the {max_bytes}-byte bound")
+            if max_seconds is not None and time.monotonic() - started > max_seconds:
+                raise TimeoutError(f"download exceeded the {max_seconds:.0f}s bound")
+            chunks.append(chunk)
 
 
 def fetch_json(url: str, *, headers: Optional[Dict[str, str]] = None, timeout: int = 35) -> Any:
     return json.loads(fetch(url, headers=headers or {"Accept": "application/json"}, timeout=timeout).decode("utf-8", "replace"))
 
 
-def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, **kw: Any) -> FetchArtifact:
+def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, *, validate_path=None, **kw: Any) -> FetchArtifact:
     path = CACHE / cache_name
     checked_at = time.time()
     if path.exists() and checked_at - path.stat().st_mtime < ttl_hours * 3600:
+        if validate_path is not None:
+            validate_path(path)
         return cache_file_artifact(
             path,
             url=url,
@@ -380,8 +401,16 @@ def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, **kw: Any) ->
         )
     try:
         body = fetch(url, **kw)
+        if validate_path is not None:
+            # Validate bounded source artifacts before creating a long-lived cache entry.
+            with tempfile.NamedTemporaryFile(dir=CACHE, prefix="validate-") as staged:
+                staged.write(body)
+                staged.flush()
+                validate_path(Path(staged.name))
     except Exception as exc:
         if path.exists():
+            if validate_path is not None:
+                validate_path(path)
             return cache_file_artifact(
                 path,
                 url=url,
@@ -1902,6 +1931,7 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
     elements: List[Tuple[Dict[str, Any], Any]] = []
     seen_elements: Set[Tuple[Any, Any]] = set()
     failures: List[str] = []
+    held_pricing: List[str] = []
     for idx, (south, west, north, east) in enumerate(tiles):
         found, failed = osm_fetch_box(south, west, north, east, f"{idx:02d}")
         failures.extend(failed)
@@ -1989,11 +2019,17 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
         if is_red_movem:
             if movem_price is None:
                 continue
-            assert_reference_review_current(
-                RED_MOVEM_TARIFF_CHECKED_AT,
-                RED_MOVEM_REVIEW_MAX_AGE_DAYS,
-                label="Red MOVEM tariff",
-            )
+            try:
+                assert_reference_review_current(
+                    RED_MOVEM_TARIFF_CHECKED_AT,
+                    RED_MOVEM_REVIEW_MAX_AGE_DAYS,
+                    label="Red MOVEM tariff",
+                )
+            except RuntimeError as exc:
+                # Do not emit stale fee=no or a price-unknown row that a later
+                # merge could turn free. Finish unrelated rows, then report it.
+                held_pricing.append(f"{source_url}: {exc}")
+                continue
             price = movem_price
             is_free = False
             is_cheap = True
@@ -2057,14 +2093,19 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
             }
             row["source_fetched_at"] = oldest_contributing_source_timestamp([row]) or row.get("source_fetched_at")
             row["primary_source"] = primary_source_for(row)
+    completion_errors = []
+    if held_pricing:
+        completion_errors.append(f"held {len(held_pricing)} Red MOVEM rows for pricing-policy failure: " + '; '.join(held_pricing))
     if failures:
         # Records from the tiles that DID answer are already in `records`; build_payload catches
         # this and files it in the payload's `errors` list. That is deliberate: a partially
         # fetched Spain must read as an error, not as a quietly thinner country.
-        raise RuntimeError(
+        completion_errors.append(
             f"Overpass answered {len(tiles) - len(failures)}/{len(tiles)} tiles; "
             f"failed: {'; '.join(failures[:3])}"
         )
+    if completion_errors:
+        raise RuntimeError('; '.join(completion_errors))
 
 
 def openchargemap_price_condition(price: Optional[float]) -> str:
@@ -2077,106 +2118,337 @@ def openchargemap_price_condition(price: Optional[float]) -> str:
     return f"OpenChargeMap usage cost lists €{price:.2f}/kWh."
 
 
-def source_openchargemap(records: List[Dict[str, Any]]) -> None:
-    url = "https://raw.githubusercontent.com/openchargemap/ocm-data/master/poi.json.gz"
-    gz_path = CACHE / "ocm_poi.json.gz"
-    source_artifact = cached_fetch(url, "ocm_poi.json.gz", ttl_hours=7 * 24, timeout=180)
-    count = 0
-    with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
+OCM_SNAPSHOT_LOOKUPS: Dict[str, Any] = {}
+
+
+def openchargemap_non_live_reason(poi: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Source-reported unavailability for an OCM row, or None when OCM reports it usable-or-unknown.
+
+    Planned, not-operational, removed and unpublished rows are never usable; a temporarily
+    unavailable row is listed but flagged. OCM's own wording is kept in the summary.
+    """
+    status_id = ocm_export._int_or_none(poi.get("StatusTypeID"))
+    title = str((poi.get("StatusType") or {}).get("Title") or "").strip()
+    submission = poi.get("SubmissionStatus") or {}
+    if submission and submission.get("IsLive") is False:
+        reason = f"OpenChargeMap submission status is '{submission.get('Title') or 'not published'}'."
+        value = submission.get("Title")
+        field = "SubmissionStatus"
+    elif status_id in ocm_export.UNAVAILABLE_STATUS_IDS:
+        reason = f"OpenChargeMap lists this site as '{title or status_id}', not as an operating charger."
+        value = title or status_id
+        field = "StatusType"
+    else:
+        return None
+    return {
+        "source": "OpenChargeMap public snapshot",
+        "field": field,
+        "value": value,
+        "summary": reason + " Do not route here unless a newer source confirms it is in service.",
+    }
+
+
+def openchargemap_resolve_legacy_submission(poi: Dict[str, Any], reference: Any) -> Dict[str, Any]:
+    """Legacy rows carry a submission title but no IsLive flag; resolve it from the reference table."""
+    resolved = ocm_export._lookup(reference.submission_statuses, poi.get("SubmissionStatusTypeID"))
+    if resolved is None:
+        if poi.get("SubmissionStatusTypeID") is None:
+            title = (poi.get("SubmissionStatus") or {}).get("Title")
+            matches = [row for row in reference.submission_statuses.values() if row.get("Title") == title]
+            resolved = matches[0] if len(matches) == 1 else None
+        if resolved is None:
+            return {**poi, "unresolved_reference": True}
+    return {**poi, "SubmissionStatus": {"Title": resolved.get("Title"), "IsLive": resolved.get("IsLive")}}
+
+
+def _openchargemap_emit(
+    records: List[Dict[str, Any]],
+    poi: Dict[str, Any],
+    *,
+    snapshot: Dict[str, Any],
+    provider: Tuple[str, str, str],
+    historical: bool,
+) -> bool:
+    """Build one Volta record from a nested-shape OCM row; True when a record was added."""
+    poi_id = poi.get("ID")
+    addr = poi.get("AddressInfo") or {}
+    lat, lon = fnum(addr.get("Latitude")), fnum(addr.get("Longitude"))
+    if not in_bbox(lat, lon, SPAIN_BBOX):
+        return False
+    usage_cost = poi.get("UsageCost") or ""
+    price = price_from_text(usage_cost)
+    if not openchargemap_has_minimum_route_evidence(poi):
+        return False
+    if not openchargemap_has_connector_type_evidence(poi):
+        return False
+    if not openchargemap_has_power_evidence(poi):
+        return False
+    source_page = f"https://map.openchargemap.io/?mode=details&id={poi_id}"
+    conns = poi.get("Connections") or []
+    labels = []
+    max_kw = None
+    connector_rows: List[Dict[str, Any]] = []
+    for c in conns:
+        title = (c.get("ConnectionType") or {}).get("Title")
+        label = openchargemap_connector_label(title)
+        if label:
+            labels.append(label)
+        p = fnum(c.get("PowerKW")); max_kw = max(max_kw or 0, p or 0) or max_kw
+        status_type = c.get("StatusType") or {}
+        current_type = c.get("CurrentType") or {}
+        level = c.get("Level") or {}
+        status_title = (status_type.get("Title") or ((poi.get("StatusType") or {}).get("Title")) or "UNKNOWN").upper()
+        connector_rows.append(connector_ref(label or "Unknown", count=count_int(c.get("Quantity")), power_kw=p, status=status_title, source_url=source_page, connector_id=c.get("ID"), raw={
+            "ConnectionTypeID": c.get("ConnectionTypeID"),
+            "ConnectionTypeTitle": title,
+            "StatusTypeID": c.get("StatusTypeID"),
+            "StatusTypeTitle": status_type.get("Title"),
+            "StatusTypeIsOperational": status_type.get("IsOperational"),
+            "LevelID": c.get("LevelID"),
+            "LevelTitle": level.get("Title"),
+            "CurrentTypeID": c.get("CurrentTypeID"),
+            "CurrentTypeTitle": current_type.get("Title"),
+        }))
+    labels = sorted(set(labels))
+    name = addr.get("Title") or "OpenChargeMap station"
+    status = ((poi.get("StatusType") or {}).get("Title") or "VERIFY").upper()
+    usage = ((poi.get('UsageType') or {}).get('Title') or '')
+    evidence = f"OCM UsageCost: {usage_cost}; Status: {status}; Usage: {usage}"
+    reliability = (
+        "community-access-limited" if ACCESS_LIMIT_RE.search(evidence)
+        else "community-cost" if price is not None
+        else "community-price-unknown"
+    )
+    parking_kind, parking_context_note = openchargemap_parking_kind(
+        name,
+        addr.get("AddressLine1") or "",
+        addr.get("Town") or "",
+        usage_cost,
+        usage,
+    )
+    if parking_kind == "unknown" and re.search(r"ikea|hotel|parking|centro", name, re.I):
+        parking_kind = "retail_parking"
+        parking_context_note = "Name/source context indicates retail/customer or parking-facility access; verify signs onsite."
+    if openchargemap_is_weak_count_only_lead(poi, parking_kind):
+        return False
+    # Contributor photos/comments carry no separate reuse grant: only facts are reused.
+    parking_note = parking_context_note or "Community directory cost evidence; verify in the operator app/onsite because OCM can be stale."
+    if historical:
+        parking_note = "Historical OCM row (2021 snapshot only; absent from the current export). " + parking_note
+    provider_class, provider_title, provider_license = provider
+    raw = {
+        "UUID": poi.get("UUID"), "ID": poi_id, "LastVerified": poi.get("DateLastVerified"),
+        "DateLastStatusUpdate": poi.get("DateLastStatusUpdate"), "DateLastConfirmed": poi.get("DateLastConfirmed"),
+        "SubmissionStatus": (poi.get("SubmissionStatus") or {}).get("Title"),
+        "addr:postcode": addr.get("Postcode"), "UsageCost": usage_cost, "UsageType": usage,
+        "NumberOfPoints": poi.get("NumberOfPoints"), "StatusTypeID": poi.get("StatusTypeID"),
+        "StatusTypeTitle": (poi.get("StatusType") or {}).get("Title"),
+        "connector_status_fields": bool(conns),
+        "DataProviderID": poi.get("DataProviderID"), "DataProviderTitle": provider_title,
+        "DataProviderURL": (poi.get("DataProvider") or {}).get("WebsiteURL"),
+        "LicenseClass": provider_class, "OperatorID": poi.get("OperatorID"),
+        "OperatorTitle": (poi.get("OperatorInfo") or {}).get("Title"),
+        "snapshot": snapshot["label"], "snapshot_commit": snapshot["commit"],
+        "snapshot_date": snapshot["date"], "historical_snapshot": bool(historical),
+    }
+    before = len(records)
+    add_record(records, source="OpenChargeMap public snapshot", source_url=source_page, name=name, address=addr.get("AddressLine1") or "", city=addr.get("Town") or "", lat=lat, lon=lon, price_min=price, free_condition=openchargemap_price_condition(price), connector_labels=labels, max_power_kw=max_kw, status=status, reliability=reliability, evidence=evidence, parking_kind=parking_kind, parking_note=parking_note, raw=raw, connectors=connector_rows, photos=[], port_count=count_int(poi.get("NumberOfPoints"), default=0), source_artifact=None)
+    if len(records) == before:
+        return False
+    record = records[-1]
+    # New IDs distinguish separate OCM POIs even when their names/rounded pins match.
+    # Coordinates remain in the generated ID so a later move must be reconciled.
+    # Only station_identity may carry an actual canonical prior ID forward.
+    record["id"] = f"intel_openchargemap_{poi_id}_{lat:.6f}_{lon:.6f}"
+    # Date semantics: source_fetched_at is the snapshot's own date (never the download time,
+    # which is not an observation); the contributor timestamp stays in last_seen /
+    # source_last_updated; our lookup time is kept separately.
+    record["source_fetched_at"] = snapshot["date"]
+    source_entry = record["sources"][0]
+    source_entry.update({
+        "source_snapshot_at": snapshot["date"],
+        "source_lookup_at": snapshot["lookup_at"],
+        "snapshot_commit": snapshot["commit"],
+        "snapshot_label": snapshot["label"],
+        "license": provider_class,
+        "license_text": provider_license,
+        "data_provider": provider_title,
+        "data_provider_url": (poi.get("DataProvider") or {}).get("WebsiteURL"),
+        "license_url": ocm_export.LICENSE_URLS.get(provider_class),
+        "license_basis": (ocm_export.CONTRIBUTOR_LICENSE_CHANGE_URL if historical and ocm_export._int_or_none(poi.get("DataProviderID")) == 1
+                          else "DataProvider grant in the source snapshot"),
+        "attribution": f"{provider_title} via Open Charge Map (openchargemap.org); {provider_class}; link back to the OCM record.",
+        "historical_snapshot": bool(historical),
+        "transformation": "Facts only (location, hardware, status, usage cost); contributor photos and comments are not reused.",
+    })
+    if historical and ocm_export._int_or_none(poi.get("DataProviderID")) == 1:
+        source_entry["original_license_text"] = (poi.get("DataProvider") or {}).get("License")
+        source_entry["license_terms_url"] = "https://openchargemap.org/about/terms"
+    source_last_updated = raw_last_seen(record.get("raw") or {})
+    if source_last_updated:
+        source_entry["source_last_updated"] = source_last_updated
+    outage = openchargemap_non_live_reason(poi)
+    if outage:
+        record["source_reported_unavailable"] = outage
+    return True
+
+
+def _ocm_download(url: str, cache_name: str, *, ttl_hours: float, max_bytes: int, timeout: int,
+                  max_seconds: float, validate_path=None) -> "FetchArtifact":
+    return cached_fetch(url, cache_name, ttl_hours=ttl_hours, timeout=timeout, max_bytes=max_bytes,
+                        max_seconds=max_seconds, validate_path=validate_path)
+
+
+def source_openchargemap(records: List[Dict[str, Any]], *, previous_records: Optional[List[Dict[str, Any]]] = None) -> None:
+    """Current licensed OCM export (GET only) layered over the pinned 2021 history.
+
+    Requests: one commit manifest, one commit-pinned codeload tarball, and (until cached)
+    one immutable legacy snapshot. All three are plain GETs through ``policy_urlopen``.
+    The archive is streamed, never extracted; only Spain's compact POI files and
+    ``referencedata.json`` are read. A current row replaces the legacy row with the same
+    OCM POI id; legacy-only ids stay as clearly labelled historical rows because absence
+    from an export is not proof that a charger was closed.
+    """
+    output = records
+    records = []  # Commit only after the complete adapter succeeds.
+    known_keys = {key for row in previous_records or [] for key in identity_keys(row)}
+    OCM_SNAPSHOT_LOOKUPS.clear()
+    manifest_artifact = cached_fetch(
+        ocm_export.OCM_EXPORT_COMMIT_API_URL, "ocm_export_commit.json", ttl_hours=24, timeout=30,
+        headers={"Accept": "application/vnd.github+json"}, max_bytes=1024 * 1024, max_seconds=60,
+        validate_path=lambda path: ocm_export.parse_commit_manifest(path.read_bytes()),
+    )
+    sha, commit_date = ocm_export.parse_commit_manifest(manifest_artifact.body)
+    archive_name = f"ocm_export_{sha}.tar.gz"
+    parsed = {}
+    def validate_archive(path):
+        parsed["archive"] = ocm_export.read_export_archive(path, sha)
+    archive_artifact = _ocm_download(
+        ocm_export.archive_url(sha), archive_name, ttl_hours=24 * 365,
+        max_bytes=ocm_export.MAX_ARCHIVE_DOWNLOAD_BYTES, timeout=120, max_seconds=600,
+        validate_path=validate_archive,
+    )
+    snapshot = parsed["archive"]
+    current_label = f"ocm-export@{sha[:12]}"
+    lookup_at = archive_artifact.fetched_at
+    reference = snapshot.reference
+
+    legacy_rows: Dict[int, Dict[str, Any]] = {}
+    legacy_error = None
+    legacy_artifact = None
+    def validate_legacy(path):
+        parsed["legacy"] = ocm_export.read_legacy_es_rows(path)
+    try:
+        legacy_artifact = _ocm_download(
+            ocm_export.OCM_LEGACY_URL, f"ocm_legacy_{ocm_export.OCM_LEGACY_SHA[:12]}.json.gz",
+            ttl_hours=24 * 3650, max_bytes=ocm_export.MAX_LEGACY_DOWNLOAD_BYTES, timeout=120, max_seconds=600,
+            validate_path=validate_legacy,
+        )
+        legacy_rows = parsed["legacy"]
+    except Exception as exc:  # History is additive; the current export alone is still lawful.
+        legacy_error = f"{type(exc).__name__}: {exc}"
+
+    counts: Dict[str, int] = {
+        "export_country_files": len(snapshot.pois), "export_malformed_files": snapshot.stats.get("malformed_files", 0),
+        "current_admitted": 0, "current_license_excluded": 0, "current_wrong_country": 0,
+        "current_quarantined": 0, "current_non_live_new_omitted": 0, "current_non_live_existing_flagged": 0,
+        "current_gate_dropped": 0, "legacy_es_rows": len(legacy_rows), "legacy_superseded": 0,
+        "legacy_retained_historical": 0, "legacy_license_excluded": 0, "legacy_gate_dropped": 0,
+        "legacy_quarantined": 0,
+    }
+    license_excluded_by_provider: Dict[str, int] = defaultdict(int)
+    rights_withdrawals = []
+    def bound_artifact(artifact):
+        return {**artifact.as_evidence(), "sha256": hashlib.sha256(artifact.body).hexdigest()}
+    archive_evidence = bound_artifact(archive_artifact)
+    legacy_evidence = bound_artifact(legacy_artifact) if legacy_artifact else None
+    try:
+        from .source_rights import rights_decision
+    except ImportError:
+        from source_rights import rights_decision
+    snap_current = {"label": current_label, "commit": sha, "date": commit_date, "lookup_at": lookup_at}
+    for poi_id in sorted(snapshot.pois):
+        if str(poi_id) in OPENCHARGEMAP_QUARANTINED_IDS:
+            counts["current_quarantined"] += 1
+            continue
+        poi = ocm_export.expand_poi(snapshot.pois[poi_id], reference)
+        if poi.get("unresolved_reference"):
+            counts["current_quarantined"] += 1
+            continue
+        if openchargemap_country_iso(poi) != "ES":
+            counts["current_wrong_country"] += 1
+            continue
+        provider = reference.provider_license(poi.get("DataProviderID"))
+        if provider[0] is None:
+            counts["current_license_excluded"] += 1
+            license_excluded_by_provider[str(poi.get("DataProviderID"))] += 1
+            provider_metadata = ocm_export._lookup(reference.data_providers, poi.get("DataProviderID")) or {}
+            if provider_metadata:
+                rights_withdrawals.append(rights_decision(poi, provider_metadata, archive_evidence, "current", sha))
+            continue
+        provider_row = ocm_export._lookup(reference.data_providers, poi.get("DataProviderID")) or {}
+        if value_is_excluded({"source": provider[1], "source_url": provider_row.get("WebsiteURL")}, SOURCE_POLICY_EXCLUSIONS):
+            counts["current_origin_excluded"] = counts.get("current_origin_excluded", 0) + 1
+            continue
+        known = ("ocm-station", str(poi_id)) in known_keys
+        if poi_id in legacy_rows:
+            counts["legacy_superseded"] += 1
+        if not known and (
+            ocm_export._int_or_none(poi.get("StatusTypeID")) in ocm_export.NON_LIVE_STATUS_IDS
+            or (poi.get("SubmissionStatus") or {}).get("IsLive") is False
+        ):
+            counts["current_non_live_new_omitted"] += 1
+            continue
+        if _openchargemap_emit(records, poi, snapshot=snap_current, provider=provider, historical=False):
+            counts["current_admitted"] += 1
+            if openchargemap_non_live_reason(poi):
+                counts["current_non_live_existing_flagged"] += 1
+        else:
+            counts["current_gate_dropped"] += 1
+    # Legacy-only rows require their own historical grant; only provider 1 has substitution terms.
+    snap_legacy = {
+        "label": f"ocm-data@{ocm_export.OCM_LEGACY_SHA[:12]}", "commit": ocm_export.OCM_LEGACY_SHA,
+        "date": ocm_export.OCM_LEGACY_DATE, "lookup_at": legacy_artifact.fetched_at if legacy_artifact else None,
+    }
+    # A malformed current file still proves presence, not absence. It cannot revive
+    # a historical price/access claim simply because parsing quarantined its contents.
+    for poi_id in sorted(set(legacy_rows) - set(snapshot.pois) - snapshot.quarantined_ids):
+        poi = openchargemap_resolve_legacy_submission(legacy_rows[poi_id], reference)
+        if str(poi_id) in OPENCHARGEMAP_QUARANTINED_IDS or poi.get("unresolved_reference"):
+            counts["legacy_quarantined"] += 1
+            continue
+        provider = ocm_export.legacy_provider_license(poi)
+        if provider[0] is None:
+            counts["legacy_license_excluded"] += 1
+            license_excluded_by_provider[f"legacy:{poi.get('DataProviderID')}"] += 1
+            original = legacy_rows[poi_id]
+            rights_withdrawals.append(rights_decision(original, original.get("DataProvider") or {}, legacy_evidence, "legacy", ocm_export.OCM_LEGACY_SHA))
+            continue
+        provider_row = poi.get("DataProvider") or {}
+        if value_is_excluded({"source": provider_row.get("Title") or provider[1], "source_url": provider_row.get("WebsiteURL")}, SOURCE_POLICY_EXCLUSIONS):
+            counts["legacy_origin_excluded"] = counts.get("legacy_origin_excluded", 0) + 1
+            continue
+        if _openchargemap_emit(records, poi, snapshot=snap_legacy, provider=provider, historical=True):
+            counts["legacy_retained_historical"] += 1
+        else:
+            counts["legacy_gate_dropped"] += 1
+    OCM_SNAPSHOT_LOOKUPS.clear()
+    output.extend(records)
+    OCM_SNAPSHOT_LOOKUPS.update({
+        "artifacts": {"manifest": manifest_artifact.as_evidence(), "archive": archive_evidence,
+                      "legacy": legacy_evidence},
+        "commit": sha, "commit_date": commit_date, "lookup_at": lookup_at, "counts": counts,
+        "license_excluded_by_provider": dict(license_excluded_by_provider), "legacy_error": legacy_error,
+        "rights_withdrawals": rights_withdrawals,
+    })
+    for stale in CACHE.glob("ocm_export_*.tar.gz"):
+        if stale.name != archive_name:
             try:
-                poi = json.loads(line)
-            except Exception:
-                continue
-            poi_id = poi.get("ID")
-            if str(poi_id) in OPENCHARGEMAP_QUARANTINED_IDS:
-                continue
-            addr = poi.get("AddressInfo") or {}
-            if openchargemap_country_iso(poi) not in {"", "ES"}:
-                continue
-            lat, lon = fnum(addr.get("Latitude")), fnum(addr.get("Longitude"))
-            if not in_bbox(lat, lon, SPAIN_BBOX):
-                continue
-            usage_cost = poi.get("UsageCost") or ""
-            price = price_from_text(usage_cost)
-            if not openchargemap_has_minimum_route_evidence(poi):
-                continue
-            if not openchargemap_has_connector_type_evidence(poi):
-                continue
-            if not openchargemap_has_power_evidence(poi):
-                continue
-            source_page = f"https://map.openchargemap.io/?mode=details&id={poi_id}" if poi_id else url
-            conns = poi.get("Connections") or []
-            labels = []
-            max_kw = None
-            connector_rows: List[Dict[str, Any]] = []
-            for c in conns:
-                title = (c.get("ConnectionType") or {}).get("Title")
-                label = openchargemap_connector_label(title)
-                if label:
-                    labels.append(label)
-                p = fnum(c.get("PowerKW")); max_kw = max(max_kw or 0, p or 0) or max_kw
-                status_type = c.get("StatusType") or {}
-                current_type = c.get("CurrentType") or {}
-                level = c.get("Level") or {}
-                status_title = (status_type.get("Title") or ((poi.get("StatusType") or {}).get("Title")) or "UNKNOWN").upper()
-                connector_rows.append(connector_ref(label or "Unknown", count=count_int(c.get("Quantity")), power_kw=p, status=status_title, source_url=source_page, connector_id=c.get("ID"), raw={
-                    "ConnectionTypeID": c.get("ConnectionTypeID"),
-                    "ConnectionTypeTitle": title,
-                    "StatusTypeID": c.get("StatusTypeID"),
-                    "StatusTypeTitle": status_type.get("Title"),
-                    "StatusTypeIsOperational": status_type.get("IsOperational"),
-                    "LevelID": c.get("LevelID"),
-                    "LevelTitle": level.get("Title"),
-                    "CurrentTypeID": c.get("CurrentTypeID"),
-                    "CurrentTypeTitle": current_type.get("Title"),
-                }))
-            labels = sorted(set(labels))
-            name = addr.get("Title") or "OpenChargeMap station"
-            status = ((poi.get("StatusType") or {}).get("Title") or "VERIFY").upper()
-            usage = ((poi.get('UsageType') or {}).get('Title') or '')
-            evidence = f"OCM UsageCost: {usage_cost}; Status: {status}; Usage: {usage}"
-            reliability = (
-                "community-access-limited" if ACCESS_LIMIT_RE.search(evidence)
-                else "community-cost" if price is not None
-                else "community-price-unknown"
-            )
-            parking_kind, parking_context_note = openchargemap_parking_kind(
-                name,
-                addr.get("AddressLine1") or "",
-                addr.get("Town") or "",
-                usage_cost,
-                usage,
-            )
-            if parking_kind == "unknown" and re.search(r"ikea|hotel|parking|centro", name, re.I):
-                parking_kind = "retail_parking"
-                parking_context_note = "Name/source context indicates retail/customer or parking-facility access; verify signs onsite."
-            if openchargemap_is_weak_count_only_lead(poi, parking_kind):
-                continue
-            photos = []
-            for media in poi.get("MediaItems") or []:
-                if media.get("IsVideo") or media.get("IsEnabled") is False:
-                    continue
-                photos.append({
-                    "url": media.get("ItemURL"),
-                    "thumbnail_url": media.get("ItemThumbnailURL"),
-                    "source": "OpenChargeMap media",
-                    "source_url": source_page,
-                    "caption": media.get("Comment") or "",
-                    "license": "OpenChargeMap user-submitted media",
-                })
-            parking_note = parking_context_note or "Community directory cost evidence; verify in the operator app/onsite because OCM can be stale."
-            before = len(records)
-            add_record(records, source="OpenChargeMap public snapshot", source_url=source_page, name=name, address=addr.get("AddressLine1") or "", city=addr.get("Town") or "", lat=lat, lon=lon, price_min=price, free_condition=openchargemap_price_condition(price), connector_labels=labels, max_power_kw=max_kw, status=status, reliability=reliability, evidence=evidence, parking_kind=parking_kind, parking_note=parking_note, raw={"UUID": poi.get("UUID"), "ID": poi_id, "LastVerified": poi.get("DateLastVerified"), "DateLastStatusUpdate": poi.get("DateLastStatusUpdate"), "DateLastConfirmed": poi.get("DateLastConfirmed"), "SubmissionStatus": (poi.get("SubmissionStatus") or {}).get("Title"), "addr:postcode": addr.get("Postcode"), "UsageCost": usage_cost, "UsageType": usage, "NumberOfPoints": poi.get("NumberOfPoints"), "StatusTypeID": poi.get("StatusTypeID"), "StatusTypeTitle": (poi.get("StatusType") or {}).get("Title"), "connector_status_fields": bool(conns)}, connectors=connector_rows, photos=photos, port_count=count_int(poi.get("NumberOfPoints"), default=0), source_artifact=source_artifact)
-            if len(records) == before:
-                continue
-            source_last_updated = raw_last_seen(records[-1].get("raw") or {})
-            if source_last_updated:
-                records[-1]["sources"][0]["source_last_updated"] = source_last_updated
-            count += 1
+                stale.unlink()
+            except OSError:
+                pass
+    if legacy_error:
+        print(f"openchargemap: legacy history unavailable ({legacy_error}); current export only")
 
 
 def _payload_rows(payload: Any, key: str) -> List[Dict[str, Any]]:
@@ -3522,6 +3794,24 @@ def reject_suspicious_openchargemap_coordinate_clusters(
     for items in groups.values():
         if len(items) < 2:
             continue
+        current = [item for item in items if not (item.get('raw') or {}).get('historical_snapshot')]
+        if current:
+            # A legacy postcode cannot invalidate a current source coordinate.
+            # Conflicting legacy rows stay quarantined; their old facts are not restored.
+            current_postcodes = {explicit_spanish_postcode(item) for item in current} - {''}
+            current_places = {normalized_identity_text(item.get('city')) for item in current if item.get('city')}
+            for item in items:
+                if item in current:
+                    continue
+                postcode = explicit_spanish_postcode(item)
+                place = normalized_identity_text(item.get('city'))
+                if (postcode and current_postcodes and postcode not in current_postcodes) or (
+                    not postcode and place and current_places and place not in current_places
+                ):
+                    rejected.add(id(item))
+            items = current
+            if len(items) < 2:
+                continue
         item_postcodes = [explicit_spanish_postcode(item) for item in items]
         postcodes = set(item_postcodes)
         postcodes.discard("")
@@ -3575,6 +3865,13 @@ def merge_media(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
 def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> None:
     """Keep the ids of rows folded into this pin, so a refresh can show where they went."""
+    items = list(items)
+    # Retain each real source pin before either merge mutates the public facts.
+    inputs = {}
+    for item in items:
+        for evidence in item.get("reference_inputs") or [dict(anchor(item), operators=sorted(charging_operators(item)))]:
+            inputs[json.dumps(evidence, sort_keys=True)] = evidence
+    base["reference_inputs"] = [inputs[key] for key in sorted(inputs)]
     merged_ids = set(base.get("merged_ids") or [])
     for item in items:
         merged_ids.update(item.get("merged_ids") or [])
@@ -3613,10 +3910,37 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     groups: Dict[Tuple[int, int], List[Dict[str, Any]]] = defaultdict(list)
     for r in records:
         groups[(round(r["lat"] * 10000), round(r["lon"] * 10000))].append(r)
+    # Exact coordinates cannot join conflicting operators. A page's repeated map
+    # markers are handled separately from nearby, independently identified stations.
+    page_groups = defaultdict(list)
+    for row in records:
+        rep = representation(row)
+        if rep:
+            page_groups[(rep['map_id'], rep['page'])].append(row)
+    copies = [items for items in page_groups.values() if len(items) > 1
+              and all(_dist_km(a, b) <= .25 for a in items for b in items)]
+    copy_ids = {id(row) for items in copies for row in items}
+    partitions = []
+    for items in groups.values():
+        buckets = []
+        for row in items:
+            if id(row) in copy_ids:
+                continue
+            compatible = next((bucket for bucket in buckets if all(
+                not operator_conflict(row, other) for other in bucket)), None)
+            if compatible is None:
+                buckets.append([row])
+            else:
+                compatible.append(row)
+        partitions.extend(buckets)
+    # Stable upstream representation order chooses an existing coordinate, never an average.
+    for items in copies:
+        items.sort(key=lambda row: int(representation(row)['record_id']))
+    partitions.extend(copies)
     merged = []
     rank = RELIABILITY_RANK
     parking_rank = PARKING_KIND_RANK
-    for _, items in groups.items():
+    for items in partitions:
         items.sort(key=lambda r: (rank.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, -len(r.get("sources", []))), reverse=True)
         base = dict(items[0])
         sources = []
@@ -3729,6 +4053,44 @@ def station_identity_brands(r: Dict[str, Any]) -> set:
 def normalized_identity_text(value: Any) -> str:
     text = unicodedata.normalize("NFKD", str(value or ""))
     return "".join(ch for ch in text if not unicodedata.combining(ch)).lower()
+
+
+def charging_operators(row: Dict[str, Any]) -> set:
+    """Read charging operators, without interpreting a venue owner as a network."""
+    raw = row.get('raw') or {}
+    values = [raw.get('operator'), raw.get('OperatorTitle'), raw.get('brand')]
+    aliases = {'zunder': ('zunder', 'easychargar', 'easycharger'),
+               'tesla': ('tesla',), 'ionity': ('ionity',), 'acciona': ('acciona',),
+               'iberdrola': ('iberdrola',), 'endesa': ('endesa', 'enel x'),
+               'repsol': ('repsol', 'ibil'), 'wenea': ('wenea',),
+               'powerdot': ('powerdot', 'power dot'), 'galp': ('galp',),
+               'fenie': ('fenie',)}
+    operators = set()
+    for value in values:
+        text = normalized_identity_text(value)
+        known = {name for name, names in aliases.items() if any(re.search(r'\b'+re.escape(term)+r'\b', text) for term in names)}
+        operators.update(known)
+        if known or not text or text.startswith('('):
+            continue
+        if any(re.search(r'\b'+brand+r'\b', text) for brand in KNOWN_SITE_BRANDS):
+            continue
+        if re.search(r'unknown|non.networked|business owner|private individual|hotel|restaurante|ayuntamiento|parking', text):
+            continue
+        # The typed operator fields identify a charging operator. `owner` is a
+        # separate venue/asset field and is deliberately not interpreted here.
+        operators.add(re.sub(r'[^a-z0-9]+', '', text))
+    for evidence in row.get('reference_inputs') or []:
+        operators.update(evidence.get('operators') or [])
+    return operators
+
+
+def operator_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    left, right = charging_operators(a), charging_operators(b)
+    return bool(left and right and left.isdisjoint(right))
+
+
+def repeated_page(row: Dict[str, Any]) -> bool:
+    return len({e['representation']['record_id'] for e in row.get('reference_inputs') or [] if e.get('representation')}) > 1
 
 
 def station_identity_place_tokens(r: Dict[str, Any]) -> set:
@@ -3994,14 +4356,19 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
 
     # Same-family rows never merge, including through a third row: one registry listing two
     # nearby sites (for example two operators in one car park) keeps two pins.
-    families = [{record_source_family(r)} for r in records]
+    families = [{record_source_family(r)} | {record_source_family(e) for e in r.get('reference_inputs') or []} for r in records]
+    operators = [charging_operators(r) for r in records]
+    repeated_pages = [repeated_page(r) for r in records]
 
     def union(x: int, y: int) -> None:
         rx, ry = find(x), find(y)
         if rx == ry or families[rx] & families[ry]:
             return
+        if operators[rx] and operators[ry] and operators[rx].isdisjoint(operators[ry]):
+            return
         parent[ry] = rx
         families[rx] |= families[ry]
+        operators[rx] |= operators[ry]
 
     edges: List[Tuple[bool, float, int, int]] = []
     for (gx, gy), idxs in grid.items():
@@ -4016,6 +4383,8 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
                     continue
                 b = records[j]
                 if record_source_family(a) == record_source_family(b):
+                    continue
+                if (operators[i] and operators[j] and operators[i].isdisjoint(operators[j])) or repeated_pages[i] or repeated_pages[j]:
                     continue
                 distance = _dist_km(a, b)
                 corroboration_pair = bool(
@@ -4934,17 +5303,21 @@ ACTIVE_SOURCE_ADAPTERS = (
 )
 
 
-def build_payload() -> Dict[str, Any]:
+def build_payload(previous_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     # Provenance is per build. Never let a prior in-process build/test make the next
     # output claim fetches that did not happen in that build.
     FETCH_EVIDENCE.clear()
+    OCM_SNAPSHOT_LOOKUPS.clear()
     records: List[Dict[str, Any]] = []
     errors = []
     source_adapter_counts: Dict[str, int] = {}
     for fn in ACTIVE_SOURCE_ADAPTERS:
         before = len(records)
         try:
-            fn(records)
+            if fn is source_openchargemap:
+                fn(records, previous_records=(previous_payload or {}).get("records"))
+            else:
+                fn(records)
             added = len(records) - before
             source_adapter_counts[fn.__name__] = added
             print(f"{fn.__name__}: +{added}")
@@ -4963,11 +5336,13 @@ def build_payload() -> Dict[str, Any]:
         "raw_records": len(records),
         "cross_source_merged": cross_merged,
         "source_adapter_counts": source_adapter_counts,
+        "source_snapshots": {"openchargemap": dict(OCM_SNAPSHOT_LOOKUPS)} if OCM_SNAPSHOT_LOOKUPS else {},
         "errors": errors,
         "fetch_evidence": fetch_evidence_payload(),
         "license_notes": [
             "OSM/Overpass data is ODbL; keep attribution and share-alike obligations in mind.",
             "Barcelona Endolla and Madrid official datasets are reused under CC BY 4.0; Zaragoza municipal facts follow its published reuse conditions. Preserve source/update attribution.",
+            "OpenChargeMap rows come from the commit-pinned ocm-export bulk snapshot (a bulk export date, not an observation) layered over the pinned 2021 ocm-data history; only explicit CC BY 4.0 or CC0 grants are reused. OCM contributor history uses the 2022-04-01 license substitution; third-party history requires its original provider grant. Preserve per-provider attribution and license links; photos and comments are not reused; contributor DateLastVerified is not a live check.",
             "Red MOVEM's €0.25/kWh regulation is attached only to unambiguous OSM locations at or below 22 kW; Moraleja Green is a single static Verify-first official-policy lead.",
             "Rights-blocked commercial map/locator station ingestion is retired by structured source policy pending express reuse permission; retain only conventional homepage links, never copied station evidence.",
             "Provider apps/onsite signs override every cached intelligence record.",
@@ -4981,6 +5356,7 @@ def build_payload() -> Dict[str, Any]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build Volta's public-source cheap/free charging intelligence database.")
+    parser.add_argument("--prior", type=Path, help="Canonical previous dataset for known station identity context.")
     parser.add_argument("--out", type=Path, default=OUT, help="Output JSON path. Defaults to data/free_intelligence.json.")
     parser.add_argument(
         "--policy-clean-from",
@@ -4995,7 +5371,9 @@ def main() -> None:
         payload, report = apply_source_policy_exclusions_to_payload(source_payload)
         print(f"source-policy deterministic clean: -{report['excluded_records']} records from {source_path}")
     else:
-        payload = build_payload()
+        prior_path = args.prior or OUT
+        previous_payload = json.loads(prior_path.read_text(encoding="utf-8")) if prior_path.exists() else None
+        payload = build_payload(previous_payload)
     out_path = args.out.expanduser()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Compact JSON: the all-charger national DB is ~100 MB indented, at GitHub's file limit.

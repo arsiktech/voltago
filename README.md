@@ -36,6 +36,9 @@ VITE_API_TARGET=http://127.0.0.1:8773 npm --prefix frontend run dev
 Vite normally serves `http://127.0.0.1:5183`; check its output for the actual port.
 Its default API target, without the override, is port 8799.
 
+The coordinated identity wire contract and rollout gates are documented in
+[charger references](docs/charger-references.md).
+
 ## Verify the affected work
 
 | Change | Check |

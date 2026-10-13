@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from source_policy import load_source_policy_exclusions, partition_records
-from station_identity import identity_keys
+from station_identity import validate_references
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -110,38 +110,41 @@ def unpromoted_source_timestamp_rows(rows: Iterable[Dict[str, Any]]) -> List[str
 
 
 def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str, Any]], missing: Iterable[str]) -> Dict[str, str]:
-    """Map a missing baseline id to the rebuilt pin that absorbed it.
-
-    A merge counts only when exactly one rebuilt pin lists the id in `merged_ids` AND
-    shares a stable source identifier with the old row (the same OCM/OSM/registry id).
-    A listed id alone is a claim, not proof, so anything else stays missing.
-    """
-    baseline_by_id = {record_id(row): row for row in baseline_rows if record_id(row)}
-    claims: Dict[str, List[Dict[str, Any]]] = {}
-    for row in rebuilt_rows:
-        for old_id in row.get("merged_ids") or []:
-            claims.setdefault(str(old_id), []).append(row)
-    proven: Dict[str, str] = {}
-    for old_id in missing:
-        rows = claims.get(old_id) or []
-        old = baseline_by_id.get(old_id)
-        if len(rows) == 1 and old is not None and identity_keys(old) & identity_keys(rows[0]):
-            proven[old_id] = record_id(rows[0])
-    return proven
+    """Only validated, durable aliases count. Raw merged_ids never resolve a reference."""
+    try:
+        model = validate_references({'records': rebuilt_rows}, {'records': baseline_rows})
+    except ValueError:
+        return {}
+    return {sid: model.resolve(sid) for sid in missing if model.resolve(sid) is not None}
 
 
-def id_delta(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def id_delta(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str, Any]], rebuilt_payload=None, baseline_payload=None) -> Dict[str, Any]:
+    # Real callers must retain the complete prior catalogue, including withdrawals.
+    baseline_payload = baseline_payload if baseline_payload is not None else {'records': baseline_rows}
     baseline_ids = {record_id(row) for row in baseline_rows if record_id(row)}
     rebuilt_ids = {record_id(row) for row in rebuilt_rows if record_id(row)}
-    gone = sorted(baseline_ids - rebuilt_ids)
-    merged = merged_into(baseline_rows, rebuilt_rows, gone)
-    missing = [old_id for old_id in gone if old_id not in merged]
+    prior = baseline_ids | {a['id'] for r in baseline_rows for a in r.get('identity_aliases', [])}
+    prior |= {e['id'] for e in (baseline_payload.get('station_references') or {}).get('unavailable', [])}
+    gone = sorted(prior - rebuilt_ids)
+    merged = {}
+    withheld = set()
+    errors = []
+    try:
+        model = validate_references(rebuilt_payload if rebuilt_payload is not None else {'records': rebuilt_rows}, baseline_payload)
+        withheld = {e['id'] for e in model.entries if e['state'] == 'withheld'}
+        merged = {sid: model.resolve(sid) for sid in gone if model.resolve(sid) is not None}
+        errors = [e['id'] for e in model.entries if e['state'] == 'unresolved']
+    except ValueError as exc:
+        errors = [str(exc)]
+    missing = [old_id for old_id in gone if old_id not in merged and old_id not in withheld]
     added = sorted(rebuilt_ids - baseline_ids)
     return {
         "baseline_ids": len(baseline_ids),
         "rebuilt_ids": len(rebuilt_ids),
         "missing_ids": len(missing),
         "merged_ids": len(merged),
+        "withheld_ids": len(set(gone) & withheld),
+        "reference_errors": errors,
         "added_ids": len(added),
         "missing_sample": missing[:10],
         "merged_sample": [{"id": old_id, "into": merged[old_id]} for old_id in sorted(merged)[:10]],
@@ -174,13 +177,16 @@ def corroboration_only_source_loss_is_proven(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate and compare a rebuilt Volta intelligence DB.")
+    parser.add_argument("--reference-cache", type=Path, default=ROOT / "data" / "cache")
     parser.add_argument("--baseline", type=Path, default=BASELINE)
     parser.add_argument("--rebuilt", type=Path, required=True)
     parser.add_argument("--min-total-ratio", type=float, default=0.9)
-    parser.add_argument("--max-missing-id-ratio", type=float, default=0.08)
+    parser.add_argument("--max-missing-id-ratio", type=float, default=0.0, help="Compatibility option; only zero unexplained loss is allowed.")
     parser.add_argument("--policy-exclusions", type=Path, default=POLICY_EXCLUSIONS)
     args = parser.parse_args()
 
+    if args.max_missing_id_ratio != 0:
+        parser.error("charger reference validation requires zero unexplained loss")
     failures: List[str] = []
     baseline_payload = load_json(args.baseline)
     rebuilt_payload = load_json(args.rebuilt)
@@ -222,8 +228,15 @@ def main() -> int:
     if unpromoted_timestamps:
         failures.append(f"Rows have raw source timestamps but missing top-level last_seen: {unpromoted_timestamps[:10]}")
 
-    delta = id_delta(baseline_rows, rebuilt_rows)
-    max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
+    delta = id_delta(baseline_rows, rebuilt_rows, rebuilt_payload, {**baseline_payload, 'records': baseline_rows})
+    if delta['reference_errors']:
+        failures.append(f"reference validation failed: {delta['reference_errors'][:10]}")
+    try:
+        from source_rights import verify_rights_artifacts
+        verify_rights_artifacts(rebuilt_payload, args.reference_cache)
+    except (ValueError, OSError, KeyError) as exc:
+        failures.append(f"source-rights evidence rejected: {exc}")
+    max_missing = 0
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
 
