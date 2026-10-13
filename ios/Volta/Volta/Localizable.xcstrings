@@ -8587,6 +8587,144 @@
           }
         }
       }
+    },
+    "Saved charger": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved charger"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cargador guardado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранённая зарядная станция"
+          }
+        }
+      }
+    },
+    "Details for this saved charger are unavailable. Your saved entry is still here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Details for this saved charger are unavailable. Your saved entry is still here."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay detalles disponibles para este cargador guardado. Sigue en tu lista de guardados."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сведения об этой зарядной станции недоступны. Она осталась в избранном."
+          }
+        }
+      }
+    },
+    "This saved charger needs verification. No replacement has been selected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This saved charger needs verification. No replacement has been selected."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este cargador guardado necesita verificación. No se ha seleccionado otro cargador."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта сохранённая станция требует проверки. Замена не выбрана."
+          }
+        }
+      }
+    },
+    "This saved charger is not in the current results. Refresh or broaden your search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This saved charger is not in the current results. Refresh or broaden your search."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este cargador guardado no está en los resultados actuales. Actualiza o amplía la búsqueda."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этой сохранённой станции нет в текущих результатах. Обновите или расширьте поиск."
+          }
+        }
+      }
+    },
+    "Cached reference · Not live": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cached reference · Not live"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Referencia en caché · No en directo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ссылка из кеша · Не в реальном времени"
+          }
+        }
+      }
+    },
+    "Remove saved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove saved"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar guardado"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить из сохранённых"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

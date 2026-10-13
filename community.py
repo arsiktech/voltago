@@ -294,18 +294,18 @@ def photo_url(photo_id: int, ext: str) -> str:
     return f"/api/community/photo/{photo_id}.{ext}"
 
 
-def photo_file(name: str) -> Optional[Tuple[Path, str]]:
-    """Resolve `{id}.{ext}` to (path, mime) for ACTIVE photos only."""
+def photo_file(name: str, readable_reference=None) -> Optional[Tuple[Path, str]]:
+    """Read ACTIVE stored photos without requiring a currently writable station."""
     match = re.fullmatch(r"(\d{1,12})\.(jpg|png|webp)", name or "")
     if not match:
         return None
     photo_id, ext = int(match.group(1)), match.group(2)
     conn = _connect()
     try:
-        row = conn.execute("SELECT ext, status FROM photos WHERE id=?", (photo_id,)).fetchone()
+        row = conn.execute("SELECT ext, status, station_id FROM photos WHERE id=?", (photo_id,)).fetchone()
     finally:
         conn.close()
-    if not row or row["status"] != "active" or row["ext"] != ext:
+    if not row or row["status"] != "active" or row["ext"] != ext or (readable_reference and not readable_reference(row["station_id"])):
         return None
     path = _PHOTOS_DIR / f"{photo_id}.{ext}"
     if not path.is_file():
@@ -377,7 +377,7 @@ def moderate(kind: str, item_id: Any, action: str) -> Dict[str, Any]:
         conn.close()
 
 
-def _summaries_uncached() -> Dict[str, Any]:
+def _summaries_uncached(reference_map=None) -> Dict[str, Any]:
     conn = _connect()
     try:
         stations: Dict[str, Dict[str, Any]] = {}
@@ -394,12 +394,23 @@ def _summaries_uncached() -> Dict[str, Any]:
                 }
             return stations[sid]
 
+        reference_map = reference_map or {}
+        grouped_ids = {}
+        for item in conn.execute("SELECT DISTINCT station_id FROM checkins UNION SELECT DISTINCT station_id FROM photos"):
+            original = item["station_id"]
+            canonical = reference_map.get(original, original)
+            if canonical is not None:
+                grouped_ids.setdefault(canonical, []).append(original)
+
         for row in conn.execute(
             "SELECT station_id, verdict, COUNT(*) AS n, MAX(created_at) AS latest"
             " FROM checkins WHERE status='active' GROUP BY station_id, verdict"
         ):
-            block = entry(row["station_id"])["checkins"]
-            block[row["verdict"]] = row["n"]
+            canonical = reference_map.get(row["station_id"], row["station_id"])
+            if canonical is None:
+                continue
+            block = entry(canonical)["checkins"]
+            block[row["verdict"]] += row["n"]
             block["total"] += row["n"]
             if row["verdict"] in _SUCCESS and (block["last_success_at"] or "") < row["latest"]:
                 block["last_success_at"] = row["latest"]
@@ -409,7 +420,10 @@ def _summaries_uncached() -> Dict[str, Any]:
         for row in conn.execute(
             "SELECT id, station_id, ext, created_at FROM photos WHERE status='active' ORDER BY created_at DESC"
         ):
-            photos = entry(row["station_id"])["photos"]
+            canonical = reference_map.get(row["station_id"], row["station_id"])
+            if canonical is None:
+                continue
+            photos = entry(canonical)["photos"]
             if len(photos) < 6:
                 photos.append({"id": row["id"], "url": photo_url(row["id"], row["ext"]), "created_at": row["created_at"]})
 
@@ -422,10 +436,10 @@ def _summaries_uncached() -> Dict[str, Any]:
             last_failure = _parse_iso(block["last_failure_at"])
             summary["recent_success"] = bool(last_success and last_success >= fresh_cut)
             recent_failures = conn.execute(
-                "SELECT COUNT(*) AS n FROM checkins WHERE status='active' AND station_id=?"
+                f"SELECT COUNT(*) AS n FROM checkins WHERE status='active' AND station_id IN ({','.join('?' for _ in grouped_ids[sid])})"
                 " AND verdict IN ('failed','offline','blocked') AND created_at>=?"
                 " AND (? IS NULL OR created_at>?)",
-                (sid, fail_cut.isoformat(timespec="seconds"), block["last_success_at"], block["last_success_at"]),
+                (*grouped_ids[sid], fail_cut.isoformat(timespec="seconds"), block["last_success_at"], block["last_success_at"]),
             ).fetchone()["n"]
             failure_after_success = bool(last_failure and (last_success is None or last_failure > last_success))
             summary["recent_failure"] = bool(recent_failures and failure_after_success and last_failure and last_failure >= fail_cut)
@@ -449,8 +463,10 @@ def _summaries_uncached() -> Dict[str, Any]:
         conn.close()
 
 
-def summaries() -> Dict[str, Any]:
+def summaries(reference_map=None) -> Dict[str, Any]:
     """All community state, cached ~30 s (invalidated on every write)."""
+    if reference_map:
+        return _summaries_uncached(reference_map)
     now = time.monotonic()
     with _lock:
         if _summary_cache["data"] is not None and now - _summary_cache["ts"] < _SUMMARY_TTL_SECONDS:

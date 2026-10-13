@@ -1,8 +1,9 @@
+import { resolveReference, referenceMessage, type ReferenceOutcome } from './lib/references'
 import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, List, Map } from 'lucide-react'
 import { publicTransportErrorMessage, useChargers } from './lib/api'
-import { discoveryRows, selectedMapRow } from './lib/discovery'
+import { discoveryRows, selectedMapRow, selectedPanelRows } from './lib/discovery'
 import {
   DEFAULT_FILTERS,
   ageText,
@@ -336,7 +337,19 @@ export default function App() {
   }, [filters.maxPrice])
   const requestFilters = { ...filters, maxPrice: requestMaxPrice }
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(() => new URLSearchParams(window.location.hash.slice(1)).get('station'))
+  const [referenceResult, setReferenceResult] = useState<{ id: string; rows: Station[]; catalogue: unknown; outcome: ReferenceOutcome } | null>(null)
+  useEffect(() => {
+    const changed = () => setSelectedId(new URLSearchParams(window.location.hash.slice(1)).get('station'))
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
+  }, [])
+  const selectStationReference = (id: string | null) => {
+    setSelectedId(id)
+    const url = new URL(window.location.href)
+    url.hash = id ? new URLSearchParams({ station: id }).toString() : ''
+    window.history.replaceState(null, '', url)
+  }
   const [overview, setOverview] = useState(true)
   const [region, setRegion] = useState('Mainland')
   const [fullList, setFullList] = useState(false)
@@ -448,9 +461,10 @@ export default function App() {
     () => allRows.filter((st) => passesFilters(st, filters, '')),
     [allRows, filters],
   )
-  const mapRows = useMemo(() => discoveryRows(inventory.data?.leads || [], allRows)
-    .filter(st => passesFilters(st, filters, '') && isMapLocationVerified(st)),
-    [inventory.data, allRows, filters])
+  const selectionRows = useMemo(() => discoveryRows(inventory.data?.references?.revision === effectiveData?.references?.revision ? inventory.data?.leads || [] : [], allRows)
+    .filter(st => passesFilters(st, filters, '')),
+    [inventory.data, effectiveData?.references?.revision, allRows, filters])
+  const mapRows = useMemo(() => selectionRows.filter(isMapLocationVerified), [selectionRows])
   // Region shortcuts and location searches own their bounds independently of the map.
   // Intentional map exploration clears an overview region to follow the visible bounds;
   // camera-only changes (selection/resize) must not silently alter the chosen search area.
@@ -465,19 +479,25 @@ export default function App() {
     [filteredRows, listScopeBbox, excludeBalearics],
   )
   const routeReadyRows = useMemo(() => listRows.filter(isRouteReady), [listRows])
-  const selectedRow = selectedMapRow(selectedId, mapRows)
+  useEffect(() => {
+    let current = true
+    if (selectedId) void resolveReference(selectedId, selectionRows, effectiveData?.references).then(outcome => {
+      if (current) setReferenceResult({ id: selectedId, rows: selectionRows, catalogue: effectiveData?.references, outcome })
+    }).catch(() => { if (current) setReferenceResult(null) })
+    return () => { current = false }
+  }, [selectedId, selectionRows, effectiveData?.references])
+  const referenceOutcome = referenceResult?.id === selectedId && referenceResult.rows === selectionRows && referenceResult.catalogue === effectiveData?.references
+    ? referenceResult.outcome : undefined
+  const selectedRow = referenceOutcome?.station ?? (!effectiveData?.references ? selectedMapRow(selectedId, selectionRows) : null)
   // Map pins are a visual enhancement, not the only way to inspect a result. A static
   // discovery point can sit outside the current list viewport; place it at the top of
   // the primary panel while selected so keyboard and assistive-tech users can reach it.
   const panelRows = useMemo(
-    () => selectedRow && !listRows.some((row) => row.id === selectedRow.id)
-      ? [selectedRow, ...listRows]
-      : listRows,
+    () => selectedPanelRows(listRows, selectedRow),
     [listRows, selectedRow],
   )
-  // Clear before committing the panel/map; retaining an invalid ID would revive
-  // an old selection if a filter or later response makes that station reappear.
-  if (selectedId && !selectedRow) setSelectedId(null)
+  // Keep the exact reference while resolving or showing an unavailable state;
+  // only an explicit dismissal clears the fragment and its selection.
   const coverage = effectiveData?.meta?.coverage
   const liveReady = coverage?.live_route_ready ?? (effectiveData?.stations || []).filter(isRouteReady).length
   const leadCount = effectiveData?.leads?.length || 0
@@ -685,8 +705,8 @@ export default function App() {
     body = (
       <StationList
         rows={panelRows}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
+        selectedId={selectedRow?.id ?? null}
+        onSelect={selectStationReference}
         scrollRef={listRef}
         scrollMargin={listOffsets.margin}
         scrollPaddingStart={listOffsets.heading}
@@ -702,8 +722,8 @@ export default function App() {
           <Suspense fallback={<div className="absolute inset-0 bg-surface-2" aria-hidden="true" />}>
             <MapView
               stations={mapRows}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
+              selectedId={selectedRow && isMapLocationVerified(selectedRow) ? selectedRow.id : null}
+              onSelect={selectStationReference}
               theme={theme}
               userCoords={geo.coords}
               onUserViewportIntent={geo.cancel}
@@ -750,7 +770,7 @@ export default function App() {
               setRegion(item.label)
               setOverview(true)
               setOrigin(null)
-              setSelectedId(null)
+              selectStationReference(null)
               setCommittedBbox(item.bbox)
               setFlyTarget({ ...item, nonce: Date.now() })
             }}>
@@ -856,6 +876,15 @@ export default function App() {
           </div>
 
           <div ref={statusRef} className="discovery-status space-y-2">
+              {selectedId && referenceOutcome && !selectedRow && (
+                <div role="status" className="rounded-xl border border-border bg-surface p-4 text-sm text-fg-soft">
+                  <p>{referenceMessage(referenceOutcome.state)}</p>
+                  <div className="mt-2 flex gap-2">
+                    <button className="min-h-11 rounded-xl border border-border-strong px-4" onClick={() => void query.refetch()}>Try again</button>
+                    <button className="min-h-11 rounded-xl border border-border-strong px-4" onClick={() => selectStationReference(null)}>Dismiss</button>
+                  </div>
+                </div>
+              )}
             {/* role=status: screen readers hear the auto-refresh happen (qa_realtime_refresh). */}
             <motion.div
               className="relative flex items-center gap-2 overflow-hidden rounded-lg px-0.5 py-0.5 text-xs"

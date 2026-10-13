@@ -142,13 +142,15 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertIn("fixture upstream failure", receipt["error"])
 
     def test_successful_fixture_pipeline_publishes_bound_bundle(self):
-        (self.root / "data/free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture-only"}]}))
+        (self.root / "data/free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture-only", "lat": 39.0, "lon": -0.5}]}))
         identity = {"head": "fixture"}
         def stage(root, run, name, argv, timeout):
             candidate = run / "free_intelligence.json"
             baseline = self.root / "data/free_intelligence.json"
             if name == "build":
-                candidate.write_text(json.dumps({"records": [{"id": "fixture-only"}], "generated_at": "fixture"}))
+                self.assertIn("--prior", argv)
+                self.assertEqual(argv[argv.index("--prior") + 1], str(baseline))
+                candidate.write_text(json.dumps({"records": [{"id": "fixture-only", "lat": 39.0, "lon": -0.5}], "generated_at": "fixture"}))
                 payload = {}
             elif name == "delta":
                 payload = {"ok": True, "delta": {"missing_ids": 0}}
@@ -170,6 +172,76 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertTrue(receipt["promoted"])
         self.assertEqual(receipt["records"], 1)
         self.assertEqual(json.loads((self.state / "current/free_intelligence.json").read_text())["records"][0]["id"], "fixture-only")
+
+    def test_alias_only_reconciliation_is_written_before_delta(self):
+        from station_identity import anchor
+        old = {'id': 'old-ocm', 'source': 'OpenChargeMap public snapshot',
+               'source_url': 'https://map.openchargemap.io/?mode=details&id=17',
+               'lat': 39.0, 'lon': -0.5}
+        owner = {'id': 'registry', 'source': 'DGT National Access Point charging registry',
+                 'raw': {'nap_site_id': 'site-17'}, 'lat': 39.0, 'lon': -0.5}
+        (self.root / 'data/free_intelligence.json').write_text(json.dumps({'records': [old, owner]}))
+        observed = []
+        def stage(root, run, name, argv, timeout):
+            candidate = run / 'free_intelligence.json'
+            if name == 'build':
+                candidate.write_text(json.dumps({'records': [{**owner, 'sources': [{'url': old['source_url']}],
+                                                              'reference_inputs': [anchor(old), anchor(owner)]}]}))
+                return subprocess.CompletedProcess(argv, 0, '{}', '')
+            if name == 'delta':
+                observed.extend(json.loads(candidate.read_text())['records'])
+                raise RuntimeError('fixture stops after candidate readback')
+            self.fail('unexpected stage')
+        with mock.patch.object(refresh, 'source_identity', return_value={'head': 'fixture'}), \
+             mock.patch.object(refresh, 'run_stage', side_effect=stage), \
+             mock.patch.object(refresh.shared, 'notify', return_value=False):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 1)
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0]['id'], 'registry')
+        self.assertIn('old-ocm', observed[0].get('merged_ids', []))
+
+    def test_unresolved_canonical_alias_blocks_refresh_before_delta(self):
+        owner = {'id': 'registry', 'source': 'DGT National Access Point charging registry',
+                 'raw': {'nap_site_id': 'site-17'}, 'lat': 39.0, 'lon': -0.5,
+                 'sources': [{'url': 'https://map.openchargemap.io/?mode=details&id=17'}],
+                 'identity_aliases': [{'id': 'old-ocm', 'lat': 39.0, 'lon': -0.5,
+                                       'source_identifiers': [['ocm-station', '17']]}]}
+        (self.root / 'data/free_intelligence.json').write_text(json.dumps({'records': [owner]}))
+        called = []
+        def stage(root, run, name, argv, timeout):
+            called.append(name)
+            if name == 'build':
+                current = {key: value for key, value in owner.items() if key not in ('sources', 'identity_aliases')}
+                (run / 'free_intelligence.json').write_text(json.dumps({'records': [current]}))
+                return subprocess.CompletedProcess(argv, 0, '{}', '')
+            raise RuntimeError('unexpected later stage')
+        with mock.patch.object(refresh, 'source_identity', return_value={'head': 'fixture'}), \
+             mock.patch.object(refresh, 'run_stage', side_effect=stage), \
+             mock.patch.object(refresh.shared, 'notify', return_value=False):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 1)
+        self.assertEqual(called, ['build'])
+        self.assertFalse((self.state / 'current').exists())
+        receipt = json.loads((self.state / 'last.json').read_text())
+        self.assertIn('unresolved canonical station aliases', receipt['error'])
+
+    def test_unresolved_raw_merge_blocks_before_delta_and_canary(self):
+        old = {'id':'old','source':'OpenChargeMap public snapshot','source_url':'https://map.openchargemap.io/?mode=details&id=17','lat':39.,'lon':-.5}
+        owner = {'id':'owner','source':'DGT National Access Point charging registry','raw':{'nap_site_id':'site-1'},'lat':39.004,'lon':-.5}
+        (self.root / 'data/free_intelligence.json').write_text(json.dumps({'records':[old,owner]}))
+        stages=[]
+        def stage(root, run, name, argv, timeout):
+            stages.append(name)
+            if name == 'build':
+                current={**owner,'sources':[{'url':old['source_url']}],'merged_ids':['old']}
+                (run/'free_intelligence.json').write_text(json.dumps({'records':[current]}))
+                return subprocess.CompletedProcess(argv,0,'{}','')
+            self.fail('unresolved reference reached '+name)
+        with mock.patch.object(refresh,'source_identity',return_value={'head':'fixture'}), \
+             mock.patch.object(refresh,'run_stage',side_effect=stage), \
+             mock.patch.object(refresh.shared,'notify',return_value=False):
+            self.assertEqual(refresh.refresh(self.root,self.state,1),1)
+        self.assertEqual(stages,['build'])
+        self.assertFalse((self.state/'current').exists())
 
     def test_bundle_hash_mismatch_cannot_publish(self):
         refresh.publish_bundle(self.state, self.run)

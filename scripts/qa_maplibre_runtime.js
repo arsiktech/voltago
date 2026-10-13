@@ -505,6 +505,49 @@ async function regionalOverviewCoverage(browser) {
   await context.close();
 }
 
+async function referenceSelectionTransitions(browser) {
+  const { createHash } = require("node:crypto");
+  const key = (id) => createHash("sha256").update(`volta-reference-v1\0${id}`).digest("hex");
+  const revision = "a".repeat(64);
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 390, height: 844 }, { width: 390, height: 640 }]) {
+    const context = await browser.newContext({ viewport, reducedMotion: "reduce", serviceWorkers: "block" });
+    try {
+      const page = await context.newPage();
+      record(page, `reference-selection-${viewport.width}x${viewport.height}`);
+      await fixtureRoutes(page);
+      await page.route("**/api/chargers**", route => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+        ...payload, leads: leads.map(row => ({ ...row, reference_revision: revision })),
+        references: { version: 1, revision, entries: [
+          { key: key("qa-old-reference"), state: "alias", canonical_id: leads[2].id },
+          { key: key("qa-withheld-reference"), state: "withheld" },
+        ] },
+      }) }));
+      await page.goto(`${baseUrl}/#station=qa-old-reference`, { waitUntil: "domcontentloaded", timeout: TIMEOUT });
+      await page.locator(".volta-popup").waitFor({ timeout: TIMEOUT });
+      await page.waitForFunction(id => document.querySelector("[data-station]")?.getAttribute("data-station") === id, leads[2].id, { timeout: TIMEOUT });
+      // A visible DOM node can still be behind the mobile sheet. Trial-click proves
+      // the source action is reachable without navigating to an external provider.
+      await page.locator(".volta-popup a").first().click({ trial: true, timeout: TIMEOUT });
+      const mapBox = await page.locator(".discovery-map").boundingBox();
+      await page.goto(`${baseUrl}/#station=qa-withheld-reference`);
+      await page.getByRole("status").filter({ hasText: "its source details cannot be shown" }).waitFor({ timeout: TIMEOUT });
+      assert(new URL(page.url()).hash === "#station=qa-withheld-reference", "Programmatic popup removal cleared the saved reference");
+      assert(await page.locator(".volta-popup").count() === 0, "Withheld reference retained a map popup");
+      const clearedMapBox = await page.locator(".discovery-map").boundingBox();
+      assert(mapBox && clearedMapBox && Math.abs(mapBox.height - clearedMapBox.height) < 1, "Reference selection resized the camera viewport");
+      await page.goto(`${baseUrl}/#station=qa-old-reference`);
+      await page.locator(".volta-popup").waitFor({ timeout: TIMEOUT });
+      await page.reload();
+      await page.locator(".volta-popup").waitFor({ timeout: TIMEOUT });
+      assert(new URL(page.url()).hash === "#station=qa-old-reference", "Alias reference did not survive reload");
+      await page.getByRole("button", { name: "Canary Islands", exact: true }).click();
+      await page.locator(".volta-popup").waitFor({ state: "detached", timeout: TIMEOUT });
+      assert(!new URL(page.url()).hash, "Explicit region change left a stale selected-reference fragment");
+      checks.push({ name: `readable reference selection and withheld transitions ${viewport.width}x${viewport.height}`, ok: true });
+    } finally { await context.close(); }
+  }
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(chromePath ? { executablePath: chromePath } : {}) });
   let mapVersion;
@@ -522,6 +565,7 @@ async function main() {
     await pendingThemeRecovery(browser, `/${mapChunk}`);
     await unsupportedMap(browser);
     await regionalOverviewCoverage(browser);
+    await referenceSelectionTransitions(browser);
     // Chromium reports synchronous GPU readback as this exact native performance
     // diagnostic on some CI renderers. Keep it in the receipt; app/style warnings,
     // other GPU diagnostics and every rendering assertion remain fatal.

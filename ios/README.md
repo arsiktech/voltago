@@ -239,3 +239,9 @@ literal). Fixed via a new locale-invariant `Station.tierKind` used internally in
 `warningIsServerUnreachable` flag instead of `warning?.hasPrefix(...)` — all provably
 behavior-preserving (same 56/56 `VoltaTests`/`VoltaUITests`, same `TierLabelTests`/
 `PriceTextTests` assertions, unchanged).
+
+Saved charger references resolve locally through the response-bound catalogue in
+`ChargerReferences.swift`. Withheld and unresolved favorites remain in Saved with
+explanations and explicit removal, without pins or navigation. No favorites list is
+sent to the service. See [the shared wire contract](../docs/charger-references.md)
+for revision handling and the deployment compatibility gate.

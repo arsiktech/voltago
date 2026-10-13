@@ -99,6 +99,8 @@ final class AppState: NSObject, ObservableObject {
     @Published var visibleRegion: MKCoordinateRegion = AppState.spainRegion
     @Published var focusedStationID: String?
     @Published var selected: Station?
+    @Published var references: ChargerReferences?
+    @Published var referencesCached = false
     @Published var favoriteIDs: [String] = FavoritesStore.load().map(\.id)
     @Published var showingSavedOnly = false
 
@@ -258,7 +260,7 @@ final class AppState: NSObject, ObservableObject {
     /// longer contains the row, but all live/Go-now claims are immediately demoted.
     func detailStation(fallback: Station) -> Station {
         if let selected, selected.id == fallback.id { return selected }
-        if let current = (stations + leads).first(where: { $0.id == fallback.id }) { return current }
+        if let current = resolveReference(fallback.id, rows: stations + leads) { return current }
         return fallback.withTrust(.unavailable)
     }
 
@@ -296,7 +298,7 @@ final class AppState: NSObject, ObservableObject {
             }
         }
         if showingSavedOnly {
-            let saved = Set(favoriteIDs)
+            let saved = resolvedFavoriteIDs
             rows = rows.filter { saved.contains($0.id) }
         }
         return rows
@@ -361,7 +363,7 @@ final class AppState: NSObject, ObservableObject {
 
     var focusedStation: Station? {
         guard let id = focusedStationID else { return nil }
-        return (stations + leads).first(where: { $0.id == id })
+        return resolveReference(id, rows: stations + leads)
     }
 
     func dismissRouteMoment() {
@@ -371,7 +373,7 @@ final class AppState: NSObject, ObservableObject {
 
     func openRouteMomentCard() {
         guard let moment = routeMoment else { return }
-        if let station = (stations + leads).first(where: { $0.id == moment.stationID }) {
+        if let station = resolveReference(moment.stationID, rows: stations + leads) {
             selected = station
         }
         dismissRouteMoment()
@@ -429,8 +431,11 @@ final class AppState: NSObject, ObservableObject {
             let resp = try await api.overview(maxPrice: maxPrice)
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
             if mode == .overview {
+                references = resp.references
+                referencesCached = resp.cache?.stale == true
                 leads = resp.leads
                 stations = resp.stations // [] by contract
+                reconcileSelected(with: stations + leads)
                 previousRouteReadyCount = 0
                 dismissRouteMoment()
                 warning = resp.warning
@@ -443,6 +448,8 @@ final class AppState: NSObject, ObservableObject {
                 // fails. In either ordering, recover the honest, non-live fallback rows without
                 // touching live's warning, stations, or route notice. A successful live response
                 // already owns its presentation and never satisfies this branch.
+                references = resp.references
+                referencesCached = resp.cache?.stale == true
                 leads = resp.leads
             }
             overviewState = .loaded
@@ -454,6 +461,7 @@ final class AppState: NSObject, ObservableObject {
                 warningIsServerUnreachable = true
                 announce(String(localized: "Known chargers could not be loaded. Retry or open Settings."))
             }
+            referencesCached = true
             overviewState = .failed
         }
     }
@@ -473,6 +481,8 @@ final class AppState: NSObject, ObservableObject {
         warningIsServerUnreachable = false
         stations = []
         leads = []
+        references = nil
+        referencesCached = false
         dismissRouteMoment()
         previousRouteReadyCount = 0
         liveState = .idle
@@ -526,6 +536,8 @@ final class AppState: NSObject, ObservableObject {
                     ? []
                     : Self.stationsWithResponseTrust(from: resp, quality: quality)
 
+                references = resp.references
+                referencesCached = resp.cache?.stale == true || quality == .unavailable
                 stations = currentStations
                 leads = resp.leads
                 liveCache = resp.cache
@@ -541,6 +553,7 @@ final class AppState: NSObject, ObservableObject {
             } catch is CancellationError {
             } catch {
                 guard !Task.isCancelled else { return }
+                referencesCached = true
                 // FAIL-CLOSED: drop live rows entirely; leads stay (honestly "Not live").
                 stations = []
                 previousRouteReadyCount = 0
@@ -620,9 +633,14 @@ final class AppState: NSObject, ObservableObject {
     }
 
     private func reconcileSelected(with currentRows: [Station]) {
+        if let focusedStationID, let current = resolveReference(focusedStationID, rows: currentRows) {
+            self.focusedStationID = current.id
+        }
         guard let prior = selected else { return }
-        if let current = currentRows.first(where: { $0.id == prior.id }) {
+        if let current = resolveReference(prior.id, rows: currentRows) {
             selected = current
+        } else if let state = references?.state(for: prior.id), ["alias", "withheld", "unresolved"].contains(state) {
+            selected = nil
         } else {
             selected = prior.withTrust(.unavailable)
         }
@@ -677,13 +695,13 @@ final class AppState: NSObject, ObservableObject {
     // MARK: - Saved chargers
 
     func isFavorite(_ station: Station) -> Bool {
-        favoriteIDs.contains(station.id)
+        favoriteIDs.contains(station.id) || favoriteIDs.contains { resolveReference($0, rows: [station])?.id == station.id }
     }
 
     func toggleFavorite(_ station: Station) {
         var records = FavoritesStore.load()
-        if let index = records.firstIndex(where: { $0.id == station.id }) {
-            records.remove(at: index)
+        if isFavorite(station) {
+            records.removeAll { $0.id == station.id || resolveReference($0.id, rows: [station])?.id == station.id }
             announce(String(localized: "Removed from saved chargers."))
         } else {
             records.insert(FavoriteRecord(id: station.id, name: station.name, savedAt: Date()), at: 0)
@@ -694,8 +712,37 @@ final class AppState: NSObject, ObservableObject {
     }
 
     var savedStationsInView: [Station] {
-        let saved = Set(favoriteIDs)
-        return (stations + leads).filter { saved.contains($0.id) }
+        var seen = Set<String>()
+        let saved = resolvedFavoriteIDs
+        return (stations + leads).filter { saved.contains($0.id) && seen.insert($0.id).inserted }
+    }
+
+    func resolveReference(_ id: String, rows: [Station]) -> Station? {
+        if let references { return references.resolve(id, rows: rows) }
+        return rows.first { $0.id == id }
+    }
+
+    private var resolvedFavoriteIDs: Set<String> {
+        Set(favoriteIDs.compactMap { resolveReference($0, rows: stations + leads)?.id })
+    }
+
+    var unavailableFavorites: [FavoriteRecord] {
+        FavoritesStore.load().filter { resolveReference($0.id, rows: stations + leads) == nil }
+    }
+
+    func unavailableFavoriteMessage(_ id: String) -> String {
+        switch references?.state(for: id) {
+        case "withheld": return String(localized: "Details for this saved charger are unavailable. Your saved entry is still here.")
+        case "unresolved": return String(localized: "This saved charger needs verification. No replacement has been selected.")
+        default: return String(localized: "This saved charger is not in the current results. Refresh or broaden your search.")
+        }
+    }
+
+    func removeFavoriteReference(_ id: String) {
+        let records = FavoritesStore.load().filter { $0.id != id }
+        FavoritesStore.save(records)
+        favoriteIDs = records.map(\.id)
+        announce(String(localized: "Removed from saved chargers."))
     }
 
     // MARK: - Community (plan 013: "did charging actually work?")
@@ -745,6 +792,7 @@ final class AppState: NSObject, ObservableObject {
                     : String(localized: "\(results.count) places found."))
             } catch {
                 guard !Task.isCancelled else { return }
+                referencesCached = true
                 guard searchText.trimmingCharacters(in: .whitespacesAndNewlines) == query else { return }
                 searchResults = []
                 searchState = .failed

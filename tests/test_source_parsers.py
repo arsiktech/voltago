@@ -6,9 +6,8 @@ Covers four parser families end-to-end against REAL public-data payloads
 cache file exists) with the network entry point monkeypatched per-parser:
 
 - source_osm                -> ingest_sources.cached_overpass
-- source_openchargemap      -> reads ingest_sources.CACHE / "ocm_poi.json.gz" directly
-                                (gzip JSONL, not fetch_json/cached_json — the CACHE dir
-                                itself is monkeypatched to a temp dir holding the fixture)
+- source_openchargemap      -> commit-pinned ocm-export tarball + pinned legacy gz via
+                                policy_urlopen GET (faked; CACHE monkeypatched to a temp dir)
 - source_electromaps_mapi   -> ingest_sources.cached_json (locations list + per-id detail)
 - source_chargemap_mappy    -> ingest_sources.cached_json (recursive box walk; one
                                 non-cluster response ends the walk immediately)
@@ -27,9 +26,11 @@ import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "tests"))
 
 import ingest_sources as ing  # noqa: E402
 
@@ -103,21 +104,17 @@ class SourceOsmTests(unittest.TestCase):
 
 
 class SourceOpenChargeMapTests(unittest.TestCase):
-    """source_openchargemap reads ingest_sources.CACHE / "ocm_poi.json.gz" (a gzip'd
-    JSONL snapshot) directly — it does NOT go through fetch_json/cached_json. The
-    network entry is only touched if the gz file is missing/stale (>7 days), so the
-    test monkeypatches ingest_sources.CACHE to a temp dir holding a small, freshly
-    written fixture gz — this exercises the exact on-disk read path with zero network.
+    """source_openchargemap now reads a commit-pinned ``ocm-export`` tarball (compact rows,
+    lookup IDs) fetched via GET, layered over the pinned 2021 ``ocm-data`` history.
 
-    Fixture: two REAL Spanish OCM POIs (IDs 9493, 23805) trimmed from the actual
-    data/cache/ocm_poi.json.gz to their load-bearing fields, verified against the
-    live source_openchargemap gates (UsageCost/connector-type/power evidence, route
-    evidence) before being committed here.
+    The detailed licensing/continuity/archive-safety matrix lives in tests/test_ocm_export.py;
+    this class keeps the parser-characterization cases. Fixtures: the two REAL Spanish POIs
+    (IDs 9493, 23805) from the legacy feed (nested shape) plus a real compact current row.
     """
 
-    REAL_POIS = [
+    REAL_LEGACY_POIS = [
         {
-            "ID": 9493, "UUID": "531B47EA-3FDE-48C2-9451-AF593F0847CB",
+            "ID": 9493, "UUID": "531B47EA-3FDE-48C2-9451-AF593F0847CB", "DataProviderID": 1,
             "UsageCost": "Free",
             "AddressInfo": {"Title": "Telefonica Distrito C", "AddressLine1": "Ronda de la Comunicacion, 2",
                              "Town": "Alcobendas", "Postcode": "28050", "Latitude": 40.5154586, "Longitude": -3.66219009999998,
@@ -131,7 +128,7 @@ class SourceOpenChargeMapTests(unittest.TestCase):
             "SubmissionStatus": {"Title": "Submission Published"}, "UsageType": {"Title": "Public"}, "MediaItems": None,
         },
         {
-            "ID": 23805, "UUID": "0298B33C-89FC-4DCB-AF9C-56E1CFDA025E",
+            "ID": 23805, "UUID": "0298B33C-89FC-4DCB-AF9C-56E1CFDA025E", "DataProviderID": 1,
             "UsageCost": "Free",
             "AddressInfo": {"Title": "B:SM 38 - Tanatori Les Corts", "AddressLine1": "Av. de Joan XXIII, 23 - 25",
                              "Town": "BARCELONA", "Postcode": "08028", "Latitude": 41.384186, "Longitude": 2.122279,
@@ -147,26 +144,32 @@ class SourceOpenChargeMapTests(unittest.TestCase):
     ]
 
     def setUp(self) -> None:
+        import test_ocm_export as fx  # shared real-shape fixtures; tests/ is on sys.path when run as a file
+        self.fx = fx
         self._tmpdir = Path(tempfile.mkdtemp())
         self.addCleanup(lambda: shutil.rmtree(self._tmpdir, ignore_errors=True))
         self._original_cache = ing.CACHE
         self.addCleanup(lambda: setattr(ing, "CACHE", self._original_cache))
         ing.CACHE = self._tmpdir
+        floor = mock.patch.object(fx.ocm, "MIN_COUNTRY_FILES", 1)
+        floor.start()
+        self.addCleanup(floor.stop)
 
-    def _write_gz(self, pois) -> None:
-        gz_path = self._tmpdir / "ocm_poi.json.gz"
-        with gzip.open(gz_path, "wt", encoding="utf-8") as f:
-            for poi in pois:
-                f.write(json.dumps(poi) + "\n")
+    def _run(self, legacy, current=None):
+        fx = self.fx
+        arch = self._tmpdir / "a.tar.gz"
+        fx.make_archive(arch, current if current is not None else {1: fx.compact_poi(1)})
+        net = fx.Network(manifest=fx.MANIFEST, archive=arch.read_bytes(), legacy=fx.legacy_gz(legacy))
+        records: list = []
+        with mock.patch.object(ing, "policy_urlopen", net):
+            ing.source_openchargemap(records)
+        return records
 
     def test_real_payload_yields_expected_records_and_load_bearing_fields(self) -> None:
-        self._write_gz(self.REAL_POIS)
+        records = self._run(self.REAL_LEGACY_POIS)
 
-        records: list = []
-        ing.source_openchargemap(records)
-
-        self.assertEqual(len(records), 2)
         by_id = {r["raw"]["ID"]: r for r in records}
+        self.assertEqual(sorted(by_id), [1, 9493, 23805])
         rec = by_id[23805]
         self.assertEqual(rec["lat"], 41.384186)
         self.assertEqual(rec["lon"], 2.122279)
@@ -175,35 +178,44 @@ class SourceOpenChargeMapTests(unittest.TestCase):
         self.assertEqual(rec["max_power_kw"], 7.2)
         self.assertEqual(rec["source_url"], "https://map.openchargemap.io/?mode=details&id=23805")
         self.assertEqual(rec["source"], "OpenChargeMap public snapshot")
+        self.assertTrue(rec["raw"]["historical_snapshot"])
+
+    def test_current_compact_row_resolves_lookup_ids_end_to_end(self) -> None:
+        records = self._run(self.REAL_LEGACY_POIS, current={203975: self.fx.compact_poi(
+            203975, title="Ayunt. Foios", operator=3279, lat=39.53676290559463, lon=-0.35793545094429646)})
+        rec = next(r for r in records if r["raw"]["ID"] == 203975)
+        self.assertEqual(rec["name"], "Ayunt. Foios")
+        self.assertEqual(rec["connector_labels"], ["Type 2"])
+        self.assertEqual(rec["max_power_kw"], 22)
+        self.assertEqual(rec["raw"]["StatusTypeTitle"], "Operational")
+        self.assertFalse(rec["raw"]["historical_snapshot"])
 
     def test_malformed_payload_corrupt_line_is_skipped_without_raising(self) -> None:
-        gz_path = self._tmpdir / "ocm_poi.json.gz"
+        gz_path = self._tmpdir / "legacy.gz"
         with gzip.open(gz_path, "wt", encoding="utf-8") as f:
             f.write("{not valid json,,,\n")  # one corrupt JSONL line, nothing else
+        net = self.fx.Network(manifest=self.fx.MANIFEST, archive=(lambda a: (self.fx.make_archive(a, {1: self.fx.compact_poi(1)}), a.read_bytes())[1])(self._tmpdir / "b.tar.gz"),
+                              legacy=gz_path.read_bytes())
 
         records: list = []
-        ing.source_openchargemap(records)  # must not raise
+        with mock.patch.object(ing, "policy_urlopen", net):
+            ing.source_openchargemap(records)  # must not raise: history is additive
 
-        self.assertEqual(records, [])
+        self.assertEqual([r["raw"]["ID"] for r in records], [1])
 
     def test_quarantined_coordinate_and_commercial_reference_are_not_exported(self) -> None:
-        quarantined = deepcopy(self.REAL_POIS[0])
+        quarantined = deepcopy(self.REAL_LEGACY_POIS[0])
         quarantined["ID"] = 169683
         quarantined["AddressInfo"]["Title"] = "Barbastro at an incompatible Barcelona coordinate"
-        allowed = deepcopy(self.REAL_POIS[1])
+        allowed = deepcopy(self.REAL_LEGACY_POIS[1])
         allowed["Connections"][0]["Reference"] = "Electromaps"
-        self._write_gz([quarantined, allowed])
+        records = self._run([quarantined, allowed], current={1: self.fx.compact_poi(1, lat=39.1)})
 
-        records: list = []
-        ing.source_openchargemap(records)
-
-        self.assertEqual([record["raw"]["ID"] for record in records], [23805])
-        self.assertNotIn("Reference", records[0]["connectors"][0]["raw"])
+        self.assertEqual(sorted(record["raw"]["ID"] for record in records), [1, 23805])
+        rec = next(r for r in records if r["raw"]["ID"] == 23805)
+        self.assertNotIn("Reference", rec["connectors"][0]["raw"])
         self.assertNotIn("electromaps", json.dumps(records, ensure_ascii=False).lower())
-        self.assertEqual(
-            records[0]["sources"][0]["source_last_updated"],
-            "2015-09-06T18:49:00Z",
-        )
+        self.assertEqual(rec["sources"][0]["source_last_updated"], "2015-09-06T18:49:00Z")
 
 
 class SourceElectromapsMapiTests(unittest.TestCase):

@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 import ingest_sources as ing  # noqa: E402
 import qa_ingestion_delta as delta  # noqa: E402
 import server  # noqa: E402
-from station_identity import identity_keys  # noqa: E402
+from station_identity import identity_keys, preserve_record_ids  # noqa: E402
 
 FENIE = {
     "nombre_punto": "Casa de Cultura", "direccion": "Calle Mayor, 1, Mutilva, Navarra",
@@ -35,14 +35,18 @@ def nap_row():
 class MergedIdentifierTests(unittest.TestCase):
     def test_pin_keeps_identifier_of_row_from_another_source(self):
         pin = ing.fenie_records_from_markers([FENIE])[0]
+        owner = dict(pin)
         old = nap_row()
         self.assertFalse(identity_keys(old) & identity_keys(pin))      # the gap that blocked refreshes
         ing.record_merged_ids(pin, [pin, old])
         self.assertIn(old["id"], pin["merged_ids"])
         self.assertIn(list(NAP_KEY), pin["merged_source_identifiers"])
         self.assertTrue(identity_keys(old) & identity_keys(pin))
-        # The delta gate now accepts the merge instead of counting the old id as missing.
-        self.assertEqual(delta.merged_into([old], [pin], [old["id"]]), {old["id"]: pin["id"]})
+        # A raw merge is only a claim. The shared validator supplies durable proof.
+        self.assertEqual(delta.merged_into([old, owner], [pin], [old["id"]]), {})
+        payload, report = preserve_record_ids({"records": [old, owner]}, {"records": [pin]})
+        self.assertEqual(report["unresolved_missing_ids"], [])
+        self.assertEqual(delta.merged_into([old, owner], payload["records"], [old["id"]]), {old["id"]: pin["id"]})
 
     def test_identifiers_survive_a_second_merge_and_skip_own_keys(self):
         pin = ing.fenie_records_from_markers([FENIE])[0]

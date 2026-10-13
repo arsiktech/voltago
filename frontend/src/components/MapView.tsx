@@ -480,7 +480,7 @@ export const MapView = memo(function MapView({
   const mapRef = useRef<maplibregl.Map | null>(null)
   const userMarkerRef = useRef<maplibregl.Marker | null>(null)
   const popupRef = useRef<maplibregl.Popup | null>(null)
-  const attachingPopupRef = useRef(false)
+  const synchronizingPopupRef = useRef(false)
   const selectedIdRef = useRef(selectedId)
   selectedIdRef.current = selectedId
   const flyTargetRef = useRef(flyTarget)
@@ -519,8 +519,10 @@ export const MapView = memo(function MapView({
     // Cleanup is state reconciliation, not map painting: it must run while a
     // replacement style is still loading.
     if (!st) {
-      popup?.remove()
-      if (id) onSelectRef.current(null)
+      // A controlled update may be resolving an alias or showing an unavailable
+      // reference. Removing its old popup is not a user dismissal of that reference.
+      synchronizingPopupRef.current = true
+      try { popup?.remove() } finally { synchronizingPopupRef.current = false }
       if (readyRef.current && map.getLayer('station-selected')) {
         map.setFilter('station-selected', ['all', ['!', ['has', 'point_count']], ['==', ['get', 'id'], '__none__']] as unknown as maplibregl.FilterSpecification)
       }
@@ -533,8 +535,8 @@ export const MapView = memo(function MapView({
     if (popup) {
       popup.setLngLat([st.lon, st.lat]).setHTML(popupHTML(st))
       if (!popup.isOpen()) {
-        attachingPopupRef.current = true
-        try { popup.addTo(map) } finally { attachingPopupRef.current = false }
+        synchronizingPopupRef.current = true
+        try { popup.addTo(map) } finally { synchronizingPopupRef.current = false }
       }
     }
   }
@@ -661,7 +663,7 @@ export const MapView = memo(function MapView({
     })
     popupRef.current = popup
     popup.on('close', () => {
-      if (attachingPopupRef.current) return
+      if (synchronizingPopupRef.current) return
       if (popupRef.current === popup) onSelectRef.current(null)
     })
 
@@ -675,8 +677,8 @@ export const MapView = memo(function MapView({
       }
       popup.setLngLat(lngLat ?? [st.lon, st.lat]).setHTML(popupHTML(st))
       if (!popup.isOpen()) {
-        attachingPopupRef.current = true
-        try { popup.addTo(map) } finally { attachingPopupRef.current = false }
+        synchronizingPopupRef.current = true
+        try { popup.addTo(map) } finally { synchronizingPopupRef.current = false }
       }
       onSelectRef.current(id)
     }
