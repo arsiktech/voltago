@@ -1092,19 +1092,20 @@ class DefaultOverviewWarmupTests(unittest.TestCase):
 
     def test_warmup_fills_the_cache_slot_a_request_reads(self) -> None:
         params = server.urllib.parse.parse_qs(server.DEFAULT_OVERVIEW_QUERY)
-        saved = dict(server.OVERVIEW_BYTES_CACHE)
+        cache = server.OVERVIEW_BBOX_BYTES_CACHE if params.get("bbox") else server.OVERVIEW_BYTES_CACHE
+        saved = dict(cache)
         try:
-            server.OVERVIEW_BYTES_CACHE.clear()
+            cache.clear()
             # Pin the clock so the per-minute cache key cannot roll over mid-test.
             with patch.object(server.time, "time", return_value=1_800_000_000.0):
                 with patch.object(server.time, "sleep", side_effect=StopIteration):
                     with self.assertRaises(StopIteration):
                         server.warm_default_overview_forever()
-                self.assertEqual(len(server.OVERVIEW_BYTES_CACHE), 1)
+                self.assertEqual(len(cache), 1)
                 with patch.object(server, "overview_response", side_effect=AssertionError("cache miss")):
                     status, body, _ = server.overview_response_bytes(params, server._parse_max_price("5.0"), False)
             self.assertEqual(status, 200)
             self.assertTrue(body)
         finally:
-            server.OVERVIEW_BYTES_CACHE.clear()
-            server.OVERVIEW_BYTES_CACHE.update(saved)
+            cache.clear()
+            cache.update(saved)

@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import MapKit
 import XCTest
 @testable import Volta
 
@@ -775,6 +776,34 @@ final class AppStateAdverseTrustTests: XCTestCase {
         XCTAssertNil(state.routeMoment)
     }
 
+    func testDirectoryOnlyRegionNeverAnnouncesFreshLiveAuthority() async throws {
+        let state = makeState(responseJSON: """
+        {"stations":[],"leads":[],"cache":{"live_supported":false,"live_failed":false},
+         "meta":{"coverage":{"mode":"directory"}}}
+        """)
+        state.fetchLive(reason: "global-directory")
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.liveQuality, .overview)
+        XCTAssertEqual(state.liveState, .ok)
+        XCTAssertEqual(state.liveReadyCount, 0)
+    }
+
+    func testCountryViewRequestsOnlyScopedStoredEvidence() async {
+        let state = makeState { request in
+            XCTAssertTrue(Self.isOverviewRequest(request))
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first(where: { $0.name == "bbox" })?.value, "30.0,129.0,46.0,146.0")
+            return Self.response(request, status: 200, body: "{\"stations\":[],\"leads\":[],\"meta\":{\"truncated\":true}}")
+        }
+        state.visibleRegion = MKCoordinateRegion(center: .init(latitude: 38, longitude: 137.5),
+                                                span: .init(latitudeDelta: 16, longitudeDelta: 17))
+        state.fetchLive(reason: "country")
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.mode, .overview)
+        XCTAssertEqual(state.overviewState, .loaded)
+        XCTAssertTrue(state.resultsTruncated)
+    }
+
     private func makeState(responseJSON: String) -> AppState {
         makeState { request in Self.response(request, status: 200, body: responseJSON) }
     }
@@ -800,7 +829,11 @@ final class AppStateAdverseTrustTests: XCTestCase {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AdverseURLProtocol.self]
         let session = URLSession(configuration: configuration)
-        return AppState(api: VoltaAPI(baseURL: URL(string: "https://volta.test")!, session: session))
+        let state = AppState(api: VoltaAPI(baseURL: URL(string: "https://volta.test")!, session: session))
+        // Live-response fixtures model a local search; country views now use overview.
+        state.visibleRegion = MKCoordinateRegion(center: .init(latitude: 39.47, longitude: -0.37),
+                                                span: .init(latitudeDelta: 0.16, longitudeDelta: 0.16))
+        return state
     }
 
     private func waitUntilSettled(_ state: AppState) async {

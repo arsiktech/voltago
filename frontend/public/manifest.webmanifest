@@ -1,7 +1,7 @@
 {
-  "name": "Volta Go — EV charging across Spain",
+  "name": "Volta Go — explore EV charging",
   "short_name": "Volta Go",
-  "description": "Live, free-first, low-cost EV charging radar for Spain.",
+  "description": "Search EV charging worldwide. Source coverage varies by location.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

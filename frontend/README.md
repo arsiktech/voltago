@@ -1,8 +1,12 @@
 # Volta Go — frontend
 
-Modern single-page UI for Volta Go, the live free-first EV-charging radar for Spain
-(national, viewport/bbox-driven — geolocate or search any city). It renders the
-Python backend's reliable-sources, data-honest API (`server.py`).
+Modern single-page UI for Volta Go. Place search and map navigation work worldwide;
+charger coverage depends on the backend's connected sources. Spain remains the default
+landing region. Inventory is requested for the current area, with date-line crossing and
+polar bounds supported. Wide views use stored evidence; live requests fit the backend's
+default 1.2° latitude budget (longitude adjusted for latitude). It renders the Python
+backend's reliable-sources, data-honest API (`server.py`). Euro filters never convert
+foreign-currency prices, and worldwide place search does not imply live coverage.
 
 ## Stack
 
@@ -55,6 +59,10 @@ are consumed by Python, frontend, and native tests. Browser selectors and user
 journeys are maintained in [the DOM contract](../docs/spa-dom-contract.md).
 
 Run `npm run test`, `npm run lint`, and `npm run build` from this directory.
+The `/coverage/` page reads `/api/sources` from the current service and reports loaded
+source/country counts separately from adapter and live-cache status. Its browser check is
+`node frontend/scripts/qa_coverage.cjs http://127.0.0.1:8773` from the repository root
+against a built/served frontend; it uses source fixtures without upstream requests.
 The Vite build bundles MapLibre's worker as an asset. Custom cluster icons use
 `setMissingStyleImageResolver`; theme reloads recreate layers from the current
 theme. Verify these behaviors from the repository root with

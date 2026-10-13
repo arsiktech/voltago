@@ -12,7 +12,7 @@ struct MapFilterBar: View {
     @State private var priceEditorPresented = false
     @State private var powerEditorPresented = false
 
-    private let connectorTypes = ["CCS", "Type 2", "CHAdeMO", "Tesla"]
+    private let connectorTypes = ConnectorKind.choices
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {

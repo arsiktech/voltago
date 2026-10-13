@@ -184,7 +184,7 @@ export function FilterRail({
           <fieldset className="mb-7 min-w-0">
             <legend className="mb-2 text-sm font-semibold text-fg">Charging price</legend>
             <p id={`${dialogId}-price-help`} className="text-xs leading-relaxed text-muted">
-              Use reported charging prices. A limit excludes unknown prices. Parking charges are separate.
+              Use reported euro charging prices. A limit excludes unknown prices and other-currency tariffs. Parking charges are separate.
             </p>
             <div className="mt-4 rounded-2xl border border-border px-4 py-3">
               <div className="flex items-center justify-between gap-3">

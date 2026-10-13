@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Coords } from '../types'
+import { validCoordinates } from '../lib/geo'
 
 type GeoStatus = 'idle' | 'locating' | 'granted' | 'denied' | 'unavailable'
 
@@ -28,6 +29,10 @@ export function useGeolocation() {
       (pos) => {
         if (id !== requestId.current) return
         const nextCoords = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+        if (!validCoordinates(nextCoords)) {
+          setStatus('unavailable')
+          return
+        }
         setCoords(nextCoords)
         setStatus('granted')
         onLocated?.(nextCoords)

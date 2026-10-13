@@ -19,7 +19,7 @@ final class DiscoveryFilterTests: XCTestCase {
     }
 
     func testClearingConnectorSelectionRestoresOtherConnectors() throws {
-        try assertFilterCanBeCleared { $0.connectorTypes = ["CCS", "CHAdeMO"] }
+        try assertFilterCanBeCleared { $0.connectorTypes = ["CCS2", "CHAdeMO"] }
     }
 
     func testClearingPowerFloorRestoresSlowerChargers() throws {
@@ -42,7 +42,7 @@ final class DiscoveryFilterTests: XCTestCase {
         state.liveQuality = .fresh
         state.stations = [station]
         state.freeOnly = true
-        state.connectorTypes = ["CCS"]
+        state.connectorTypes = ["CCS2"]
         state.minimumPowerKW = 50
         state.showingSavedOnly = true
 
@@ -115,7 +115,7 @@ final class DiscoveryFilterTests: XCTestCase {
         state.searchText = "Valencia"
         state.freeOnly = true
         state.maxPrice = 0.25
-        state.connectorTypes = ["CCS"]
+        state.connectorTypes = ["CCS2"]
         state.minimumPowerKW = 50
         state.showingSavedOnly = true
 

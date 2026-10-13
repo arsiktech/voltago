@@ -7,11 +7,13 @@ import json
 import re
 import sys
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
 from source_policy import load_source_policy_exclusions, partition_records
 from station_identity import identity_keys
+from json_recordset import load_json_recordset
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,9 +26,57 @@ CORROBORATION_ONLY_SOURCE_REQUIREMENTS = {
 }
 
 
-def load_json(path: Path) -> Dict[str, Any]:
-    with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+@dataclass(frozen=True, slots=True)
+class GateRecord:
+    """Exact gate evidence, without retaining tariff/media/raw station trees."""
+    id: str
+    source: str
+    reliability: str
+    parking_kind: str
+    identities: frozenset
+    merged_ids: tuple
+    missing_fields: tuple
+    missing_source: bool
+    weak_consum: bool
+    bad_actionable: bool
+    unpromoted_timestamp: bool
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key == "parking":
+            return {"kind": self.parking_kind}
+        return getattr(self, key, default)
+
+
+def compact_gate_record(row: dict) -> GateRecord:
+    """Evaluate every validation against the complete, policy-clean input row.
+
+    Stable source identities are computed before dropping nested evidence, so
+    merge proof stays identical even for carried or typed registry identifiers.
+    Only fields used by the report survive; imported cached verdicts are ignored.
+    """
+    missing = missing_required_fields([row])
+    return GateRecord(
+        record_id(row), sys.intern(str(row.get("source") or "Unknown")),
+        sys.intern(str(row.get("reliability") or "Unknown")),
+        sys.intern(str((row.get("parking") or {}).get("kind") or "unknown")),
+        frozenset(identity_keys(row)), tuple(row.get("merged_ids") or []),
+        tuple(missing[0][1]) if missing else (), bool(missing_source_links([row])),
+        bool(weak_consum_source_rows([row])), bool(bad_actionable_name_rows([row])),
+        bool(unpromoted_source_timestamp_rows([row])),
+    )
+
+
+def load_partitioned(path: Path, policy: dict) -> tuple[dict, list, list]:
+    """Stream policy evaluation and retain only compact, exact gate evidence."""
+    excluded = []
+
+    def clean(row: dict) -> GateRecord | None:
+        allowed, blocked = partition_records([row], policy)
+        excluded.extend({"id": record_id(item)} for item in blocked)
+        return compact_gate_record(allowed[0]) if allowed else None
+
+    payload = load_json_recordset(path, record_transform=clean)
+    return payload, records(payload), excluded
 
 
 def records(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -55,6 +105,10 @@ def parking_names(rows: Iterable[Dict[str, Any]]) -> Counter[str]:
 def missing_source_links(rows: Iterable[Dict[str, Any]]) -> List[str]:
     missing: List[str] = []
     for row in rows:
+        if isinstance(row, GateRecord):
+            if row.missing_source:
+                missing.append(row.id)
+            continue
         sources = row.get("sources") or []
         has_source = bool(row.get("source_url")) or any(isinstance(src, dict) and src.get("url") for src in sources)
         if not has_source:
@@ -66,6 +120,10 @@ def missing_required_fields(rows: Iterable[Dict[str, Any]]) -> List[Tuple[str, L
     required = ["id", "name", "lat", "lon", "source", "sources", "parking", "reliability"]
     out: List[Tuple[str, List[str]]] = []
     for row in rows:
+        if isinstance(row, GateRecord):
+            if row.missing_fields:
+                out.append((row.id, list(row.missing_fields)))
+            continue
         missing = [key for key in required if row.get(key) in (None, "", [], {})]
         if missing:
             out.append((record_id(row), missing))
@@ -75,6 +133,10 @@ def missing_required_fields(rows: Iterable[Dict[str, Any]]) -> List[Tuple[str, L
 def weak_consum_source_rows(rows: Iterable[Dict[str, Any]]) -> List[str]:
     weak: List[str] = []
     for row in rows:
+        if isinstance(row, GateRecord):
+            if row.weak_consum:
+                weak.append(row.id)
+            continue
         if row.get("source") != "Consum store locator":
             continue
         source_url = str(row.get("source_url") or "")
@@ -87,6 +149,10 @@ def weak_consum_source_rows(rows: Iterable[Dict[str, Any]]) -> List[str]:
 def bad_actionable_name_rows(rows: Iterable[Dict[str, Any]]) -> List[str]:
     bad: List[str] = []
     for row in rows:
+        if isinstance(row, GateRecord):
+            if row.bad_actionable:
+                bad.append(row.id)
+            continue
         if not (row.get("is_free") or row.get("is_cheap") or row.get("status") == "AVAILABLE"):
             continue
         sources = row.get("sources") or []
@@ -102,6 +168,10 @@ def bad_actionable_name_rows(rows: Iterable[Dict[str, Any]]) -> List[str]:
 def unpromoted_source_timestamp_rows(rows: Iterable[Dict[str, Any]]) -> List[str]:
     bad: List[str] = []
     for row in rows:
+        if isinstance(row, GateRecord):
+            if row.unpromoted_timestamp:
+                bad.append(row.id)
+            continue
         raw = row.get("raw") if isinstance(row.get("raw"), dict) else {}
         raw_ts = raw.get("LastVerified") or raw.get("DateLastStatusUpdate") or raw.get("DateLastConfirmed") or raw.get("last_seen") or raw.get("lastSeen") or raw.get("last_used_time") or raw.get("lastUsedTime") or raw.get("updated_at") or raw.get("updatedAt") or raw.get("creation_date")
         if raw_ts and not row.get("last_seen"):
@@ -125,7 +195,9 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
     for old_id in missing:
         rows = claims.get(old_id) or []
         old = baseline_by_id.get(old_id)
-        if len(rows) == 1 and old is not None and identity_keys(old) & identity_keys(rows[0]):
+        old_keys = old.identities if isinstance(old, GateRecord) else identity_keys(old) if old is not None else set()
+        new_keys = (rows[0].identities if isinstance(rows[0], GateRecord) else identity_keys(rows[0])) if len(rows) == 1 else set()
+        if len(rows) == 1 and old is not None and old_keys & new_keys:
             proven[old_id] = record_id(rows[0])
     return proven
 
@@ -182,13 +254,9 @@ def main() -> int:
     args = parser.parse_args()
 
     failures: List[str] = []
-    baseline_payload = load_json(args.baseline)
-    rebuilt_payload = load_json(args.rebuilt)
-    baseline_rows_all = records(baseline_payload)
-    rebuilt_rows_all = records(rebuilt_payload)
     policy = load_source_policy_exclusions(args.policy_exclusions)
-    baseline_rows, baseline_excluded = partition_records(baseline_rows_all, policy)
-    rebuilt_rows, rebuilt_excluded = partition_records(rebuilt_rows_all, policy)
+    baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy)
+    rebuilt_payload, rebuilt_rows, rebuilt_excluded = load_partitioned(args.rebuilt, policy)
 
     if rebuilt_excluded:
         failures.append(
@@ -256,7 +324,7 @@ def main() -> int:
             "path": str(args.baseline),
             "generated_at": baseline_payload.get("generated_at"),
             "records": baseline_total,
-            "pre_policy_records": len(baseline_rows_all),
+            "pre_policy_records": len(baseline_rows) + len(baseline_excluded),
             "raw_records": baseline_payload.get("raw_records"),
             "errors": len(baseline_payload.get("errors") or []),
             "sources": baseline_sources.most_common(),
@@ -267,7 +335,7 @@ def main() -> int:
             "path": str(args.rebuilt),
             "generated_at": rebuilt_payload.get("generated_at"),
             "records": rebuilt_total,
-            "pre_policy_records": len(rebuilt_rows_all),
+            "pre_policy_records": len(rebuilt_rows) + len(rebuilt_excluded),
             "raw_records": rebuilt_payload.get("raw_records"),
             "errors": len(rebuilt_payload.get("errors") or []),
             "sources": rebuilt_sources.most_common(),

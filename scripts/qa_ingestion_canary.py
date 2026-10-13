@@ -17,6 +17,7 @@ import sys
 import math
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
+from json_recordset import load_json_recordset
 
 from source_policy import (
     load_source_policy_exclusions,
@@ -105,17 +106,12 @@ def source_evidence_counts(
     every source reference remains in ``sources[]``. The canary protects evidence coverage,
     so one record contributes at most once to every family it actually carries.
     """
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return []
     counts: Counter[str] = Counter()
     active_policy = policy or SOURCE_POLICY_EXCLUSIONS
-    for record in payload.get("records") or []:
-        if not isinstance(record, dict):
-            continue
+
+    def consume(record: dict) -> None:
         if value_is_excluded(record, active_policy):
-            continue
+            return
         names = {str(record.get("source") or "").strip()}
         names.update(
             str(source.get("name") or "").strip()
@@ -123,6 +119,10 @@ def source_evidence_counts(
             if isinstance(source, dict)
         )
         counts.update(name for name in names if name)
+    try:
+        load_json_recordset(path, record_transform=consume)
+    except (OSError, ValueError):
+        return []
     return [[name, count] for name, count in counts.most_common()]
 
 

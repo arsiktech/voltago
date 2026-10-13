@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import MapKit
 import XCTest
 @testable import Volta
 
@@ -259,7 +260,7 @@ final class PrimaryStationFilteringTests: XCTestCase {
         let state = AppState()
         state.stations = [matching, slow]
         state.maxPrice = 0.20
-        state.connectorType = "CCS"
+        state.connectorType = "CCS2"
         state.minimumPowerKW = 50
         XCTAssertEqual(state.filteredRows.map(\.id), ["matching"])
     }
@@ -282,10 +283,10 @@ final class PrimaryStationFilteringTests: XCTestCase {
         """)
         let state = AppState()
         state.stations = [ccs, chademo, type2]
-        state.connectorTypes = ["CCS", "CHAdeMO"]
+        state.connectorTypes = ["CCS2", "CHAdeMO"]
 
         XCTAssertEqual(state.filteredRows.map(\.id), ["ccs", "chademo"])
-        state.toggleConnectorType("CCS")
+        state.toggleConnectorType("CCS2")
         XCTAssertEqual(state.filteredRows.map(\.id), ["chademo"])
         state.toggleConnectorType("CHAdeMO")
         XCTAssertEqual(state.filteredRows.map(\.id), ["ccs", "chademo", "type2"])
@@ -364,6 +365,8 @@ final class FilteredAPIRequestTests: XCTestCase {
 
         let api = VoltaAPI(baseURL: URL(string: "https://volta.test")!, session: session)
         let state = AppState(api: api)
+        state.visibleRegion = MKCoordinateRegion(center: .init(latitude: 39.47, longitude: -0.37),
+                                                span: .init(latitudeDelta: 0.16, longitudeDelta: 0.16))
         state.maxPrice = maxPrice
         state.fetchLive(reason: "test")
 

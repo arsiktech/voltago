@@ -7,6 +7,7 @@ dependencies; callers keep orchestration and localized presentation on their sur
 """
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -19,17 +20,35 @@ def normalize_connector_label(token: Any) -> Optional[str]:
     if not raw:
         return None
     normalized = raw.upper()
+    if ("CCS" in normalized or "COMBO" in normalized) and "UNSPECIFIED" in normalized:
+        return "CCS (unspecified)"
+    # The two CCS standards are physically different. Match explicit Type 1
+    # before the legacy European shorthand so a US plug never becomes CCS2.
+    if ("CCS" in normalized or "COMBO" in normalized) and re.search(
+        r"(?:CCS[ _-]*1|(?:TYPE[ _-]*|T)1(?:\b|_)|J1772)", normalized
+    ):
+        return "CCS1"
     if "CCS" in normalized or "COMBO" in normalized:
         return "CCS2"
     if "CHADEMO" in normalized:
         return "CHAdeMO"
+    if "NACS" in normalized or "J3400" in normalized or (
+        "TESLA" in normalized and "NORTH AMERICA" in normalized
+    ):
+        return "NACS"
+    if re.search(r"GB[ /_-]*T", normalized):
+        if "DC" in normalized or "20234.3" in normalized:
+            return "GB/T DC"
+        if "AC" in normalized or "20234.2" in normalized:
+            return "GB/T AC"
+        return "GB/T"
     if "TESLA" in normalized:
         return "Tesla"
     if any(alias in normalized for alias in ("T2", "MENNEKES", "TYPE 2", "TIPO 2")):
         return "Type 2"
     if any(alias in normalized for alias in ("SCHUKO", "SHUKO", "DOMESTIC", "SCEE")):
         return "Schuko"
-    if "T1" in normalized:
+    if "T1" in normalized or "TYPE 1" in normalized or "J1772" in normalized:
         return "Type 1"
     return raw.replace("_", " ").title()
 
@@ -149,9 +168,87 @@ def classify_source_resource(source: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+_DIRECTORY_RECORDS = {
+    "etecnic": ("Etecnic EVcharge public charger map", "etecnic_charger_id", "https://etecnic.net/api/v1/chargers/index.json", "https://etecnic.es/mapa-de-recarga/"),
+    "atlante": ("Atlante public charger map", "atlante_location_id", "https://map.atlante.energy/geodata.json", "https://map.atlante.energy/"),
+    "zunder": ("Zunder public charger map", "zunder_location_id", "https://www.zunder.com/mapa-de-ubicaciones/", "https://www.zunder.com/mapa-de-ubicaciones/"),
+    "mot_reus": ("MOT (Aparcar) — Ajuntament de Reus municipal GIS", "reus_feature_id", "https://geoportal.reus.cat/apps/giscube-admin/layerserver/geojsonlayers/carregadors-municipals", None),
+    "mot_tarragona": ("MOT (Aparcar) — Ajuntament de Tarragona open data", "tarragona_nom", "https://opendatafiles.tarragona.cat/03303.csv", "https://opendatafiles.tarragona.cat/03303.csv"),
+    "interparking": ("P-APP (Interparking) public car park finder", "interparking_external_id", "https://www.interparking.es/es/encuentra-un-aparcamiento/", None),
+}
+
+
+def _directory_record_source(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Coordinate proof from a parsed public feed, never live or tariff proof.
+
+    Generic source links and child evidence cannot grant map eligibility. Require
+    the matching primary source, acquisition URL, stable upstream ID and position.
+    """
+    raw = item.get("raw")
+    if not isinstance(raw, dict):
+        return None
+    coords = []
+    for field, limit in (("lat", 90), ("lon", 180)):
+        value = item.get(field)
+        if type(value) not in (int, float) or not math.isfinite(value) or not -limit <= value <= limit:
+            return None
+        coords.append(value)
+    if coords == [0, 0]:
+        return None
+    source, url = item.get("source"), item.get("source_url")
+    fetch = item.get("source_fetch") or {}
+    if not isinstance(fetch, dict) or not fetch.get("fetched_at"):
+        return None
+    proof = _DIRECTORY_RECORDS.get(item.get("source_adapter"))
+    parking = False
+    if proof:
+        name, id_field, feed_url, exact_url = proof
+        sid = raw.get(id_field)
+        if source != name or fetch.get("url") != feed_url or isinstance(sid, bool) or not isinstance(sid, (str, int)) or not str(sid).strip():
+            return None
+        if exact_url is not None and url != exact_url:
+            return None
+        if item["source_adapter"] == "mot_reus" and (not isinstance(url, str) or not re.fullmatch(r"https://(?:www\.)?reus\.cat/[^?#]*", url)):
+            return None
+        if item["source_adapter"] == "interparking":
+            if (not isinstance(url, str) or not re.fullmatch(r"https://www\.interparking\.es/es/(?:encuentra-un-aparcamiento/|aparcamientos/[a-z0-9/_-]+/)", url)
+                    or not str(sid).startswith("es-") or raw.get("ev_facility_flag") is not True):
+                return None
+            parking = True
+    elif source == "Telpark public parking pages":
+        if (not isinstance(url, str) or re.fullmatch(r"https://www\.telpark\.com/es/ciudades/[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*/", url) is None
+                or re.fullmatch(r"[1-9][0-9]*", str(raw.get("telpark_parking_id") or "")) is None
+                or raw.get("telpark_detail_url") != url or raw.get("ev_charging") is not True
+                or raw.get("country") != "ES" or raw.get("ev_flag_source") != "detail_jsonld_amenityFeature"
+                or raw.get("coordinate_source") != "telpark_detail_jsonld_geo"):
+            return None
+        artifacts = raw.get("source_fetch_artifacts") or []
+        if not any(isinstance(a, dict) and a.get("url") == url and a.get("fetched_at") for a in artifacts):
+            return None
+        parking = True
+    elif source == "Elektrum Drive public charging points":
+        expected = "https://elektrum.ee/en/elektrum-drive/charging-solutions/public-charging-points"
+        if (url != expected or fetch.get("url") != expected or raw.get("source") != "elektrum_drive"
+                or not raw.get("source_id") or raw.get("country") not in {"EE", "LV", "LT"}
+                or item.get("country_code") != raw.get("country")
+                or raw.get("lat") != item.get("lat") or raw.get("lon") != item.get("lon")):
+            return None
+    else:
+        return None
+    return {"name": source, "url": url, "evidence": item.get("insight") or "Public operator coordinate",
+            "kind": "official_data", "quality": "official", "score": 78,
+            "label": "Parking with EV charging" if parking else "Operator map",
+            "action": "Open operator page",
+            "warning": ("Parking location; exact charging bays need checking. " if parking else "Operator location; exact station/start page may be unavailable. ")
+                       + "Charging price and current availability are unverified."}
+
+
 def primary_source_for(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Choose the strongest exact source, preferring richer evidence on score ties."""
     ranked = [classify_source_resource(source) for source in source_candidates(item)]
+    directory = _directory_record_source(item)
+    if directory is not None:
+        ranked.append(directory)
     if not ranked:
         return None
     ranked.sort(

@@ -31,12 +31,13 @@ struct VoltaAPI {
         return try Self.decoder.decode(T.self, from: data)
     }
 
-    /// National leads-only overview (no live fetch server-side — instant).
-    func overview(maxPrice: Double) async throws -> ChargersResponse {
+    /// Stored evidence for the visible area; never downloads an unbounded global catalog.
+    func overview(maxPrice: Double, bbox: BBox) async throws -> ChargersResponse {
         try await get("api/chargers", [
             .init(name: "overview", value: "true"),
             .init(name: "include_leads", value: "true"),
             .init(name: "max_price", value: String(maxPrice)),
+            .init(name: "bbox", value: bbox.queryValue),
         ])
     }
 
@@ -85,9 +86,43 @@ struct VoltaAPI {
 struct BBox: Equatable {
     var south: Double, west: Double, north: Double, east: Double
 
+    init(south: Double, west: Double, north: Double, east: Double) {
+        self.south = max(-90, min(90, south))
+        self.north = max(-90, min(90, north))
+        let fullWorld = abs(east - west) >= 360
+        self.west = fullWorld ? -180 : Self.wrapLongitude(west)
+        self.east = fullWorld ? 180 : Self.wrapLongitude(east)
+    }
+
+    static func wrapLongitude(_ lon: Double) -> Double {
+        if (-180 ... 180).contains(lon) { return lon }
+        let remainder = (lon + 180).truncatingRemainder(dividingBy: 360)
+        return (remainder < 0 ? remainder + 360 : remainder) - 180
+    }
+
+    var longitudeSpan: Double { east >= west ? east - west : east - west + 360 }
+    var centerLongitude: Double { Self.wrapLongitude(west + longitudeSpan / 2) }
+
+    /// Matches the backend's default live-source viewport budget.
+    var supportsLiveLookup: Bool {
+        let latitude = (south + north) / 2
+        let maxLongitudeSpan = 1.2 / max(0.35, cos(latitude * .pi / 180))
+        return north - south <= 1.2 && longitudeSpan <= maxLongitudeSpan
+    }
+
     var queryValue: String { "\(south),\(west),\(north),\(east)" }
 
     func contains(_ st: Station) -> Bool {
-        st.lat >= south && st.lat <= north && st.lon >= west && st.lon <= east
+        contains(latitude: st.lat, longitude: st.lon)
+    }
+
+    func contains(latitude: Double, longitude: Double) -> Bool {
+        guard latitude.isFinite, longitude.isFinite,
+              (-90 ... 90).contains(latitude), (-180 ... 180).contains(longitude),
+              latitude >= south, latitude <= north else { return false }
+        let longitudes = abs(longitude) == 180 ? [-180.0, 180.0] : [longitude]
+        return longitudes.contains { lon in
+            west > east ? lon >= west || lon <= east : lon >= west && lon <= east
+        }
     }
 }

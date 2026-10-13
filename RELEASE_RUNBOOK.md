@@ -61,10 +61,10 @@ Stop until the owner supplies or decides all items that affect the release:
 - [ ] Actual production cache/log/backups retention, subprocessors, processing regions,
       international-transfer position, lawful bases, and data-rights procedure.
 - [ ] Content/database/photo rights and attribution for every active source.
-- [ ] Confirm the candidate retains Feníe as attribution/link-only. Its POST-backed station
-      listing is outside Volta's GET-only boundary, so no direct or nested Feníe-origin station
-      evidence may be bundled. A future reintroduction requires both a public GET surface and a
-      fresh rights/method review.
+- [ ] Confirm Feníe collection stays within the owner-approved read-only marker query
+      recorded on 2026-10-06 in `data/source_policy_exclusions.json` and enforced by
+      `scripts/source_transport.py`. Retain required attribution and directory-only
+      evidence semantics; verify the recorded permission still covers the release.
 - [ ] Provider privacy due diligence sufficient to truthfully make Apple's Guideline
       5.1.1(i) same-or-equal-protection assurance; otherwise remove that provider/flow.
 - [ ] App name, storefronts, category, DSA trader status, and availability.
@@ -145,11 +145,11 @@ Owner actions:
 3. Make and record the DSA trader-status self-assessment. Apple cannot make it for you.
 4. Complete `docs/appstore/source-rights-inventory.md`. Obtain permission, comply with
    licenses/attribution, change a source to link-only, or remove it. Treat photos separately.
-5. **Feníe technical gate — link-only/method-blocked 2026-08-23.** The anonymous public map's
-   station listing requires POST, so the executable adapter and all direct/nested origin evidence
-   are excluded regardless of the historical owner-attested rights grant. Preserve conventional
-   homepage attribution only. Reintroduction requires a compliant public GET surface plus a fresh
-   rights, caching, transformation, attribution, and redistribution review.
+5. **Feníe technical gate — bounded query approved 2026-10-06.** The anonymous public map's
+   marker-list POST is an owner-approved read-only exception. Keep its exact host, path,
+   empty body, redirect prohibition and request budget enforced by `scripts/source_transport.py`.
+   Check the recorded reuse permission, attribution and revocation conditions in
+   `data/source_policy_exclusions.json`; never present stored markers as runtime-live availability.
 6. Fill every bracketed field in `privacy.md`, `support.md`, and `terms.md`; obtain
    qualified review where appropriate.
 7. Complete documented due diligence for every third party receiving user data—including
@@ -611,8 +611,8 @@ audit complete without both manual gates.
 1. Run a final consistency check: binary, endpoint, hosted legal pages, App Privacy,
    metadata, screenshots, review notes, source rights, subscription state, version/build,
    and territories all describe one product.
-2. Confirm Feníe remains attribution/link-only, direct and nested Feníe-origin station evidence
-   are absent, and no executable POST-backed adapter remains. Confirm every personal-data provider has evidence supporting the
+2. Confirm Feníe stays within its recorded reuse permission and bounded read-only query,
+   carries attribution, and is not presented as runtime-live authority. Confirm every personal-data provider has evidence supporting the
    same-or-equal-protection statement.
 3. Attach the final build and IAPs if enabled.
 4. Add for Review and submit only with owner approval.
@@ -632,8 +632,8 @@ Do not upload or submit when any of these is true:
 - Release endpoint is `configuration.invalid`, private, cleartext, temporary, or unreliable;
 - legal/support pages contain placeholders or do not match production behavior;
 - source/database/photo rights are unresolved;
-- Feníe direct or nested station evidence is bundled, its POST-backed listing is called by an
-  executable adapter, or Feníe is presented as runtime-live authority;
+- Feníe evidence exceeds its recorded reuse permission, its query bypasses the transport
+  guard, required attribution is missing, or it is presented as runtime-live authority;
 - any recipient of user data lacks the due diligence needed for a truthful Guideline
   5.1.1(i) same-or-equal-protection assurance;
 - App Privacy says “not collected” or conflicts with IP logs/caches/location/search flows;
@@ -666,7 +666,7 @@ Retain a non-secret receipt with:
 - localized display-name/home-label evidence;
 - metadata-limit report and screenshot manifest/hashes;
 - source-rights certification location;
-- Feníe link-only/method-blocked evidence plus the separate historical rights-audit reference,
+- Feníe permission/attribution and bounded-query evidence plus the owner-held rights-audit reference,
   and provider same-or-equal-protection evidence references;
 - App Privacy/export/age/DSA answers;
 - ASC app/build/product identifiers that are safe to record;

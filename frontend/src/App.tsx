@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, List, Map } from 'lucide-react'
 import { publicTransportErrorMessage, useChargers } from './lib/api'
 import { discoveryRows, selectedMapRow } from './lib/discovery'
+import { boxAround, containsCoordinate, isLiveBbox, normalizeBbox, widerBoxAround } from './lib/geo'
 import {
   DEFAULT_FILTERS,
   ageText,
@@ -73,20 +74,10 @@ interface SearchOrigin {
 }
 
 const HONESTY =
-  'Public chargers in Spain from permitted Gaia live pages and source-backed municipal, Endolla, Lidl, OSM and OpenChargeMap evidence. MapaREVE live collection is currently unavailable under the public-GET source policy; retained source records are not live status. Electromaps, Chargemap, Consum locators, and Canarias te recarga stay link-only until reuse is permitted. Public pages only: no logins, session starts or payment actions. Cards distinguish live, official, directory, community and cached evidence. Charging price and parking cost are separate. Provider apps and onsite parking signs always win.'
-
-function boxAround(c: Coords, d = 0.16): Bbox {
-  return { south: c.lat - d, north: c.lat + d, west: c.lon - d * 1.35, east: c.lon + d * 1.35 }
-}
-
-function widerBoxAround(c: Coords, current: Bbox | null): Bbox {
-  const halfLat = Math.min(1.2, Math.max(0.32, current ? ((current.north - current.south) / 2) * 1.7 : 0.32))
-  const halfLon = Math.min(1.6, Math.max(0.43, current ? ((current.east - current.west) / 2) * 1.7 : 0.43))
-  return { south: c.lat - halfLat, north: c.lat + halfLat, west: c.lon - halfLon, east: c.lon + halfLon }
-}
+  'Search places worldwide. Charger coverage and live status depend on connected sources and vary by location. Cards distinguish live, official, directory, community and cached evidence. Wide map views show stored evidence; zoom in to check live sources where supported. Charging price and parking cost are separate. Euro price filters use euro tariffs; other or unknown currencies are not converted. Provider apps and onsite parking signs always win.'
 
 function centerOutside(center: Coords, b: Bbox): boolean {
-  return center.lat < b.south || center.lat > b.north || center.lon < b.west || center.lon > b.east
+  return !containsCoordinate(b, center)
 }
 
 function bboxKey(b: Bbox): string {
@@ -315,6 +306,7 @@ function DataHonestyDisclosure() {
             className="overflow-hidden"
           >
             <p className="mt-2 leading-relaxed">{HONESTY}</p>
+            <a href="/coverage/" className="inline-flex min-h-11 items-center font-semibold text-fg underline underline-offset-4">Coverage &amp; sources</a>
           </motion.div>
         )}
       </AnimatePresence>
@@ -353,7 +345,10 @@ export default function App() {
   const [scrolled, setScrolled] = useState(false)
   const listOffsets = useListOffsets(headingRef, statusRef, bodyRef)
 
-  const inventory = useChargers({ filters: DEFAULT_FILTERS, overview: true, compact: true })
+  const inventory = useChargers({
+    filters: DEFAULT_FILTERS, overview: true, compact: true,
+    bbox: committedBbox ?? viewport?.bbox ?? REGIONS[0].bbox,
+  })
   const query = useChargers({
     filters: requestFilters,
     coords: overview ? null : origin?.coords,
@@ -414,10 +409,11 @@ export default function App() {
     geo.cancel()
     const coords = { lat: r.lat, lon: r.lon }
     setOrigin({ coords, label: r.name, kind: 'place' })
-    setOverview(false)
-    const bb: Bbox = r.bbox
+    const bb = normalizeBbox(r.bbox
       ? { south: r.bbox.latitude_sw, west: r.bbox.longitude_sw, north: r.bbox.latitude_ne, east: r.bbox.longitude_ne }
-      : boxAround({ lat: r.lat, lon: r.lon }, 0.12)
+      : boxAround({ lat: r.lat, lon: r.lon }, 0.12))
+    setOverview(!isLiveBbox(bb))
+    setRegion('')
     setCommittedBbox(bb)
     setFlyTarget({ lat: r.lat, lon: r.lon, bbox: bb, nonce: Date.now() })
   }
@@ -428,7 +424,7 @@ export default function App() {
     geo.cancel()
     lastAutoAreaKey.current = bboxKey(viewport.bbox)
     setOrigin({ coords: viewport.center, label: 'map center', kind: 'map' })
-    setOverview(false)
+    setOverview(!isLiveBbox(viewport.bbox))
     setCommittedBbox(viewport.bbox)
   }
 
@@ -500,6 +496,7 @@ export default function App() {
   const showAreaPill =
     viewport != null &&
     viewport.userInitiated === true &&
+    isLiveBbox(viewport.bbox) &&
     (overview
       ? viewport.zoom >= 8.5
       : committedBbox != null && centerOutside(viewport.center, committedBbox))
@@ -521,7 +518,7 @@ export default function App() {
   }, [showAreaPill, viewport, areaSearchDelay])
 
   const placeLabel = overview
-    ? 'Explore Spain'
+    ? origin?.kind === 'place' ? `Explore ${origin.label}` : 'Explore chargers'
     : origin?.kind === 'device'
       ? 'Near you'
       : origin?.label
@@ -639,6 +636,7 @@ export default function App() {
                 claimSearchArea()
                 geo.cancel()
                 const bbox = widerBoxAround(origin.coords, committedBbox)
+                setOverview(!isLiveBbox(bbox))
                 setCommittedBbox(bbox)
                 setFlyTarget({ ...origin.coords, bbox, nonce: Date.now() })
               }}
@@ -714,7 +712,9 @@ export default function App() {
                 setViewport(nextViewport)
                 // Region shortcuts own a geographic scope even without WebGL. Only
                 // intentional map exploration hands that scope back to the viewport.
-                if (overview && nextViewport.userInitiated) {
+                if (nextViewport.userInitiated && (overview || !isLiveBbox(nextViewport.bbox))) {
+                  setOverview(true)
+                  setOrigin(null)
                   setCommittedBbox(null)
                   setRegion('')
                 }
@@ -912,6 +912,11 @@ export default function App() {
               )}
             </AnimatePresence>
             <CoverageBanner coverage={coverage} cache={effectiveData?.cache} />
+            {effectiveData?.meta?.truncated && (
+              <p role="status" className="text-xs leading-relaxed text-muted">
+                Showing part of this area’s charger inventory. Zoom in or search a city to see more.
+              </p>
+            )}
             {flowHint && (overview && geo.status === 'idle' ? (
               <div data-driver-guidance role="status" className="overview-guidance">
                 <span>Search a city or use your location to check nearby chargers.</span>

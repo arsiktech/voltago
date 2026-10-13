@@ -20,6 +20,7 @@ import sys
 import uuid
 
 import auto_refresh as shared
+from json_recordset import load_json_recordset
 from station_identity import preserve_record_ids
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,6 +30,63 @@ BUNDLE = {
     "free-db-completeness-latest.json": "qa/free-db-completeness-latest.json",
     "valencia-source-audit-latest.json": "qa/valencia-source-audit-latest.json",
 }
+INDEX_NAME = "free_intelligence.sqlite"
+
+
+def dataset_summary(path: Path) -> dict:
+    """Read metadata and an actual count without retaining the global catalogue."""
+    count = 0
+
+    def consume(row: dict) -> None:
+        nonlocal count
+        count += 1
+
+    payload = load_json_recordset(path, record_transform=consume)
+    if "records" not in payload:
+        raise ValueError("dataset has no records array")
+    payload.pop("records")
+    payload["record_count"] = count
+    return payload
+
+
+def is_global_dataset(metadata: dict) -> bool:
+    return metadata.get("geographic_scope") == "global" or isinstance(metadata.get("global_coverage"), dict)
+
+
+def resolve_strategy(strategy: str, baseline: dict, candidate: dict | None = None) -> str:
+    if strategy not in {"auto", "spain", "global"}:
+        raise ValueError("refresh strategy must be auto, spain or global")
+    has_global = is_global_dataset(baseline) or is_global_dataset(candidate or {})
+    if strategy == "spain" and has_global:
+        raise ValueError("Spain-only refresh cannot replace a global runtime dataset")
+    return ("global" if has_global else "spain") if strategy == "auto" else strategy
+
+
+def bundle_names(run: Path) -> list[str]:
+    names = list(BUNDLE)
+    if (run / INDEX_NAME).exists():
+        names.append(INDEX_NAME)
+    return names
+
+
+def build_runtime_index(root: Path, run: Path, candidate: Path, candidate_sha: str,
+                        records: int, timeout: float) -> dict:
+    """Derive the serving index only from the exact JSON which passed the gates."""
+    from intelligence_index import IntelligenceIndex
+
+    policy = root / "data/source_policy_exclusions.json"
+    result = run_stage(root, run, "index", [sys.executable, "scripts/build_intelligence_index.py",
+        "--source", str(candidate), "--output", str(run / INDEX_NAME), "--policy", str(policy),
+        "--seeds", str(root / "data/seed_leads.json"), "--health-summary"], timeout)
+    receipt = shared.parse_last_json_object(result.stdout)
+    index = IntelligenceIndex(run / INDEX_NAME, policy_sha256=shared.sha256_file(policy))
+    manifest = index.metadata().get("index_manifest") or {}
+    if (receipt.get("source_sha256") != candidate_sha or manifest.get("source_sha256") != candidate_sha
+            or receipt.get("records") != records or index.count != records
+            or receipt.get("excluded_records") != 0
+            or receipt.get("index_sha256") != shared.sha256_file(run / INDEX_NAME)):
+        raise RuntimeError("runtime index does not match the exact gated candidate")
+    return receipt
 
 
 def source_identity(root: Path) -> dict:
@@ -46,7 +104,7 @@ def baseline_paths(root: Path, state: Path) -> dict[str, Path]:
         resolved = current.resolve(strict=True)
         if resolved.parent != (state / "runs").resolve():
             raise RuntimeError("runtime current points outside owned runs")
-        paths = {name: resolved / name for name in BUNDLE}
+        paths = {name: resolved / name for name in bundle_names(resolved)}
     else:
         paths = {name: root / relative for name, relative in BUNDLE.items()}
     if not all(p.is_file() for p in paths.values()):
@@ -69,11 +127,12 @@ def validate_gate_receipts(delta: dict, canary: dict, candidate_sha: str, baseli
 def publish_bundle(state: Path, run: Path, expected_hashes: dict | None = None) -> None:
     if run.parent.resolve() != (state / "runs").resolve():
         raise RuntimeError("candidate bundle outside owned runs")
-    for name in BUNDLE:
+    names = bundle_names(run)
+    for name in names:
         if not (run / name).is_file():
             raise RuntimeError(f"candidate bundle missing {name}")
         shared.fsync_file(run / name)
-    hashes = {name: shared.sha256_file(run / name) for name in BUNDLE}
+    hashes = {name: shared.sha256_file(run / name) for name in names}
     if expected_hashes is not None and hashes != expected_hashes:
         raise RuntimeError("gated bundle changed before promotion")
     shared.fsync_directory(run)
@@ -88,7 +147,7 @@ def publish_bundle(state: Path, run: Path, expected_hashes: dict | None = None) 
         os.replace(link, current)
         switched = True
         shared.fsync_directory(state)
-        if {name: shared.sha256_file(current / name) for name in BUNDLE} != hashes:
+        if {name: shared.sha256_file(current / name) for name in names} != hashes:
             raise RuntimeError("published bundle readback failed")
     except Exception:
         if switched:
@@ -120,12 +179,16 @@ def initialize(root: Path, state: Path) -> int:
         run.mkdir(parents=True, mode=0o700)
         for name, path in baseline.items():
             shared.copy_fsync(path, run / name)
-        payload = json.loads((run / "free_intelligence.json").read_text())
-        if not isinstance(payload.get("records"), list) or not payload["records"]:
+        payload = dataset_summary(run / "free_intelligence.json")
+        if not payload["record_count"]:
             raise RuntimeError("cannot initialize an empty dataset")
+        if is_global_dataset(payload):
+            build_runtime_index(root, run, run / "free_intelligence.json",
+                                hashes["free_intelligence.json"], payload["record_count"], 3600)
+            hashes[INDEX_NAME] = shared.sha256_file(run / INDEX_NAME)
         publish_bundle(state, run, hashes)
         receipt = {"run_id": run_id, "initialization": True, "ok": True, "promoted": True,
-                   "generated_at": payload.get("generated_at"), "records": len(payload["records"]),
+                   "generated_at": payload.get("generated_at"), "records": payload["record_count"],
                    "initialized_at": shared.utc_now(), "bundle_sha256": hashes}
         shared.atomic_json(run / "receipt.json", receipt)
         shared.atomic_json(state / "initialization.json", receipt)
@@ -178,7 +241,9 @@ def run_stage(root: Path, run: Path, stage: str, argv: list[str], timeout: float
     return result
 
 
-def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -> int:
+def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
+            strategy: str = "auto", candidate_path: Path | None = None,
+            sources: str = "ocm", ocm_revision: str | None = None) -> int:
     root = root.resolve()
     state = state.expanduser().resolve()
     if state == root or root in state.parents:
@@ -204,19 +269,53 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
             receipt["baseline_sha256"] = old_hashes
             candidate = run / "free_intelligence.json"
             receipt["stage"] = "build"
-            run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--out", str(candidate)], timeout)
-            payload, identity_report = preserve_record_ids(
-                json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
-            receipt["identity_reconciliation"] = identity_report
-            if identity_report["preserved_ids"]:
-                shared.atomic_json(candidate, payload)
+            baseline_meta = dataset_summary(baseline["free_intelligence.json"])
+            imported_meta = dataset_summary(candidate_path) if candidate_path is not None else None
+            selected = resolve_strategy(strategy, baseline_meta, imported_meta)
+            receipt["strategy"] = selected
+            if candidate_path is not None:
+                imported_sha = shared.sha256_file(candidate_path)
+                shared.copy_fsync(candidate_path, candidate)
+                if shared.sha256_file(candidate) != imported_sha or shared.sha256_file(candidate_path) != imported_sha:
+                    raise RuntimeError("imported candidate changed during copy")
+                receipt["imported_candidate_sha256"] = imported_sha
+            elif selected == "global":
+                from global_sources import OCM_EXPORT_REVISION
+                revision = ocm_revision or OCM_EXPORT_REVISION
+                if not re.fullmatch(r"[0-9a-f]{40}", revision):
+                    raise ValueError("OCM revision must be an immutable 40-character Git commit SHA")
+                receipt["ocm_revision"] = revision
+                receipt["global_sources"] = sources.split(",")
+                output = run / "free_intelligence.candidate.json"
+                run_stage(root, run, "build", [sys.executable, "scripts/build_global_intelligence.py",
+                    "--all-countries", "--sources", sources, "--baseline", str(baseline["free_intelligence.json"]),
+                    "--out", str(output), "--manifest", str(run / "global-coverage.manifest.json"),
+                    "--ocm-revision", revision], timeout)
+                os.replace(output, candidate)
+            else:
+                run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--out", str(candidate)], timeout)
+                payload, identity_report = preserve_record_ids(
+                    json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
+                receipt["identity_reconciliation"] = identity_report
+                if identity_report["preserved_ids"]:
+                    shared.atomic_json(candidate, payload)
+                del payload
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha
-            payload = json.loads(candidate.read_text())
-            receipt["candidate_records"] = len(payload.get("records") or [])
+            payload = imported_meta if imported_meta is not None else dataset_summary(candidate)
+            if selected == "global" and not is_global_dataset(payload):
+                raise RuntimeError("global refresh requires a candidate with explicit global provenance")
+            receipt["candidate_records"] = payload["record_count"]
             receipt["source_adapter_counts"] = payload.get("source_adapter_counts", {})
             receipt["collector_errors"] = payload.get("errors", [])
             receipt["fetch_evidence_summary"] = (payload.get("fetch_evidence") or {}).get("summary", {})
+            if selected == "global":
+                receipt["global_coverage"] = payload.get("global_coverage", {})
+                receipt["refresh_semantics"] = "append-only expansion; retained rows keep their original evidence age"
+                revisions = {item.get("snapshot", {}).get("revision")
+                             for item in receipt["global_coverage"].get("source_manifests", [])
+                             if item.get("source") == "ocm"}
+                receipt["observed_ocm_revisions"] = sorted(value for value in revisions if value)
             policy = root / "data/source_policy_exclusions.json"
             receipt["stage"] = "delta"
             result = run_stage(root, run, "delta", [sys.executable, "scripts/qa_ingestion_delta.py", "--baseline",
@@ -240,7 +339,11 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
                 data_label=Path("data/free_intelligence.json"), free_report=run / "free-db-completeness-latest.json",
                 valencia_report=run / "valencia-source-audit-latest.json", expected_data_sha256=candidate_sha,
                 timeout=timeout)
-            bundle_hashes = {name: shared.sha256_file(run / name) for name in BUNDLE}
+            if selected == "global" or INDEX_NAME in baseline:
+                receipt["stage"] = "index"
+                receipt["runtime_index"] = build_runtime_index(root, run, candidate, candidate_sha,
+                                                              payload["record_count"], timeout)
+            bundle_hashes = {name: shared.sha256_file(run / name) for name in bundle_names(run)}
             receipt["bundle_sha256"] = bundle_hashes
             receipt["stage"] = "revalidate"
             if source_identity(root) != identity:
@@ -250,13 +353,12 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False) -
                 raise RuntimeError("runtime baseline changed during refresh")
             if shared.sha256_file(candidate) != candidate_sha:
                 raise RuntimeError("gated candidate changed before promotion")
-            payload = json.loads(candidate.read_text())
             receipt["generated_at"] = payload.get("generated_at")
-            receipt["records"] = len(payload["records"])
+            receipt["records"] = payload["record_count"]
             receipt["source_adapter_counts"] = payload.get("source_adapter_counts", {})
             receipt["stage"] = "publish"
             if not dry_run:
-                # All four files switch together. Previous bundles remain intact
+                # Data, reports and any derived index switch together. Previous bundles remain intact
                 # for rollback; the web process notices the new file on its next read.
                 publish_bundle(state, run, bundle_hashes)
                 receipt["promoted"] = True
@@ -284,16 +386,28 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-dir", type=Path, required=True)
     parser.add_argument("--command-timeout", type=float, default=1800)
+    parser.add_argument("--strategy", choices=("auto", "spain", "global"),
+                        default=os.environ.get("VOLTA_REFRESH_STRATEGY", "auto"))
+    parser.add_argument("--candidate", type=Path,
+                        help="Gate and adopt an existing JSON candidate without collecting or altering its bytes.")
+    parser.add_argument("--sources", default=os.environ.get("VOLTA_GLOBAL_SOURCES", "ocm"),
+                        help="Sources used by the global builder; defaults to ocm.")
+    parser.add_argument("--ocm-revision", default=os.environ.get("VOLTA_OCM_REVISION"),
+                        help="Immutable OCM export Git commit; defaults to the reviewed revision in source.")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--dry-run", action="store_true")
     modes.add_argument("--initialize", action="store_true", help="Copy the existing dataset unchanged before configuring the server override.")
     args = parser.parse_args()
     if not 0 < args.command_timeout <= 3600:
         parser.error("--command-timeout must be in (0, 3600]")
+    if args.initialize and args.candidate:
+        parser.error("--candidate cannot be combined with --initialize")
     os.umask(0o077)
     if args.initialize:
         return initialize(ROOT, args.state_dir)
-    return refresh(ROOT, args.state_dir, args.command_timeout, dry_run=args.dry_run)
+    return refresh(ROOT, args.state_dir, args.command_timeout, dry_run=args.dry_run,
+                   strategy=args.strategy, candidate_path=args.candidate,
+                   sources=args.sources, ocm_revision=args.ocm_revision)
 
 
 if __name__ == "__main__":

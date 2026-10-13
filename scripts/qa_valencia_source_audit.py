@@ -16,6 +16,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+try:
+    from .json_recordset import load_json_recordset
+except ImportError:
+    from json_recordset import load_json_recordset
+
 
 VALENCIA_BBOX = {
     "south": 39.29,
@@ -26,7 +31,11 @@ VALENCIA_BBOX = {
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def in_bbox(row: dict[str, Any], bbox: dict[str, float]) -> bool:
@@ -180,6 +189,50 @@ def sample(rows: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
     return rows[:limit]
 
 
+def audit_records(path: Path, bbox: dict[str, float]) -> dict:
+    """Stream the catalogue, retaining only counters and bounded report samples."""
+    total = local = 0
+    by_source, by_reliability, by_kind, by_handoff, issues = (Counter() for _ in range(5))
+    issue_samples = defaultdict(list)
+    remote_start, navigation_only, highest_gaps = [], [], []
+
+    def consume(raw):
+        nonlocal total, local
+        total += 1
+        if not isinstance(raw, dict) or not in_bbox(raw, bbox):
+            return None
+        row = classify_row(raw)
+        local += 1
+        by_source[str(row.get("source") or "Unknown")] += 1
+        by_reliability[str(row.get("reliability") or "unknown")] += 1
+        by_kind[str(row.get("primary_kind") or "unknown")] += 1
+        by_handoff[str(row.get("card_handoff") or "unknown")] += 1
+        target = remote_start if row["public_start_page"] else navigation_only
+        if len(target) < 12:
+            target.append(row)
+        for issue in row["issues"]:
+            issues[issue] += 1
+            if len(issue_samples[issue]) < 8:
+                issue_samples[issue].append({key: row[key] for key in ("id", "name", "source", "primary_url")})
+        highest_gaps.append(row)
+        highest_gaps.sort(key=lambda item: (-len(item["issues"]), str(item["name"] or "")))
+        del highest_gaps[12:]
+        return None
+
+    metadata = load_json_recordset(path, record_transform=consume, record_keys=("records", "stations"),
+                                   allow_root_array=True, strict_records=False)
+    if not any(key in metadata for key in ("records", "stations")):
+        raise SystemExit(f"{path} is not a station list or {{stations: [...]}} payload")
+    if all(key in metadata for key in ("records", "stations")):
+        raise ValueError("Audit input has ambiguous records and stations arrays")
+    return {"total_records": total, "valencia_records": local,
+            "counts": {"by_source": dict(by_source.most_common()), "by_reliability": dict(by_reliability.most_common()),
+                       "by_primary_kind": dict(by_kind.most_common()), "by_card_handoff": dict(by_handoff.most_common()),
+                       "issues": dict(issues.most_common())},
+            "remote_start_records": remote_start, "navigation_only_samples": navigation_only,
+            "highest_gap_samples": highest_gaps, "issue_samples": dict(issue_samples)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data/free_intelligence.json")
@@ -196,51 +249,13 @@ def main() -> int:
 
     bbox = {"south": args.south, "west": args.west, "north": args.north, "east": args.east}
     data_path = Path(args.data)
-    raw = json.loads(data_path.read_text(encoding="utf-8"))
-    records = None
-    if isinstance(raw, dict):
-        records = raw.get("records") or raw.get("stations")
-    else:
-        records = raw
-    if not isinstance(records, list):
-        raise SystemExit(f"{data_path} is not a station list or {{stations: [...]}} payload")
-
-    valencia = [classify_row(row) for row in records if isinstance(row, dict) and in_bbox(row, bbox)]
-    by_source = Counter(str(row.get("source") or "Unknown") for row in valencia)
-    by_reliability = Counter(str(row.get("reliability") or "unknown") for row in valencia)
-    by_kind = Counter(str(row.get("primary_kind") or "unknown") for row in valencia)
-    by_handoff = Counter(str(row.get("card_handoff") or "unknown") for row in valencia)
-    issue_counts = Counter(issue for row in valencia for issue in row["issues"])
-    issue_samples: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in valencia:
-        for issue in row["issues"]:
-            if len(issue_samples[issue]) < 8:
-                issue_samples[issue].append({
-                    "id": row["id"],
-                    "name": row["name"],
-                    "source": row["source"],
-                    "primary_url": row["primary_url"],
-                })
-
-    rows_by_issues = sorted(valencia, key=lambda row: (-len(row["issues"]), str(row["name"] or "")))
+    audit = audit_records(data_path, bbox)
     result = {
         "ok": True,
         "data": args.data_label or str(data_path),
         "data_sha256": sha256_file(data_path),
         "bbox": bbox,
-        "total_records": len(records),
-        "valencia_records": len(valencia),
-        "counts": {
-            "by_source": dict(by_source.most_common()),
-            "by_reliability": dict(by_reliability.most_common()),
-            "by_primary_kind": dict(by_kind.most_common()),
-            "by_card_handoff": dict(by_handoff.most_common()),
-            "issues": dict(issue_counts.most_common()),
-        },
-        "remote_start_records": sample([row for row in valencia if row["public_start_page"]]),
-        "navigation_only_samples": sample([row for row in valencia if not row["public_start_page"]]),
-        "highest_gap_samples": sample(rows_by_issues),
-        "issue_samples": issue_samples,
+        **audit,
         "policy": {
             "card_start_cta": "Only rows with primary_source.kind=start_page or Gaia public start-session URLs may expose a Start/check CTA.",
             "navigation_only": "All other station/store/directory/map/live-map evidence stays in Details; the card handoff is navigation only.",
@@ -253,10 +268,10 @@ def main() -> int:
     print(json.dumps({
         "ok": True,
         "out": str(out_path),
-        "valencia_records": len(valencia),
-        "handoff": dict(by_handoff.most_common()),
-        "top_sources": dict(by_source.most_common(8)),
-        "top_issues": dict(issue_counts.most_common(8)),
+        "valencia_records": audit["valencia_records"],
+        "handoff": audit["counts"]["by_card_handoff"],
+        "top_sources": dict(list(audit["counts"]["by_source"].items())[:8]),
+        "top_issues": dict(list(audit["counts"]["issues"].items())[:8]),
     }, ensure_ascii=False, indent=2))
     return 0
 

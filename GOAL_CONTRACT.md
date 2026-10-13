@@ -7,9 +7,11 @@ fixed agent roles, and blanket per-step gates are retired.
 
 ## 0. Mission
 
-Help a driver in Spain answer: "Can I charge here now, cheaply, without a parking
+Help a driver answer: "Can I charge here now, cheaply, without a parking
 surprise?" Put trustworthy free options first, cheap options next, and show how to
 use the charger. Coverage grows through verifiable sources; uncertainty stays visible.
+The directory can cover countries worldwide; regional live integrations, native
+currencies, access restrictions and source-specific gaps stay explicit.
 
 ## 1. Product foundations
 

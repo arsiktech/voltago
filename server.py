@@ -2,7 +2,7 @@
 """Volta Go — local live EV charging web app server.
 
 No third-party Python dependencies. It serves static files and exposes a small JSON
-API that combines Gaia public live pages with source-backed chargers across Spain
+API that combines regional live feeds with source-backed chargers worldwide
 (viewport/bbox-driven). MapaREVE's read-only bbox data query is one of two narrow,
 owner-approved POST exceptions (scripts/source_transport.py); every other non-GET request
 is refused before a socket opens. Community/manual leads stay separate from live results.
@@ -10,6 +10,8 @@ is refused before a socket opens. Community/manual leads stay separate from live
 from __future__ import annotations
 
 import gzip as gzip_lib
+import heapq
+import hashlib
 import ipaddress
 import json
 import math
@@ -40,6 +42,9 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import hmac
 
+from scripts.json_recordset import load_json_recordset
+from scripts.global_source_catalog import ADAPTERS as GLOBAL_ADAPTERS, ADAPTER_IDS as GLOBAL_ADAPTER_IDS
+from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_sha256
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from station_truth import (
@@ -150,6 +155,8 @@ FENIE_POLICY_TEXT = (
 
 def fenie_origin_record_count(records: Iterable[Any]) -> int:
     """Count intelligence rows whose own provenance is the Feníe public map."""
+    if isinstance(records, IndexedRecords):
+        return int(records.index.summaries["fenie_origin_records"])
     count = 0
     for record in records or []:
         if not isinstance(record, dict):
@@ -286,12 +293,13 @@ MCP_RATE_LIMIT_RPM = max(1, int(os.environ.get("VOLTA_MCP_RATE_LIMIT_RPM", "30")
 # after a real browser check (see AGENTS.md §8 for a starting-point policy).
 VOLTA_CSP = os.environ.get("VOLTA_CSP", "").strip()
 
-# --- National (all-Spain) viewport model ---
+# --- Worldwide viewport model; regional live feeds retain their own coverage ---
 # Volta is now location/viewport-driven: /api/chargers fetches chargers near a bbox (the map
-# viewport, the user's location, or a searched place) anywhere in Spain, instead of a fixed
-# region. SPAIN_BBOX is the outer envelope; DEFAULT_BBOX is used only when no viewport is given.
+# viewport, the user's location, or a searched place) worldwide. Regional live adapters
+# retain their own coverage; DEFAULT_BBOX is used only when no viewport is given.
 # Mainland, Balearics, Canaries, Ceuta, and Melilla. The previous 35.85/-9.45
 # envelope inverted Canary and Melilla viewports (sw>ne) and dropped those leads.
+WORLD_BBOX = {"latitude_ne": 90.0, "longitude_ne": 180.0, "latitude_sw": -90.0, "longitude_sw": -180.0}
 SPAIN_BBOX = {"latitude_ne": 44.5, "longitude_ne": 5.0, "latitude_sw": 27.0, "longitude_sw": -18.5}
 DEFAULT_BBOX = VALENCIA_BBOX
 VIEWPORT_MAX_SPAN_DEG = float(os.environ.get("VOLTA_VIEWPORT_MAX_SPAN", "1.2"))
@@ -443,7 +451,8 @@ def safe_float(value: Any) -> Optional[float]:
             return None
         if isinstance(value, str):
             value = value.strip().replace(",", ".")
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
     except Exception:
         return None
 
@@ -798,7 +807,20 @@ def ensure_claim_contract(item: Dict[str, Any]) -> None:
 
 def verification_profile(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     reliability = str(item.get("reliability") or "")
-    if live and reliability == "official-live":
+    snapshot_location = ((item.get("location_claim") or {}).get("method") == "public_source_coordinate"
+                         and source_health_has_valid_coordinates(item))
+    # Compatibility for candidate bundles built before the directory tier was named.
+    if (reliability == "community-price-unknown" and snapshot_location
+            and (item.get("source_integration") or {}).get("mode") == "community_snapshot"
+            and urllib.parse.urlsplit(str(item.get("source_url") or "")).hostname in {"map.openchargemap.io", "openchargemap.org", "www.openchargemap.org"}):
+        reliability = item["reliability"] = "directory-community-snapshot"
+    if reliability == "official-snapshot" and snapshot_location:
+        profile = {"level": "official-lead", "label": "Official location snapshot",
+                   "note": "Official dataset coordinates identify this charger; tariff and current availability require operator confirmation."}
+    elif reliability == "directory-community-snapshot" and snapshot_location:
+        profile = {"level": "directory", "label": "Community directory snapshot",
+                   "note": "Community-maintained public directory coordinates identify this charger; tariff and current availability are unverified."}
+    elif live and reliability == "official-live":
         profile = {
             "level": "live",
             "label": "Live verified",
@@ -862,6 +884,8 @@ def tesla_compatibility(item: Dict[str, Any]) -> Optional[bool]:
     A source that lists a site without saying which sockets it has (Lidl's store
     list, a "connector unspecified" wall outlet) is unknown, not incompatible.
     """
+    if str(item.get("country_code") or item.get("country") or "").upper() not in {"", "ES", "ESP"}:
+        return None  # Vehicle model, market and adapter support are not established by socket presence.
     if item.get("tesla_ok") is True:
         return True
     labels = [str(x) for x in item.get("connector_labels") or []]
@@ -971,6 +995,16 @@ def attach_connector_summary(item: Dict[str, Any]) -> Dict[str, Any]:
         if power_kw:
             power_values.append(power_kw)
 
+    snapshot_mode = (item.get("source_integration") or {}).get("mode") in {"community_snapshot", "community_tags", "official_snapshot"}
+    if snapshot_mode and connectors:
+        counts = [safe_float(connector.get("count")) for connector in connectors]
+        complete = all(value is not None and value > 0 and value.is_integer() for value in counts)
+        total = sum(int(value) for value in counts) if complete else None
+        # These rows describe hardware inventory, never per-port occupancy telemetry.
+        available = busy = charging = out = 0
+        unknown = total or 0
+        item["total_evse"] = total
+
     summary = {
         "available": available,
         "busy": busy,
@@ -1000,7 +1034,33 @@ def attach_connector_summary(item: Dict[str, Any]) -> Dict[str, Any]:
     return item
 
 
+def station_currency(item: Dict[str, Any]) -> str:
+    explicit = str(item.get("price_currency") or item.get("currency") or "").upper()
+    country = str(item.get("country_code") or item.get("country") or "").upper()
+    return explicit or ("EUR" if country in {"", "ES", "ESP"} else "UNKNOWN")
+
+
+def euro_price(item: Dict[str, Any], field: str = "price_min") -> Optional[float]:
+    value = safe_float(item.get(field))
+    return value if station_currency(item) == "EUR" or value == 0 else None
+
+
 def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
+    currency = station_currency(item)
+    item["price_currency"] = currency
+    if currency != "EUR":
+        current_price = safe_float(item.get("current_price_min"))
+        if current_price is not None and current_price != 0:
+            item.setdefault("current_price_native_min", current_price)
+            item["current_price_min"] = None
+        price = safe_float(item.get("price_min"))
+        if price is not None and price != 0:
+            item.setdefault("price_native_min", price)
+            item.setdefault("price_native_unit", "kWh")
+            item["price_min"] = None
+            item["current_price_min"] = None
+            item["is_free"] = False
+            item["is_cheap"] = False
     attach_connector_summary(item)
     attach_pricing_summary(item)
     if item.get("source_url"):
@@ -1016,10 +1076,22 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
     if item["tesla_ok"] is None:
-        item["decision"]["reason"] += " The source doesn't say which connectors this site has."
+        if item.get("connector_labels") or any(c.get("label") for c in item.get("connectors") or [] if isinstance(c, dict)):
+            item["decision"]["reason"] += " Confirm connector and vehicle compatibility with the operator."
+        else:
+            item["decision"]["reason"] += " The source doesn't say which connectors this site has."
     item["freshness_minutes"] = age_minutes(freshness_timestamp(item))
     pricing = item.get("price_window_status") or {}
     item["price_label"] = pricing.get("label") or ("Free" if item.get("is_free") else (f"€{item['price_min']:.2f}/kWh" if isinstance(item.get("price_min"), (int, float)) else "Verify price"))
+    native_price = safe_float(item.get("price_native_min"))
+    if currency != "EUR" and not item.get("is_free") and native_price is not None and not item.get("pricing"):
+        tariff = item.get("tariff") or (item.get("charge_claim") or {}).get("raw_tariff") or {}
+        unit = tariff.get("unit") or item.get("price_native_unit")
+        if tariff.get("conditional") or tariff.get("additional_components"):
+            item["price_label"] = str(tariff.get("raw_text") or "Conditional tariff; verify with operator")
+        else:
+            suffix = f"/{unit}" if unit else " (unit unconfirmed)"
+            item["price_label"] = f"{currency} {native_price:.2f}{suffix}"
     ensure_claim_contract(item)
     item["recommendation_score"] = recommendation_score(item)
     return item
@@ -1237,11 +1309,11 @@ def normalize_pricing_window(raw: Dict[str, Any], *, default_unit: str = "kWh", 
     return window
 
 
-def connector_pricing_windows(connector: Dict[str, Any], *, price_cap: float = PRICE_MAX_DEFAULT) -> List[Dict[str, Any]]:
+def connector_pricing_windows(connector: Dict[str, Any], *, price_cap: float = PRICE_MAX_DEFAULT, default_currency: str = "EUR") -> List[Dict[str, Any]]:
     windows: List[Dict[str, Any]] = []
     for raw in connector.get("pricing") or []:
         if isinstance(raw, dict):
-            normalized = normalize_pricing_window(raw)
+            normalized = normalize_pricing_window(raw, default_currency=default_currency)
             if normalized:
                 windows.append(normalized)
     for comp in tariff_components(connector):
@@ -1273,7 +1345,7 @@ def connector_pricing_windows(connector: Dict[str, Any], *, price_cap: float = P
     for window in windows:
         price = safe_float(window.get("price"))
         window["is_free"] = price == 0
-        window["is_within_standard"] = price is not None and price <= price_cap
+        window["is_within_standard"] = price is not None and price <= price_cap and (price == 0 or str(window.get("currency") or "EUR").upper() == "EUR")
         window["is_currently_valid"] = pricing_window_is_current(window)
         window["label"] = pricing_window_label(window)
     # Deduplicate same price/time/unit windows across EVSEs/connectors.
@@ -1294,7 +1366,7 @@ def pricing_status(windows: List[Dict[str, Any]], *, price_cap: float = PRICE_MA
         window = dict(raw)
         price = safe_float(window.get("price"))
         window["is_free"] = price == 0
-        window["is_within_standard"] = price is not None and price <= price_cap
+        window["is_within_standard"] = price is not None and price <= price_cap and (price == 0 or str(window.get("currency") or "EUR").upper() == "EUR")
         window["is_currently_valid"] = pricing_window_is_current(window, now=now)
         window["label"] = pricing_window_label(window)
         enriched.append(window)
@@ -1302,7 +1374,7 @@ def pricing_status(windows: List[Dict[str, Any]], *, price_cap: float = PRICE_MA
     current = [w for w in enriched if w.get("is_currently_valid")]
     current_matching = [w for w in current if w.get("is_within_standard")]
     price_min = min((safe_float(w.get("price")) for w in matching if safe_float(w.get("price")) is not None), default=None)
-    current_price_min = min((safe_float(w.get("price")) for w in current if safe_float(w.get("price")) is not None), default=None)
+    current_price_min = min((safe_float(w.get("price")) for w in current if safe_float(w.get("price")) is not None and (safe_float(w.get("price")) == 0 or str(w.get("currency") or "EUR").upper() == "EUR")), default=None)
     next_matching = current_matching[0] if current_matching else (matching[0] if matching else None)
     if current_matching:
         label = f"Now {pricing_window_label(current_matching[0])}"
@@ -1330,17 +1402,18 @@ def attach_pricing_summary(item: Dict[str, Any], *, price_cap: float = PRICE_MAX
     windows: List[Dict[str, Any]] = []
     for raw in item.get("pricing") or []:
         if isinstance(raw, dict):
-            normalized = normalize_pricing_window(raw)
+            normalized = normalize_pricing_window(raw, default_currency=station_currency(item))
             if normalized:
                 windows.append(normalized)
     for connector in item.get("connectors") or []:
         if isinstance(connector, dict):
-            windows.extend(connector_pricing_windows(connector, price_cap=price_cap))
+            windows.extend(connector_pricing_windows(connector, price_cap=price_cap, default_currency=station_currency(item)))
     # Preserve simple price_min-only sources as always-valid windows so old data still renders consistently.
     if not windows and item.get("price_min") is not None:
         charge_claim = item.get("charge_claim") if isinstance(item.get("charge_claim"), dict) else {}
         normalized = normalize_pricing_window({
             "price": item.get("price_min"),
+            "currency": station_currency(item),
             "source": charge_claim.get("source") or item.get("source") or "station price",
             "source_url": charge_claim.get("url") or charge_claim.get("source_url"),
             "human": charge_claim.get("summary"),
@@ -2585,38 +2658,46 @@ def transform_location(location: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }, live=True)
 
 
+def longitude_intervals(bbox: Dict[str, float]) -> List[Tuple[float, float]]:
+    west, east = bbox["longitude_sw"], bbox["longitude_ne"]
+    return [(west, east)] if west <= east else [(west, 180.0), (-180.0, east)]
+
+
 def in_bbox(lat: Optional[float], lon: Optional[float], bbox: Dict[str, float]) -> bool:
-    if lat is None or lon is None:
+    if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return False
-    return (
-        bbox["latitude_sw"] <= lat <= bbox["latitude_ne"]
-        and bbox["longitude_sw"] <= lon <= bbox["longitude_ne"]
+    return bbox["latitude_sw"] <= lat <= bbox["latitude_ne"] and any(
+        west <= lon <= east for west, east in longitude_intervals(bbox)
     )
 
 
 def bbox_contains(outer: Optional[Dict[str, float]], inner: Dict[str, float]) -> bool:
-    """True if `inner` bbox is fully covered by `outer` bbox (equal counts as contained).
-
-    plans/007 REVISE (adviser Finding 2; qa/defects.csv D-154): live_response's assembled-payload reuse
-    caches rows filtered to the WRITE request's exact bbox, not the wider snapped
-    fetch envelope a stale comment used to claim. A later read may reuse those rows
-    only when its own bbox is provably a subset of the bbox they were filtered to --
-    otherwise a station inside the read bbox (and inside the raw upstream cache) but
-    outside the narrower write bbox would silently go missing. Fails closed (False,
-    i.e. "not contained" -> caller falls through to a full rebuild) on a missing or
-    malformed outer bbox rather than raising.
-    """
+    """Containment includes dateline-crossing boxes; malformed input fails closed."""
     if not outer:
         return False
     try:
         return (
             outer["latitude_sw"] <= inner["latitude_sw"]
-            and outer["longitude_sw"] <= inner["longitude_sw"]
             and outer["latitude_ne"] >= inner["latitude_ne"]
-            and outer["longitude_ne"] >= inner["longitude_ne"]
+            and all(any(ow <= iw and oe >= ie for ow, oe in longitude_intervals(outer))
+                    for iw, ie in longitude_intervals(inner))
         )
     except (KeyError, TypeError):
         return False
+
+
+def bbox_intersects(a: Dict[str, float], b: Dict[str, float]) -> bool:
+    return (a["latitude_sw"] <= b["latitude_ne"] and a["latitude_ne"] >= b["latitude_sw"]
+            and any(aw <= be and ae >= bw for aw, ae in longitude_intervals(a)
+                    for bw, be in longitude_intervals(b)))
+
+
+def live_geography(bbox: Dict[str, float]) -> Dict[str, bool]:
+    """Coverage envelopes for the configured feeds, not worldwide live authority."""
+    return {
+        "mapareve": bbox_intersects(bbox, SPAIN_BBOX),
+        "gaia": any(bbox_intersects(bbox, bbox_from_center(seed["lat"], seed["lon"], 30.0)) for seed in GAIA_STATION_SEEDS),
+    }
 
 
 def station_passes_route_filters(st: Dict[str, Any], *, max_price: float, fast_only: bool) -> bool:
@@ -2632,118 +2713,83 @@ def station_passes_route_filters(st: Dict[str, Any], *, max_price: float, fast_o
     """
     if fast_only and not st.get("fast"):
         return False
-    price_min = safe_float(st.get("price_min"))
+    price_min = euro_price(st)
     return price_min is None or price_min <= max_price
 
 
+def normalize_longitude(lon: float) -> float:
+    return (lon + 180.0) % 360.0 - 180.0
+
+
 def bbox_center(bbox: Dict[str, float]) -> Tuple[float, float]:
-    return (
-        (bbox["latitude_ne"] + bbox["latitude_sw"]) / 2.0,
-        (bbox["longitude_ne"] + bbox["longitude_sw"]) / 2.0,
-    )
+    west, east = bbox["longitude_sw"], bbox["longitude_ne"]
+    span = east - west if east >= west else east - west + 360.0
+    return ((bbox["latitude_ne"] + bbox["latitude_sw"]) / 2.0,
+            normalize_longitude(west + span / 2.0))
 
 
 def clamp_bbox(bbox: Dict[str, float]) -> Tuple[Dict[str, float], bool]:
-    """Intersect with the Spain envelope + a max span. Never invert the box.
-
-    Intersecting a Canary/Melilla viewport with the old mainland-only envelope
-    produced latitude_sw > latitude_ne (and the same for longitude), so live
-    fetch and leads both returned empty. If a request does not intersect the
-    envelope, keep the ordered request instead of emitting inverted coordinates.
-    """
-    req_sw_lat = min(bbox["latitude_sw"], bbox["latitude_ne"])
-    req_ne_lat = max(bbox["latitude_sw"], bbox["latitude_ne"])
-    req_sw_lon = min(bbox["longitude_sw"], bbox["longitude_ne"])
-    req_ne_lon = max(bbox["longitude_sw"], bbox["longitude_ne"])
-    sw_lat = max(req_sw_lat, SPAIN_BBOX["latitude_sw"])
-    ne_lat = min(req_ne_lat, SPAIN_BBOX["latitude_ne"])
-    sw_lon = max(req_sw_lon, SPAIN_BBOX["longitude_sw"])
-    ne_lon = min(req_ne_lon, SPAIN_BBOX["longitude_ne"])
-    clamped = (
-        sw_lat != req_sw_lat
-        or ne_lat != req_ne_lat
-        or sw_lon != req_sw_lon
-        or ne_lon != req_ne_lon
-    )
-    if sw_lat > ne_lat or sw_lon > ne_lon:
-        sw_lat, ne_lat, sw_lon, ne_lon = req_sw_lat, req_ne_lat, req_sw_lon, req_ne_lon
-        clamped = True
-    clat = (ne_lat + sw_lat) / 2.0
-    clon = (ne_lon + sw_lon) / 2.0
+    """Bound a valid world viewport's live-query span without relocating its centre."""
+    if not all(math.isfinite(v) for v in bbox.values()):
+        raise ValueError("Viewport coordinates must be finite")
+    sw_lat = max(-90.0, min(bbox["latitude_sw"], bbox["latitude_ne"]))
+    ne_lat = min(90.0, max(bbox["latitude_sw"], bbox["latitude_ne"]))
+    if sw_lat > ne_lat:
+        raise ValueError("Latitude outside world bounds")
+    west, east = bbox["longitude_sw"], bbox["longitude_ne"]
+    if not (-180 <= west <= 180 and -180 <= east <= 180):
+        raise ValueError("Longitude outside world bounds")
+    out = {"latitude_sw": sw_lat, "latitude_ne": ne_lat, "longitude_sw": west, "longitude_ne": east}
+    clat, clon = bbox_center(out)
     if ne_lat - sw_lat > VIEWPORT_MAX_SPAN_DEG:
-        sw_lat, ne_lat = clat - VIEWPORT_MAX_SPAN_DEG / 2, clat + VIEWPORT_MAX_SPAN_DEG / 2
-        clamped = True
+        out["latitude_sw"] = max(-90.0, clat - VIEWPORT_MAX_SPAN_DEG / 2)
+        out["latitude_ne"] = min(90.0, clat + VIEWPORT_MAX_SPAN_DEG / 2)
+    lon_span = east - west if west <= east else east - west + 360.0
     max_lon_span = VIEWPORT_MAX_SPAN_DEG / max(0.35, math.cos(math.radians(clat)))
-    if ne_lon - sw_lon > max_lon_span:
-        sw_lon, ne_lon = clon - max_lon_span / 2, clon + max_lon_span / 2
-        clamped = True
-    return {"latitude_ne": ne_lat, "longitude_ne": ne_lon, "latitude_sw": sw_lat, "longitude_sw": sw_lon}, clamped
+    if lon_span > max_lon_span:
+        out["longitude_sw"] = normalize_longitude(clon - max_lon_span / 2)
+        out["longitude_ne"] = normalize_longitude(clon + max_lon_span / 2)
+    return out, out != bbox
 
 
 def bbox_from_center(lat: float, lon: float, radius_km: float) -> Dict[str, float]:
+    if not all(math.isfinite(v) for v in (lat, lon, radius_km)) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("Invalid coordinates")
+    radius_km = max(0.5, min(radius_km, 100.0))
     dlat = radius_km / 111.0
     dlon = radius_km / (111.0 * max(0.35, math.cos(math.radians(lat))))
     return {
-        "latitude_ne": lat + dlat,
-        "longitude_ne": lon + dlon,
-        "latitude_sw": lat - dlat,
-        "longitude_sw": lon - dlon,
+        "latitude_ne": min(90.0, lat + dlat),
+        "longitude_ne": normalize_longitude(lon + dlon),
+        "latitude_sw": max(-90.0, lat - dlat),
+        "longitude_sw": normalize_longitude(lon - dlon),
     }
 
 
 def resolve_viewport(params: Dict[str, List[str]]) -> Tuple[Dict[str, float], str, bool]:
-    """Resolve the request viewport: explicit bbox > lat/lon+radius > DEFAULT_BBOX.
-
-    Returns (bbox, source, clamped). bbox param format is "south,west,north,east".
-    """
-    raw = (params.get("bbox") or [None])[0]
-    if raw:
-        try:
-            s, w, n, e = [float(x) for x in raw.split(",")]
-            bbox, clamped = clamp_bbox(
-                {"latitude_sw": s, "longitude_sw": w, "latitude_ne": n, "longitude_ne": e}
-            )
-            return bbox, "explicit", clamped
-        except Exception:
-            pass
+    """Explicit bbox > coordinates with a bounded radius > the legacy default."""
+    requested = parse_bbox_param(params)
+    if requested:
+        bbox, clamped = clamp_bbox(requested)
+        return bbox, "explicit", clamped
     lat = safe_float((params.get("lat") or [None])[0])
     lon = safe_float((params.get("lon") or [None])[0])
-    if lat is not None and lon is not None:
-        radius = safe_float((params.get("radius_km") or [None])[0]) or VIEWPORT_DEFAULT_RADIUS_KM
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        radius = safe_float((params.get("radius_km") or [None])[0])
+        radius = VIEWPORT_DEFAULT_RADIUS_KM if radius is None else radius
         bbox, clamped = clamp_bbox(bbox_from_center(lat, lon, radius))
-        return bbox, "geo", clamped
+        return bbox, "geo", clamped or not 0.5 <= radius <= 100.0
     return dict(DEFAULT_BBOX), "default", False
 
 
 def snapped_bbox_envelope(bbox: Dict[str, float]) -> Dict[str, float]:
-    """Expand a viewport to the exact tile envelope represented by its cache key.
-
-    The cached upstream payload must cover this whole envelope; individual responses
-    are filtered back to their precise requested bbox after the cache lookup. Without
-    that symmetry, a nearby viewport sharing the key could miss edge stations that the
-    first, narrower upstream request never fetched.
-    """
+    """Expand to a world-bounded cache tile; preserve dateline wrapping."""
     t = MAPAREVE_TILE_DEG
-    sw_lat = math.floor(bbox["latitude_sw"] / t) * t
-    sw_lon = math.floor(bbox["longitude_sw"] / t) * t
-    ne_lat = math.ceil(bbox["latitude_ne"] / t) * t
-    ne_lon = math.ceil(bbox["longitude_ne"] / t) * t
-    env_sw_lat = max(SPAIN_BBOX["latitude_sw"], sw_lat)
-    env_sw_lon = max(SPAIN_BBOX["longitude_sw"], sw_lon)
-    env_ne_lat = min(SPAIN_BBOX["latitude_ne"], ne_lat)
-    env_ne_lon = min(SPAIN_BBOX["longitude_ne"], ne_lon)
-    if env_sw_lat > env_ne_lat or env_sw_lon > env_ne_lon:
-        return {
-            "latitude_sw": sw_lat,
-            "longitude_sw": sw_lon,
-            "latitude_ne": ne_lat,
-            "longitude_ne": ne_lon,
-        }
     return {
-        "latitude_sw": env_sw_lat,
-        "longitude_sw": env_sw_lon,
-        "latitude_ne": env_ne_lat,
-        "longitude_ne": env_ne_lon,
+        "latitude_sw": max(-90.0, math.floor(bbox["latitude_sw"] / t) * t),
+        "longitude_sw": max(-180.0, math.floor(bbox["longitude_sw"] / t) * t),
+        "latitude_ne": min(90.0, math.ceil(bbox["latitude_ne"] / t) * t),
+        "longitude_ne": min(180.0, math.ceil(bbox["longitude_ne"] / t) * t),
     }
 
 
@@ -3194,6 +3240,9 @@ def load_seed_leads() -> List[Dict[str, Any]]:
     (db mtime, seeds mtime)-keyed memo as load_intelligence/load_all_leads
     (plans/007 step 2) -- always hands out a deepcopy, never the cached list
     itself, since callers mutate returned rows."""
+    records = load_intelligence_meta().get("records")
+    if isinstance(records, IndexedRecords) or len(records or []) > _INTEL_SCOPE_THRESHOLD:
+        return [_normalize_lead(row, "manual research lead") for row in _raw_seed_records() if not reject_station_reason(row)]
     _intel, _intel_coords, seeds, _seeds_coords = _intel_enriched_pool()
     return deepcopy(seeds)
 
@@ -3201,6 +3250,7 @@ def load_seed_leads() -> List[Dict[str, Any]]:
 # Parsed intel DB cached by file mtime — at national scale we must NOT re-read/re-parse the
 # (large) JSON on every request. Normalize lazily and only for in-viewport records.
 _INTEL_RAW: Dict[str, Any] = {"mtime": None, "data": None}
+_INTEL_RAW_LOCK = threading.Lock()
 
 
 def intelligence_path() -> Path:
@@ -3213,16 +3263,15 @@ def intelligence_path() -> Path:
 
 
 def _interning_object_hook() -> Any:
-    """Share repeated string values across records while parsing the intelligence DB.
+    """Share object keys and repeated values across independently decoded records.
 
-    Every record repeats the same source names, notes and claim summaries. With the
-    national all-charger DB (~15k records) one shared copy per distinct string keeps
-    the parsed DB, and the enriched pool built from it, inside a small VM.
+    The streaming decoder clears its key memo after each row. Interning keys here
+    avoids allocating the same schema strings hundreds of thousands of times.
     """
     seen: Dict[str, str] = {}
 
     def hook(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
-        return {key: seen.setdefault(value, value) if isinstance(value, str) else value for key, value in pairs}
+        return {sys.intern(key): seen.setdefault(value, value) if isinstance(value, str) else value for key, value in pairs}
 
     return hook
 
@@ -3233,21 +3282,46 @@ def load_intelligence_meta() -> Dict[str, Any]:
     if not p.exists():
         return {"generated_at": None, "total_records": 0, "records": [], "errors": ["Run scripts/ingest_sources.py to build intelligence DB"]}
     mtime = (str(p), p.stat().st_mtime_ns)
-    if _INTEL_RAW.get("mtime") != mtime:
-        with p.open("r", encoding="utf-8") as f:
-            payload = json.load(f, object_pairs_hook=_interning_object_hook())
-        allowed, excluded = partition_records(payload.get("records") or [], SOURCE_POLICY_EXCLUSIONS)
-        payload["records"] = allowed
-        payload["total_records"] = len(allowed)
-        # Expose the fingerprint of the raw policy-clean canonical rows. /api/intel
-        # replaces records with enriched/time-derived UI rows, so hashing the response
-        # body itself would never match the deployment artifact even on this checkout.
-        payload["recordset_sha256"] = recordset_sha256(allowed)
-        payload["recordset_records"] = len(allowed)
-        payload["source_policy_excluded_records"] = len(excluded)
-        _INTEL_RAW["data"] = payload
-        _INTEL_RAW["mtime"] = mtime
-    return _INTEL_RAW["data"] or {"records": []}
+    indexed_path = p.suffix.lower() in {".sqlite", ".sqlite3", ".db"}
+    if indexed_path:
+        dependencies = (DATA / "source_policy_exclusions.json", DATA / "seed_leads.json")
+        mtime += tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size) if path.exists() else None for path in dependencies)
+    with _INTEL_RAW_LOCK:
+        if _INTEL_RAW.get("mtime") != mtime:
+            if indexed_path:
+                index = IntelligenceIndex(p, policy_sha256=file_sha256(DATA / "source_policy_exclusions.json"))
+                payload = index.metadata()
+                payload["records"] = index.records
+                _validate_index_summaries(payload)
+                _INTEL_RAW.update(data=payload, mtime=mtime)
+                return payload
+            excluded_count = 0
+            def clean_record(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+                nonlocal excluded_count
+                kept, removed = partition_records([row], SOURCE_POLICY_EXCLUSIONS)
+                excluded_count += len(removed)
+                return kept[0] if kept else None
+            payload = load_json_recordset(p, object_pairs_hook=_interning_object_hook(), record_transform=clean_record)
+            allowed = payload.get("records") or []
+            payload["total_records"] = len(allowed)
+            payload["recordset_sha256"] = runtime_recordset_sha256(allowed)
+            payload["recordset_records"] = len(allowed)
+            payload["source_policy_excluded_records"] = excluded_count
+            _INTEL_RAW["data"] = payload
+            _INTEL_RAW["mtime"] = mtime
+        return _INTEL_RAW["data"] or {"records": []}
+
+
+def runtime_recordset_sha256(records: List[Dict[str, Any]]) -> str:
+    """Same canonical hash as source_policy without a second full JSON string/bytes."""
+    digest = hashlib.sha256()
+    digest.update(b"[")
+    for position, row in enumerate(sorted(records, key=lambda item: str(item.get("id") or ""))):
+        if position:
+            digest.update(b",")
+        digest.update(json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    digest.update(b"]")
+    return digest.hexdigest()
 
 
 Coords = List[Tuple[Optional[float], Optional[float]]]
@@ -3277,6 +3351,8 @@ def _filter_by_coords(records: List[Dict[str, Any]], coords: Coords, bbox: Optio
 # by _CACHE_LOCKS["intel"]; the dict is never mutated in place after publish (only
 # wholesale-replaced on a rebuild), so callers holding an old list reference are never
 # caught mid-update -- same convention as CACHE["payload"] elsewhere in this file.
+_INTEL_SCOPED: Dict[Any, Any] = {}
+_INTEL_SCOPE_THRESHOLD = 5000
 _INTEL_ENRICHED: Dict[str, Any] = {"key": None, "intel": None, "intel_coords": None, "seeds": None, "seeds_coords": None}
 
 
@@ -3328,6 +3404,71 @@ def _intel_enriched_pool() -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str,
     return intel_records, intel_coords, seed_records, seed_coords
 
 
+def _raw_seed_records() -> List[Dict[str, Any]]:
+    path = DATA / "seed_leads.json"
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8") as handle:
+        return [row for row in json.load(handle) if source_policy_record_allowed(row)]
+
+
+def _scoped_intelligence_pool(bbox: Optional[Dict[str, float]]) -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str, Any]], Coords]:
+    """Keep small legacy bundles shared; enrich only the selected viewport at world scale."""
+    raw = load_intelligence_meta()
+    records = raw.get("records")
+    indexed = isinstance(records, IndexedRecords)
+    if not indexed and (bbox is None or len(records or []) <= _INTEL_SCOPE_THRESHOLD):
+        return _intel_enriched_pool()
+    if indexed and bbox is None:
+        raise ValueError("Indexed intelligence requires a viewport; use paginated /api/intel for catalogue inspection")
+    seed_path = DATA / "seed_leads.json"
+    key = (id(raw), tuple(sorted(bbox.items())), seed_path.stat().st_mtime_ns if seed_path.exists() else None)
+    with _CACHE_LOCKS["intel"]:
+        cached = _INTEL_SCOPED.get(key)
+    if cached is not None:
+        return cached
+    tables = []
+    scoped_records = records.iter_bbox(bbox) if indexed else records or []
+    for rows, source in ((scoped_records, "free/cheap intelligence DB"), (_raw_seed_records(), "manual research lead")):
+        selected = []
+        for row in rows:
+            if in_bbox(safe_float(row.get("lat")), safe_float(row.get("lon")), bbox):
+                normalized = _normalize_lead(deepcopy(row), source)
+                if not reject_station_reason(normalized):
+                    selected.append(normalized)
+        tables.append(selected)
+    value = (tables[0], _coords_for(tables[0]), tables[1], _coords_for(tables[1]))
+    with _CACHE_LOCKS["intel"]:
+        _INTEL_SCOPED[key] = value
+        while len(_INTEL_SCOPED) > 8:
+            _INTEL_SCOPED.pop(next(iter(_INTEL_SCOPED)))
+    return value
+
+
+def intelligence_response(params: Dict[str, List[str]]) -> Dict[str, Any]:
+    """Bound public inspection requests; the canonical artifact fingerprint remains intact."""
+    raw = load_intelligence_meta()
+    bbox = parse_bbox_param(params)
+    limit = max(1, min(safe_int((params.get("limit") or [1000])[0]) or 1000, 2500))
+    offset = max(0, min(safe_int((params.get("offset") or [0])[0]) or 0, len(raw.get("records") or [])))
+    if isinstance(raw.get("records"), IndexedRecords):
+        selected, matched = raw["records"].index.query(bbox=bbox, offset=offset, limit=limit)
+    else:
+        matches = (row for row in raw.get("records") or [] if bbox is None or in_bbox(safe_float(row.get("lat")), safe_float(row.get("lon")), bbox))
+        selected = []
+        matched = 0
+        for row in matches:
+            if offset <= matched < offset + limit:
+                selected.append(row)
+            matched += 1
+    records = [_normalize_lead(deepcopy(row), "free/cheap intelligence DB") for row in selected]
+    result = {key: value for key, value in raw.items() if key != "records"}
+    result["records"] = _refresh_time_derived_fields(attach_community_rows(records))
+    result["pagination"] = {"offset": offset, "limit": limit, "returned": len(records), "matched": matched,
+                            "next_offset": offset + len(records) if offset + len(records) < matched else None}
+    return result
+
+
 def _refresh_time_derived_fields(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Recompute the two enrich_station outputs that go stale between _INTEL_ENRICHED
     pool rebuilds -- pure, O(n) arithmetic on an already-deepcopied in-view subset,
@@ -3359,13 +3500,13 @@ def load_intelligence(bbox: Optional[Dict[str, float]] = None) -> Dict[str, Any]
     freshness_minutes/recommendation_score are refreshed on every call (Finding 4)."""
     raw = load_intelligence_meta()
     data = dict(raw)
-    intel_records, intel_coords, _seeds, _seeds_coords = _intel_enriched_pool()
+    intel_records, intel_coords, _seeds, _seeds_coords = _scoped_intelligence_pool(bbox)
     data["records"] = _refresh_time_derived_fields(attach_community_rows(deepcopy(_filter_by_coords(intel_records, intel_coords, bbox))))
     return data
 
 
 def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
-    intel_records, intel_coords, seed_records, seed_coords = _intel_enriched_pool()
+    intel_records, intel_coords, seed_records, seed_coords = _scoped_intelligence_pool(bbox)
     intel = deepcopy(_filter_by_coords(intel_records, intel_coords, bbox))
     manual = deepcopy(_filter_by_coords(seed_records, seed_coords, bbox))
     seen = set()
@@ -3419,8 +3560,11 @@ def known_station_ids() -> set:
             return _KNOWN_IDS_CACHE["ids"]
     ids: set = set()
     try:
-        intel_records, _coords, seed_records, _seed_coords = _intel_enriched_pool()
-        for row in intel_records + seed_records:
+        records = load_intelligence_meta().get("records") or []
+        if isinstance(records, IndexedRecords):
+            ids.update(records.index.ids())
+            records = []
+        for row in records + _raw_seed_records():
             if row.get("id"):
                 ids.add(str(row["id"]))
     except Exception as exc:
@@ -3464,7 +3608,13 @@ FREE_REGISTRY_BYTES_CACHE_MAX_ENTRIES = 8
 
 def free_registry_payload(bbox: Optional[Dict[str, float]], full: bool) -> Dict[str, Any]:
     meta = load_intelligence_meta()
-    data = load_intelligence(bbox)
+    indexed = isinstance(meta.get("records"), IndexedRecords)
+    if indexed or len(meta.get("records") or []) > _INTEL_SCOPE_THRESHOLD:
+        rows, candidate_count = overview_candidates(bbox or WORLD_BBOX, 0.0, False)
+        data = {"records": rows}
+    else:
+        data = load_intelligence(bbox)
+        candidate_count = sum(1 for row in data.get("records") or [] if free_row(row))
     stations: List[Dict[str, Any]] = []
     by_level = {level: 0 for level in _FREE_LEVEL_ORDER}
     by_source: Dict[str, int] = {}
@@ -3492,7 +3642,9 @@ def free_registry_payload(bbox: Optional[Dict[str, float]], full: bool) -> Dict[
     return {
         "generated_at": now_iso(),
         "db_generated_at": meta.get("generated_at"),
-        "scope": "Spain",
+        "result_limit": 5000 if indexed or len(meta.get("records") or []) > _INTEL_SCOPE_THRESHOLD else None,
+        "truncated": candidate_count > len(stations),
+        "scope": "worldwide",
         "bbox": bbox,
         "stats": {
             "free_total": len(stations),
@@ -3578,7 +3730,7 @@ GEOCODE_UA = (
 
 
 def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Public Nominatim proxy (Spain), cached, so users can jump to any city/place.
+    """Public Nominatim proxy (worldwide), cached, so users can jump to any city/place.
 
     Returns [{label, name, lat, lon, type, bbox}]. bbox uses Volta's bbox dict shape.
     """
@@ -3592,7 +3744,7 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
         if cached and now - cached["ts"] < GEOCODE_TTL_SECONDS:
             return cached["results"]
     qs = urllib.parse.urlencode({
-        "q": q, "format": "jsonv2", "countrycodes": "es",
+        "q": q, "format": "jsonv2",
         "limit": max(1, min(limit, 8)), "addressdetails": 0,
     })
     req = urllib.request.Request(
@@ -3607,7 +3759,7 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for r in raw:
         lat, lon = safe_float(r.get("lat")), safe_float(r.get("lon"))
-        if lat is None or lon is None:
+        if lat is None or lon is None or not (-90 <= lat <= 90 and -180 <= lon <= 180):
             continue
         bb = r.get("boundingbox") or []
         bbox = None
@@ -3637,7 +3789,8 @@ def parse_bbox_param(params: Dict[str, List[str]]) -> Optional[Dict[str, float]]
     parts = [safe_float(x) for x in raw.split(",")]
     if len(parts) == 4 and None not in parts:
         s, w, n, e = parts  # type: ignore[misc]
-        return {"latitude_sw": s, "longitude_sw": w, "latitude_ne": n, "longitude_ne": e}
+        if -90 <= s <= n <= 90 and -180 <= w <= 180 and -180 <= e <= 180:
+            return {"latitude_sw": s, "longitude_sw": w, "latitude_ne": n, "longitude_ne": e}
     return None
 
 
@@ -3713,11 +3866,51 @@ def compact_station_for_ui(station: Dict[str, Any]) -> Dict[str, Any]:
     return row
 
 
-def overview_response(params: Dict[str, List[str]], max_price: float, fast_only: bool) -> Tuple[int, Dict[str, Any]]:
-    """National clustered overview from the leads DB only — no live fetch, bbox NOT clamped.
+def overview_candidates(bbox: Dict[str, float], price_cap: float, fast_only: bool, origin: Optional[Tuple[float, float]] = None) -> Tuple[List[Dict[str, Any]], int]:
+    raw = load_intelligence_meta()
+    records = raw.get("records")
+    indexed = isinstance(records, IndexedRecords)
+    records = records if indexed else records or []
+    if not indexed and len(records) <= _INTEL_SCOPE_THRESHOLD:
+        rows = load_all_leads(bbox)
+        return rows, len(rows)
+    count = 0
+    if indexed:
+        records, count = records.index.query(bbox=bbox, price_cap=price_cap, fast_only=fast_only,
+                                             limit=5000, overview=True, origin=origin)
+    manual_rows = _raw_seed_records()
+    manual_ids = {id(row) for row in manual_rows}
+    def candidates() -> Iterable[Dict[str, Any]]:
+        nonlocal count
+        for rows in (records, manual_rows):
+            for row in rows:
+                if not in_bbox(safe_float(row.get("lat")), safe_float(row.get("lon")), bbox):
+                    continue
+                price = 0.0 if row.get("is_free") is True else euro_price(row)
+                if price_cap < 5.0 and (price is None or price > price_cap):
+                    continue
+                if fast_only and not (row.get("fast") or (safe_float(row.get("max_power_kw")) or 0) >= 43):
+                    continue
+                if not indexed or rows is manual_rows:
+                    count += 1
+                yield row
+    selected = heapq.nsmallest(5000, candidates(), key=lambda row: (
+        not bool(row.get("is_free")), not bool(row.get("is_cheap")),
+        haversine_km(origin[0], origin[1], row["lat"], row["lon"]) if origin else 0,
+        -(safe_float(row.get("recommendation_score")) or safe_float(row.get("score")) or 0), str(row.get("id") or "")))
+    out = []
+    for row in selected:
+        item = _normalize_lead(deepcopy(row), "manual research lead" if id(row) in manual_ids else "free/cheap intelligence DB")
+        if not reject_station_reason(item):
+            out.append(item)
+    return _refresh_time_derived_fields(attach_community_rows(out)), count
 
-    Powers the default Spain-wide view when the user hasn't located/searched yet. Leads are
-    already enriched; we add the corroboration block and sort by recommendation score.
+
+def overview_response(params: Dict[str, List[str]], max_price: float, fast_only: bool) -> Tuple[int, Dict[str, Any]]:
+    """Bounded directory overview of the requested world extent; never a live fetch.
+
+    Large bundles select a bounded candidate set before expensive enrichment.
+    The historic Spain overview remains the default when no extent is supplied.
     """
     bbox = parse_bbox_param(params) or {
         "latitude_sw": SPAIN_BBOX["latitude_sw"], "longitude_sw": SPAIN_BBOX["longitude_sw"],
@@ -3727,8 +3920,12 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
     free_only = (params.get("free_only") or ["false"])[0].lower() == "true"
     price_cap = 0.0 if free_only else max_price
     out: List[Dict[str, Any]] = []
-    for lead in load_all_leads(bbox):
-        price = safe_float(lead.get("price_min"))
+    user_lat = safe_float((params.get("lat") or [None])[0])
+    user_lon = safe_float((params.get("lon") or [None])[0])
+    origin = (user_lat, user_lon) if user_lat is not None and user_lon is not None and -90 <= user_lat <= 90 and -180 <= user_lon <= 180 else None
+    candidates, candidate_count = overview_candidates(bbox, price_cap, fast_only, origin)
+    for lead in candidates:
+        price = euro_price(lead)
         if price is None and lead.get("is_free") is True:
             price = 0.0
         # 5.0 is the clients' broad-discovery sentinel. Explicit price limits
@@ -3736,10 +3933,12 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         if price is None:
             if price_cap < 5.0:
                 continue
-        elif not math.isfinite(price) or price < 0 or price > price_cap:
+        elif not math.isfinite(price) or price < 0 or (price_cap < 5.0 and price > price_cap):
             continue
         if fast_only and not lead.get("fast"):
             continue
+        if origin and source_health_has_valid_coordinates(lead):
+            lead["distance_km"] = round(haversine_km(origin[0], origin[1], lead["lat"], lead["lon"]), 2)
         apply_corroboration(lead)
         # Corroboration must reach ranking here, not just the corroboration block:
         # recommendation_score was computed at ingestion/normalization time, before
@@ -3747,7 +3946,8 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         # before compacting/sorting (compact_station_for_ui copies fields as-is).
         lead["recommendation_score"] = recommendation_score(lead)
         out.append(compact_station_for_ui(lead) if compact else lead)
-    out.sort(key=lambda s: -(s.get("recommendation_score") or 0))
+    out.sort(key=nearby_sort_key if origin else lambda s: -(s.get("recommendation_score") or 0))
+    results_truncated = len(out) > 2500 or candidate_count > len(candidates)
     out = out[:2500]
     coverage = live_coverage_profile([], out)
     coverage["mode"] = "overview"
@@ -3756,12 +3956,15 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         "stations": [],
         "leads": out,
         "meta": {
-            "scope": "Spain",
+            "scope": "worldwide",
             "mode": "overview",
             "viewport": {"bbox": bbox, "source": "overview", "clamped": False},
             "coverage": coverage,
             "generated_at": now_iso(),
             "compact": compact,
+            "result_limit": 2500,
+            "candidate_records": candidate_count,
+            "truncated": results_truncated,
         },
         "cache": {"hit": False, "overview": True},
         "warning": None,
@@ -3804,6 +4007,8 @@ def overview_response_bytes(params: Dict[str, List[str]], max_price: float, fast
         fast_only,
         (params.get("free_only") or ["false"])[0].lower() == "true",
         (params.get("compact") or ["false"])[0].lower() == "true",
+        safe_float((params.get("lat") or [None])[0]),
+        safe_float((params.get("lon") or [None])[0]),
         # Serialized rows carry minute-derived evidence age. Keep fast repeated
         # requests in the same slot, but never freeze that age until the next DB
         # rebuild merely because the byte cache otherwise has no TTL.
@@ -3868,20 +4073,23 @@ def fetch_primary_sources_parallel(
     slowest source instead. Errors are returned as data so live_response can preserve
     its existing stale-cache and fail-closed behavior.
     """
-    jobs: Dict[str, Tuple[Any, Tuple[Any, ...], Dict[str, Any]]] = {
-        "gaia": (fetch_gaia_live, (), {"force": force}),
+    coverage = live_geography(bbox)
+    skipped = {
+        name: {"name": name, "payload": {"stations": [], "raw_count": 0,
+               "supported": False, "cache": {"hit": False}, "errors": []},
+               "error": None, "duration_ms": 0.0}
+        for name in ("mapareve", "gaia") if not coverage[name]
     }
-    if fetch_mapareve_now:
-        jobs["mapareve"] = (
-            fetch_mapareve,
-            (),
-            {
-                "max_price": max_price,
-                "available_only": available_only,
-                "fast_only": fast_only,
-                "bbox": bbox,
-            },
-        )
+    jobs: Dict[str, Tuple[Any, Tuple[Any, ...], Dict[str, Any]]] = {}
+    if coverage["gaia"]:
+        jobs["gaia"] = (fetch_gaia_live, (), {"force": force})
+    if fetch_mapareve_now and coverage["mapareve"]:
+        jobs["mapareve"] = (fetch_mapareve, (), {
+            "max_price": max_price, "available_only": available_only,
+            "fast_only": fast_only, "bbox": bbox,
+        })
+    if not jobs:
+        return skipped
 
     # Bound how many requests can fan out to upstream sources AT ONCE across the whole
     # process (each request here already spawns len(jobs) threads via the executor
@@ -3896,7 +4104,7 @@ def fetch_primary_sources_parallel(
             f"Upstream fetch concurrency limit reached (VOLTA_MAX_CONCURRENT_LIVE={LIVE_FETCH_CONCURRENCY_LIMIT})"
         )
         _log_upstream_error("Upstream fetch semaphore acquire timed out", timeout_exc)
-        return {name: {"name": name, "payload": None, "error": timeout_exc, "duration_ms": 0.0} for name in jobs}
+        return dict(skipped, **{name: {"name": name, "payload": None, "error": timeout_exc, "duration_ms": 0.0} for name in jobs})
     try:
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=len(jobs),
@@ -3906,7 +4114,7 @@ def fetch_primary_sources_parallel(
                 name: executor.submit(_timed_source_fetch, name, fetcher, *args, **kwargs)
                 for name, (fetcher, args, kwargs) in jobs.items()
             }
-            return {name: future.result() for name, future in futures.items()}
+            return dict(skipped, **{name: future.result() for name, future in futures.items()})
     finally:
         LIVE_FETCH_SEMAPHORE.release()
 
@@ -3923,6 +4131,30 @@ def _source_payload_or_empty(result: Dict[str, Any], label: str) -> Dict[str, An
         "errors": [type(error).__name__ if error else "UnknownError"],
         "warning": f"{label} live refresh unavailable; continuing with other public sources.",
     }
+
+
+def directory_response(params: Dict[str, List[str]], bbox: Dict[str, float], viewport_source: str,
+                       clamped: bool, max_price: float, fast_only: bool,
+                       include_leads: bool, available_only: bool) -> Tuple[int, Dict[str, Any]]:
+    scoped = dict(params, bbox=[",".join(str(bbox[k]) for k in ("latitude_sw", "longitude_sw", "latitude_ne", "longitude_ne"))])
+    _, payload = overview_response(scoped, max_price, fast_only)
+    leads = payload["leads"] if include_leads and not available_only else []
+    lat, lon = safe_float((params.get("lat") or [None])[0]), safe_float((params.get("lon") or [None])[0])
+    if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+        for lead in leads:
+            if source_health_has_valid_coordinates(lead):
+                lead["distance_km"] = round(haversine_km(lat, lon, lead["lat"], lead["lon"]), 2)
+        leads.sort(key=nearby_sort_key)
+    note = "Live availability is not connected in this area. Source-backed directory records require confirmation with the operator."
+    if payload["meta"].get("truncated"):
+        note += " Results are limited; narrow the area for a more complete search."
+    payload["leads"] = leads
+    payload["meta"].update({"mode": "directory", "viewport": {"bbox": bbox, "source": viewport_source, "clamped": clamped},
+                            "price_cap_eur_kwh": max_price, "live_sources": live_geography(bbox)})
+    payload["meta"]["coverage"].update({"mode": "directory", "supported": False, "is_degraded": False, "summary": note, "warning": None})
+    payload["cache"] = {"hit": False, "live_supported": False, "live_failed": False, "fresh_live_authority": False, "stale": False}
+    payload["warning"] = note
+    return 200, payload
 
 
 def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
@@ -3948,6 +4180,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         return overview_response(params, max_price, fast_only)
 
     bbox, vp_source, vp_clamped = resolve_viewport(params)
+    geography = live_geography(bbox)
+    if not any(geography.values()):
+        return directory_response(params, bbox, vp_source, vp_clamped, max_price, fast_only, include_leads, available_only)
     tile = viewport_tile_key(bbox, vp_source)
     cache_bbox = dict(bbox) if vp_source == "default" else snapped_bbox_envelope(bbox)
     cache_key = f"{tile}{max_price}:{available_only}:{fast_only}"
@@ -4107,7 +4342,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
 
     gaia_result = primary_results["gaia"]
     gaia_payload = _source_payload_or_empty(gaia_result, "Gaia")
-    gaia_cache_info = gaia_payload.get("cache") or {}
+    gaia_cache_info = dict(gaia_payload.get("cache") or {})
+    if gaia_payload.get("supported") is False:
+        gaia_cache_info["populated_at"] = "outside-configured-region"
     if gaia_payload.get("warning"):
         existing_warning = str(payload.get("warning") or "").strip()
         payload["warning"] = f"{existing_warning} {gaia_payload['warning']}".strip() if existing_warning else gaia_payload["warning"]
@@ -4156,7 +4393,8 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     # correctly re-derives from the full snapped-envelope raw caches).
     sub_sources_fresh_hit = (
         cache_fresh
-        and bool(gaia_cache_info.get("hit")) and not gaia_cache_info.get("stale")
+        and (gaia_payload.get("supported") is False or bool(gaia_cache_info.get("hit")))
+        and not gaia_cache_info.get("stale")
     )
     em_info: Dict[str, Any] = {"stations": [], "checked_ids": set(), "promoted_ids": set(), "dead_ids": set(), "stale_dropped": 0}
     stations_assembled: Optional[List[Dict[str, Any]]] = None
@@ -4531,21 +4769,19 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     payload["intel"] = {
         "generated_at": intel_meta.get("generated_at"),
         "total_records": intel_meta.get("total_records", 0),
-        "free_records": sum(1 for r in intel_meta.get("records", []) if r.get("is_free")),
-        "cheap_records": sum(1 for r in intel_meta.get("records", []) if r.get("is_cheap")),
-        "official_records": sum(1 for r in intel_meta.get("records", []) if str(r.get("reliability", "")).startswith("official")),
-        "access_limited_records": sum(1 for r in intel_meta.get("records", []) if (access_profile(r).get("level") == "restricted")),
+        **intelligence_counts(intel_meta),
         "errors": intel_meta.get("errors", []),
         "license_notes": intel_meta.get("license_notes", []),
     }
     payload["meta"] = {
-        "scope": "Spain",
+        "scope": "worldwide",
         "viewport": {"bbox": bbox, "source": vp_source, "clamped": vp_clamped},
         "price_cap_eur_kwh": max_price,
         "live_source": "MapaREVE public OCPI API (viewport bbox) plus permitted Gaia public pages",
         "refresh_policy": f"Server cache {CACHE_TTL_SECONDS}s; client refreshes every 60s.",
         "important_caveat": "Provider app pricing and onsite parking signs override all aggregator data. Proprietary apps without public API are linked/attributed but not scraped.",
-        "coverage": coverage,
+        "coverage": dict(coverage, supported=True),
+        "live_sources": geography,
         "named_provider_strategy": {
             "Google Maps": "deep links/navigation only in this build; Places API requires key/billing and its EV fields do not expose €/kWh tariffs",
             "Electromaps": "conventional homepage link only; direct and nested station evidence is excluded until express written reuse permission and a separate GET-only adapter review",
@@ -4591,7 +4827,7 @@ def source_health_tier(item: Dict[str, Any]) -> str:
 def source_health_has_valid_coordinates(item: Dict[str, Any]) -> bool:
     lat = safe_float(item.get("lat"))
     lon = safe_float(item.get("lon"))
-    return lat is not None and lon is not None
+    return lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
 
 
 def source_health_outside_spain(item: Dict[str, Any]) -> bool:
@@ -4662,13 +4898,77 @@ def source_health_cache_status(name: str, cache: Dict[str, Any], ttl_seconds: in
     }
 
 
-def source_health_summary() -> Dict[str, Any]:
-    """Machine-readable source audit: what is verified enough for the map vs only a lead."""
-    intel = load_intelligence()
-    leads = load_all_leads()
-    raw_records = intel.get("records") or []
-    errors = list(intel.get("errors") or [])
+_SOURCE_INVENTORY: Dict[str, Any] = {}
 
+
+def intelligence_health_fingerprint() -> str:
+    """Bind offline evidence aggregates to the code that classifies their rows."""
+    digest = hashlib.sha256()
+    for name in ("server.py", "station_truth.py", "scripts/global_source_catalog.py"):
+        digest.update((ROOT / name).read_bytes())
+    return digest.hexdigest()
+
+
+def _validate_index_summaries(intel: Dict[str, Any]) -> None:
+    records = intel.get("records")
+    if not isinstance(records, IndexedRecords):
+        return
+    seeds = DATA / "seed_leads.json"
+    manifest = intel.get("index_manifest") or {}
+    seed_hash = file_sha256(seeds) if seeds.exists() else None
+    if manifest.get("seeds_sha256") != seed_hash or manifest.get("health_code_sha256") != intelligence_health_fingerprint():
+        raise ValueError("Intelligence index evidence summary is stale; rebuild with --health-summary")
+    for key in ("source_health_inventory", "intel_counts", "global_source_counts", "fenie_origin_records"):
+        if key not in records.index.summaries:
+            raise ValueError("Intelligence index requires --health-summary for runtime summaries")
+
+
+def intelligence_counts(intel: Dict[str, Any]) -> Dict[str, int]:
+    records = intel.get("records")
+    if isinstance(records, IndexedRecords):
+        return deepcopy(records.index.summaries["intel_counts"])
+    return {
+        "free_records": sum(1 for row in records or [] if row.get("is_free")),
+        "cheap_records": sum(1 for row in records or [] if row.get("is_cheap")),
+        "official_records": sum(1 for row in records or [] if str(row.get("reliability", "")).startswith("official")),
+        "access_limited_records": sum(1 for row in records or [] if access_profile(row).get("level") == "restricted"),
+    }
+
+
+def _health_leads(raw: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
+    """Stream aggregate evidence without retaining a second enriched world database."""
+    seen = set()
+    for rows, source in ((raw.get("records") or [], "free/cheap intelligence DB"), (_raw_seed_records(), "manual research lead")):
+        for row in rows:
+            lat, lon = safe_float(row.get("lat")), safe_float(row.get("lon"))
+            key = ("coord", round(lat, 4), round(lon, 4)) if lat is not None and lon is not None else ("name", str(row.get("name", "")).lower()[:48])
+            if key in seen or reject_station_reason(row):
+                continue
+            seen.add(key)
+            if source == "manual research lead" or len(raw.get("records") or []) <= _INTEL_SCOPE_THRESHOLD:
+                yield _normalize_lead(deepcopy(row), source)
+            else:
+                # Health needs evidence/location classification, not pricing, community,
+                # navigation, connector detail or recommendation enrichment for every site.
+                item = dict(row, lead=True)
+                item["primary_source"] = primary_source_for(item)
+                item["verification"] = verification_profile(item, live=False)
+                yield item
+
+
+def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = False) -> Dict[str, Any]:
+    seeds = DATA / "seed_leads.json"
+    records = intel.get("records")
+    if isinstance(records, IndexedRecords) and not allow_index_scan:
+        _validate_index_summaries(intel)
+        summary = records.index.summaries.get("source_health_inventory")
+        if not isinstance(summary, dict):
+            raise ValueError("Intelligence index requires --health-summary for source health")
+        return deepcopy(summary)
+    key = (id(intel), seeds.stat().st_mtime_ns if seeds.exists() else None)
+    if _SOURCE_INVENTORY.get("key") == key:
+        return deepcopy(_SOURCE_INVENTORY["value"])
+    leads = _health_leads(intel)
     by_tier: Dict[str, Dict[str, int]] = {}
     by_reliability: Dict[str, int] = {}
     by_source: Dict[str, Dict[str, int]] = {}
@@ -4679,11 +4979,17 @@ def source_health_summary() -> Dict[str, Any]:
         "unverified": 0,
         "invalid_coordinates": 0,
     }
-    coordinate_issues = {"missing_or_invalid": 0, "outside_spain": 0}
+    coordinate_issues = {"missing_or_invalid": 0}
     source_link_issues = {"missing_primary_url": 0, "generic_primary_source": 0}
     map_eligible_records = 0
 
+    deduped_leads = 0
+    by_country: Dict[str, int] = {}
     for item in leads:
+        deduped_leads += 1
+        country = str(item.get("country_code") or item.get("country") or "unknown").upper()
+        country = {"ESP": "ES"}.get(country, country)
+        by_country[country] = by_country.get(country, 0) + 1
         tier = source_health_tier(item)
         reliability = str(item.get("reliability") or "unknown")
         source_name = str(item.get("source_label") or item.get("source") or "Unknown")
@@ -4715,12 +5021,33 @@ def source_health_summary() -> Dict[str, Any]:
 
         if not source_health_has_valid_coordinates(item):
             coordinate_issues["missing_or_invalid"] += 1
-        elif source_health_outside_spain(item):
-            coordinate_issues["outside_spain"] += 1
         if not primary.get("url"):
             source_link_issues["missing_primary_url"] += 1
         if primary.get("quality") == "generic":
             source_link_issues["generic_primary_source"] += 1
+
+    result = {
+        "deduped_leads": deduped_leads,
+        "map_eligible_records": map_eligible_records,
+        "hidden_from_map": hidden_from_map,
+        "by_tier": by_tier,
+        "by_reliability": dict(sorted(by_reliability.items())),
+        "by_source": dict(sorted(by_source.items(), key=lambda kv: (-kv[1]["total"], kv[0]))),
+        "by_country": dict(sorted(by_country.items())),
+        "coordinate_issues": coordinate_issues,
+        "source_link_issues": source_link_issues,
+    }
+    _SOURCE_INVENTORY.update({"key": key, "value": result})
+    return deepcopy(result)
+
+
+def source_health_summary() -> Dict[str, Any]:
+    """Machine-readable source audit: what is verified enough for the map vs only a lead."""
+    intel = load_intelligence_meta()
+    raw_records = intel.get("records") or []
+    errors = list(intel.get("errors") or [])
+    inventory = source_health_inventory(intel, allow_index_scan=False)
+    by_tier = inventory["by_tier"]
 
     mapareve_cache = source_health_cache_status("MapaREVE live response", CACHE, CACHE_TTL_SECONDS)
     gaia_cache = source_health_cache_status("Gaia public start pages", GAIA_CACHE.get("live") or {}, GAIA_CACHE_TTL_SECONDS)
@@ -4736,6 +5063,10 @@ def source_health_summary() -> Dict[str, Any]:
     official_map = by_tier.get("official", {}).get("map_eligible", 0)
     return {
         "generated_at": now_iso(),
+        "scope": "worldwide",
+        "live_geography": {"mapareve": "Spain coverage envelope", "gaia": "Configured Alboraia station only"},
+        "source_manifest": (intel.get("global_coverage") or {}).get("source_manifests") or intel.get("source_manifest") or {},
+        "global_coverage": intel.get("global_coverage") or {},
         "policy": {
             "allowed": ["GET-only public pages (default)", "official/open APIs", "public datasets", "user-verifiable source links", "two owner-approved read-only data-query POSTs (MapaREVE bbox query, Feníe marker list)"],
             "blocked": ["login bypass", "private tokens", "MITM", "payment/session-start actions", "app-private scraping", "any other POST or non-GET request", "sources denied by reuse-rights policy"],
@@ -4744,19 +5075,12 @@ def source_health_summary() -> Dict[str, Any]:
         "intelligence": {
             "generated_at": intel.get("generated_at"),
             "total_records": len(raw_records),
-            "deduped_leads": len(leads),
-            "map_eligible_records": map_eligible_records,
-            "hidden_from_map": hidden_from_map,
+            **inventory,
             "official_map_coverage": {
                 "map_eligible": official_map,
                 "total": official_total,
                 "ratio": round(official_map / official_total, 4) if official_total else 0,
             },
-            "by_tier": by_tier,
-            "by_reliability": dict(sorted(by_reliability.items())),
-            "by_source": dict(sorted(by_source.items(), key=lambda kv: (-kv[1]["total"], kv[0]))),
-            "coordinate_issues": coordinate_issues,
-            "source_link_issues": source_link_issues,
             "errors": errors,
             "source_policy_excluded_records": intel.get("source_policy_excluded_records", 0),
         },
@@ -4792,6 +5116,44 @@ def source_health_summary() -> Dict[str, Any]:
     }
 
 
+_GLOBAL_SOURCE_COUNTS: Dict[str, Any] = {}
+
+
+def global_source_counts(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if isinstance(records, IndexedRecords):
+        return deepcopy(records.index.summaries["global_source_counts"])
+    if _GLOBAL_SOURCE_COUNTS.get("records") is records:
+        return _GLOBAL_SOURCE_COUNTS["counts"]
+    counts: Dict[str, Any] = {"gaia_total": 0, "gaia_free": 0, "adapters": {}}
+    gaia_pattern = re.compile(r"\bgaia\b", re.I)
+    for row in records:
+        identifier = str(row.get("id") or "")
+        for adapter in GLOBAL_ADAPTER_IDS:
+            if identifier.startswith(f"global_{adapter}_"):
+                counts["adapters"][adapter] = counts["adapters"].get(adapter, 0) + 1
+                break
+        text = " ".join(str(row.get(key) or "") for key in ("source", "name", "operator"))
+        if gaia_pattern.search(text):
+            counts["gaia_total"] += 1
+            counts["gaia_free"] += bool(row.get("is_free"))
+    _GLOBAL_SOURCE_COUNTS.update({"records": records, "counts": counts})
+    return counts
+
+
+def global_adapter_catalog() -> List[Dict[str, Any]]:
+    meta = load_intelligence_meta()
+    manifests = (meta.get("global_coverage") or {}).get("source_manifests") or []
+    last_runs = {row.get("source"): row for row in manifests if isinstance(row, dict)}
+    counts = global_source_counts(meta.get("records") or [])["adapters"]
+    return [{"id": identifier, "name": name, "scope": scope, "implemented": True,
+             "method": method, "credential_requirement": credential,
+             "live_status_integrated": False,
+             "records_added_by_global_adapter": counts.get(identifier, 0),
+             "last_collection": {key: last_runs.get(identifier, {}).get(key) for key in ("scope", "accepted", "rejected", "duplicates", "errors")},
+             "status": last_runs.get(identifier, {}).get("status", "not_run")}
+            for identifier, name, scope, method, credential in GLOBAL_ADAPTERS]
+
+
 def requested_source_strategy() -> Dict[str, Any]:
     """Current source-discovery matrix for the apps the owner explicitly named.
 
@@ -4799,12 +5161,9 @@ def requested_source_strategy() -> Dict[str, Any]:
     actually ingested, which are covered through a primary upstream, and which
     require an official API/export before we should treat them as parseable.
     """
-    intel = load_intelligence()
+    intel = load_intelligence_meta()
     records = intel.get("records", [])
-    gaia_directory_records = [
-        rec for rec in records
-        if re.search(r"\bgaia\b", json.dumps(rec, ensure_ascii=False), re.I)
-    ]
+    source_counts = global_source_counts(records)
     live_owner_counts: Dict[str, int] = {}
     cached_payload = CACHE.get("payload") or {}
     for station in cached_payload.get("stations", []) if isinstance(cached_payload, dict) else []:
@@ -4851,8 +5210,8 @@ def requested_source_strategy() -> Dict[str, Any]:
                 "records_now": {
                     "direct_live_stations": len(gaia_live_stations),
                     "direct_live_connectors": gaia_live_connectors,
-                    "directory_free_records": sum(1 for rec in gaia_directory_records if rec.get("is_free")),
-                    "directory_total_records": len(gaia_directory_records),
+                    "directory_free_records": source_counts["gaia_free"],
+                    "directory_total_records": source_counts["gaia_total"],
                     "live_source": "Gaia public start-session page plus MapaREVE/public directories where applicable",
                 },
                 "source_url": GAIA_DEFAULT_JUMP_URL,
@@ -4957,6 +5316,9 @@ def source_catalog_payload() -> Dict[str, Any]:
         ],
         "official_api_needed": ["LetMeCharge direct app database", "EuroCharger direct app database"],
         "policy": "This build uses rights-permitted public/open or user-verifiable pages. Proprietary app data and rights-blocked commercial locator/map data are not copied without permission, login bypass, private tokens, or MITM.",
+        "scope": "worldwide",
+        "global_adapters": global_adapter_catalog(),
+        "source_manifest": (load_intelligence_meta().get("global_coverage") or {}).get("source_manifests") or load_intelligence_meta().get("source_manifest") or {},
         "source_health": source_health_summary(),
         "requested_source_strategy": requested_source_strategy(),
     }
@@ -5231,7 +5593,7 @@ class Handler(BaseHTTPRequestHandler):
                 }
             return self.send_json(200, {"ok": True, "time": now_iso(), "cache": cache_snapshot})
         if path == "/api/intel":
-            return self.send_json(200, load_intelligence())
+            return self.send_json(200, intelligence_response(params))
         if path == "/api/sources":
             return self.send_json(200, source_catalog_payload())
         if path == "/api/source-health":
@@ -5493,7 +5855,7 @@ class VoltaHTTPServer(ThreadingHTTPServer):
 # The SPA's first request (preloaded by frontend/index.html). Its serialized body is keyed
 # per minute (row ages), so without a warm-up the first visitor each minute, and the first
 # after a restart, paid the full enrich+serialize+gzip before seeing any charger.
-DEFAULT_OVERVIEW_QUERY = "include_leads=true&max_price=5.0&overview=true&compact=true"
+DEFAULT_OVERVIEW_QUERY = "include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true"
 
 
 def warm_default_overview_forever() -> None:

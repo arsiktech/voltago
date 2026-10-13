@@ -100,8 +100,10 @@ npm --prefix frontend run build && PORT=8765 python3 server.py   # http://127.0.
 ## Keeping data fresh
 - **Live** (MapaREVE / Gaia) refreshes automatically per request (server cache ~60s; the
   client polls ~60s). No cron needed.
-- **Feníe** is homepage attribution/link-only. Direct station fetching and Feníe-origin
-  station evidence are excluded by policy.
+- **Feníe** uses the owner-approved read-only public marker query under the narrow
+  exception in `scripts/source_transport.py`. Its stored station evidence is directory
+  evidence, not runtime-live availability. See `data/source_policy_exclusions.json`
+  for the recorded permission scope, attribution and revocation condition.
 - **Intel DB** (`data/free_intelligence.json`, the leads layer) is a static snapshot. Audit a
   real build without changing the canonical DB or Git state with:
   ```bash
@@ -228,5 +230,55 @@ The stop hook records failures, including timeout exits, and uses the host's exi
 Verify the first real service run, exact public `/api/intel` recordset hash, preserved community storage, a finite next timer firing, and negative source-policy tests. Enabled scheduling is not proof that every upstream answered. Keep failed-source warnings and held candidates visible; do not relax delta or canary gates merely to publish a new timestamp.
 
 Runtime retention keeps the 12 newest completed runs plus the active bundle and one previous successful rollback bundle. Only recognizably owned completed-run directories are pruned; symlinks, unreceipted runs and unknown files are retained. Fetch caches remain under the checkout’s ignored `data/cache`, not tracked data. Runtime receipts include collector errors and cache/fallback totals. Feníe uses a 24-hour fetch cache and refuses a failed-refresh fallback older than seven days.
+
+### Worldwide runtime bundles
+
+`runtime_refresh.py --strategy auto` is the default. An existing dataset with
+`geographic_scope=global` or `global_coverage` selects the global builder;
+`--strategy global` starts a worldwide expansion from an existing Spain baseline.
+An explicit `--strategy spain` refuses to replace a worldwide dataset. The same
+choice can be set in `VOLTA_REFRESH_STRATEGY` without changing an installed timer.
+
+The global builder currently adds newly discovered records while retaining every
+baseline record and its original source evidence. Repeated collection does not
+refresh evidence on duplicate upstream records. Its default source is OCM; use
+`--sources` / `VOLTA_GLOBAL_SOURCES` for additional reviewed adapters. OCM remains
+bound to the reviewed immutable Git revision in source until `--ocm-revision` /
+`VOLTA_OCM_REVISION` explicitly selects a newer 40-character commit. The receipt
+records that revision and the source manifest; a new run date is not proof that
+retained observations are newer.
+
+An already reviewed global JSON candidate can enter the same gates without a
+second collection:
+
+```bash
+python3 scripts/runtime_refresh.py \
+  --state-dir /ABSOLUTE/RUNTIME/STATE \
+  --candidate /ABSOLUTE/REVIEWED/worldwide.candidate.json \
+  --strategy global --dry-run
+```
+
+After reviewing the receipt, use the same command without `--dry-run` for the
+authorized publication. Candidate import preserves exact bytes; delta, canary,
+descriptive reports and source/baseline revalidation still run. Neither mode
+changes Git, service configuration or the web process. Compare against the
+current deployed baseline, not an old laptop copy.
+
+Global publication also builds `free_intelligence.sqlite` after the JSON passes
+its gates. Its embedded source SHA-256, policy, record count and output checksum
+must match before JSON, SQLite, history and reports switch together through the
+existing `current` symlink. Configure the updated web service with
+`VOLTA_INTELLIGENCE_DB=/ABSOLUTE/RUNTIME/STATE/current/free_intelligence.sqlite`;
+the JSON remains in the bundle as the baseline and rollback artifact. The server
+does not select a sibling index automatically. A failed index build or failed
+readback retains the previous bundle. Deploy compatible server code and coordinate
+the environment change with publication before sending traffic to a large JSON
+catalogue. Preserve community SQLite and photos independently of these bundles.
+
+Serving from the index avoids loading the world into memory. Collection and
+validation are separate resource workloads: measure the complete refresh on the
+target host before retaining the template's timeout and memory limits. Neither a
+successful index build nor a successful web health response proves that scheduled
+collection fits those limits.
 
 Before the unchanged delta/canary gates, runtime collection preserves an existing application ID only when a unique stable upstream station identifier matches in both datasets within 250 metres. Exact OSM nodes, official station pages, source-issued IDs and Lidl official address queries can establish identity; names or proximity alone cannot. Conflicting matches stay unresolved and block publication. Fresh coordinates, prices, status and provenance are retained, with an identity-reconciliation report. No old station or fact is recreated to satisfy the zero-missing-ID gate.

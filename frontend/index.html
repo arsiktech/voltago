@@ -6,18 +6,18 @@
     <meta name="theme-color" content="#f5f6f4" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0b0f0d" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
-    <title>Volta Go — find free &amp; cheap EV charging in Spain</title>
-    <meta name="description" content="Find free and low-cost EV charging in Spain. Check price, parking and source freshness before you drive. Live availability is shown only where verified." />
+    <title>Volta Go — explore EV charging worldwide</title>
+    <meta name="description" content="Search EV charging worldwide. Coverage varies by source and location. Check price, parking and source freshness before you drive. Live availability is shown only where verified." />
     <meta property="og:title" content="Volta Go" />
-    <meta property="og:description" content="Find free and cheap charging in Spain. Check the evidence before you drive." />
+    <meta property="og:description" content="Search EV charging worldwide. Check coverage and evidence before you drive." />
     <meta property="og:image" content="/brand/volta-social-card.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/volta-icon.svg" />
     <link rel="apple-touch-icon" href="/brand/volta-icon.png" />
-    <!-- Start the national charger list while the app bundle downloads. The href must
+    <!-- Start the default Spain viewport while the app bundle downloads. The href must
          equal the app's first overview request (api.test.ts checks this) or the
          browser fetches it twice. -->
-    <link rel="preload" href="/api/chargers?include_leads=true&amp;max_price=5.0&amp;overview=true&amp;compact=true" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="/api/chargers?include_leads=true&amp;max_price=5.0&amp;overview=true&amp;bbox=35.8%2C-9.6%2C43.9%2C3.4&amp;compact=true" as="fetch" crossorigin="anonymous" />
     <!-- Open the basemap connection early without fetching anything: a failed style
          preload would surface as an app error, while MapLibre handles its own. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin="anonymous" />
