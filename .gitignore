@@ -12,6 +12,11 @@ node_modules/
 # Regenerable / large local-only data (kept locally, out of the repo)
 data/cache/
 data/source_probe/
+# Candidate data and source manifests are generated locally, never published.
+data/*.candidate.json
+data/*.candidate.manifest.json
+data/*.sqlite
+data/*.sqlite-*
 # Presence marks a clean clone as the dedicated unattended-refresh checkout.
 .volta-auto-refresh-dedicated
 

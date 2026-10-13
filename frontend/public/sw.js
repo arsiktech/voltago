@@ -1,12 +1,12 @@
 const CACHE_PREFIX = 'volta-offline-'
-const CACHE_VERSION = `${CACHE_PREFIX}v4`
+const CACHE_VERSION = `${CACHE_PREFIX}v5`
 const SHELL_CACHE = `${CACHE_VERSION}-shell`
 const OVERVIEW_CACHE = `${CACHE_VERSION}-overview`
 const BUILD_MANIFEST_URL = '/.vite/manifest.json'
-// Keep the offline snapshot keyed to the actual broad overview request. The UI's
-// default has no price chip selected, so api.ts sends max_price=5.0; caching the old
-// ≤ €0.25 URL left a controlled offline reload with no matching fallback at all.
-const DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&compact=true'
+// Only the fixed landing area is cached. User-selected areas and device locations
+// remain network-only; a global catalog must never be prefetched into offline storage.
+const DEFAULT_OVERVIEW_BBOX = '35.8,-9.6,43.9,3.4'
+const DEFAULT_OVERVIEW_URL = '/api/chargers?include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true'
 const SHELL_URLS = [
   '/',
   '/manifest.webmanifest',
@@ -111,11 +111,11 @@ function isDefaultOverviewRequest(request) {
     url.searchParams.get('compact') !== 'true' ||
     url.searchParams.get('include_leads') !== 'true' ||
     url.searchParams.get('max_price') !== '5.0' ||
-    url.searchParams.has('bbox')
+    url.searchParams.get('bbox') !== DEFAULT_OVERVIEW_BBOX
   ) {
     return false
   }
-  const allowed = new Set(['overview', 'compact', 'include_leads', 'max_price', 'force'])
+  const allowed = new Set(['overview', 'compact', 'include_leads', 'max_price', 'bbox', 'force'])
   return [...url.searchParams.keys()].every((key) => allowed.has(key))
 }
 

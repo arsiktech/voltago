@@ -68,6 +68,6 @@ struct DiscoveryMapControls: View {
     }
 
     private var showsSearchArea: Bool {
-        state.mode == .overview && state.visibleRegion.span.latitudeDelta < 4
+        state.mode == .overview && state.visibleRegion.bbox.supportsLiveLookup
     }
 }

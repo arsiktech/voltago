@@ -205,7 +205,7 @@ struct SheetView: View {
                 .listRowBackground(Color.clear)
             }
         case .idle:
-            Text("Type at least 3 characters to search Spain.")
+            Text("Type at least 3 characters to search worldwide.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .listRowBackground(Color.clear)
@@ -216,7 +216,7 @@ struct SheetView: View {
 
     private var resultsHeading: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(state.mode == .overview ? "Explore Spain" : "Chargers nearby")
+            Text(state.mode == .overview ? "Explore chargers" : "Chargers nearby")
                 .font(.title3.weight(.bold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
@@ -254,6 +254,13 @@ struct SheetView: View {
     /// Status notes scroll away with the results. Each one offers its fix as a button.
     @ViewBuilder
     private var statusRows: some View {
+        if state.resultsTruncated {
+            Text("Showing part of this area’s charger inventory. Zoom in or search a city to see more.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+        }
         if overviewFailed {
             StatusNote(tone: Theme.danger, systemImage: "exclamationmark.triangle.fill") {
                 Text("Known chargers could not be loaded")

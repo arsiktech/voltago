@@ -56,8 +56,12 @@ INTERNAL_ERROR = -32603
 HEADER_MISMATCH = -32020
 UNSUPPORTED_VERSION = -32022
 
-CONNECTOR_TYPES = ("Type 2", "CCS2", "CHAdeMO", "Tesla", "Schuko")
+CONNECTOR_TYPES = ("Type 2", "CCS2", "Type 1", "CCS1", "NACS", "GB/T AC", "GB/T DC", "CHAdeMO", "Tesla", "Schuko")
 _CONNECTOR_ALIASES = {
+    "ccs1": "ccs1", "ccs combo 1": "ccs1", "combo 1": "ccs1",
+    "type 1": "type 1", "type1": "type 1", "j1772": "type 1",
+    "nacs": "nacs", "j3400": "nacs",
+    "gb/t ac": "gb/t ac", "gb/t dc": "gb/t dc", "gbt ac": "gb/t ac", "gbt dc": "gb/t dc",
     "type 2": "type 2",
     "type2": "type 2",
     "mennekes": "type 2",
@@ -81,8 +85,8 @@ STATUS_CACHE_SECONDS = 120.0
 LIVE_STATUS_STALE_MINUTES = 180
 
 INSTRUCTIONS = (
-    "Volta Go finds EV chargers in Spain (mainland, Balearic and Canary Islands, "
-    "Ceuta and Melilla), free ones first. Every charger carries a `decision`: "
+    "Volta Go finds source-backed EV chargers worldwide, free ones first. "
+    "Coverage varies by country; live feeds are currently regional (Spain). Every charger carries a `decision`: "
     "`go` means live data shows it free or cheap, compatible and available now; "
     "`check` and `verify` mean it looks good but needs confirming; `lead` means a "
     "known place whose price or status is unconfirmed; `avoid` means do not route "
@@ -113,7 +117,7 @@ TOOLS: List[Dict[str, Any]] = [
         "name": "find_chargers",
         "title": "Find EV chargers",
         "description": (
-            "Search EV chargers in Spain near a place name or coordinates. Results are ordered "
+            "Search EV chargers worldwide near a place name or coordinates. Results are ordered "
             "by honesty first (route-ready live chargers before unconfirmed leads), then by "
             "distance. Filters never guess: a charger whose price, connector or power is unknown "
             "is excluded by that filter and counted in `excluded`."
@@ -123,11 +127,11 @@ TOOLS: List[Dict[str, Any]] = [
             "properties": {
                 "place": {
                     "type": "string",
-                    "description": "Place in Spain, e.g. 'Puerto de la Cruz' or 'Valencia airport'. Use this or lat/lon.",
+                    "description": "Place worldwide, e.g. 'Tokyo' or 'Valencia airport'. Use this or lat/lon.",
                     "maxLength": 120,
                 },
-                "lat": {"type": "number", "minimum": 27.0, "maximum": 44.5, "description": "Latitude (WGS 84)."},
-                "lon": {"type": "number", "minimum": -18.5, "maximum": 5.0, "description": "Longitude (WGS 84)."},
+                "lat": {"type": "number", "minimum": -90.0, "maximum": 90.0, "description": "Latitude (WGS 84)."},
+                "lon": {"type": "number", "minimum": -180.0, "maximum": 180.0, "description": "Longitude (WGS 84)."},
                 "radius_km": {"type": "number", "minimum": 0.5, "maximum": MAX_RADIUS_KM, "default": DEFAULT_RADIUS_KM},
                 "free_only": {
                     "type": "boolean",
@@ -170,8 +174,8 @@ TOOLS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "id": {"type": "string", "minLength": 1, "maxLength": 200},
-                "lat": {"type": "number", "minimum": 27.0, "maximum": 44.5},
-                "lon": {"type": "number", "minimum": -18.5, "maximum": 5.0},
+                "lat": {"type": "number", "minimum": -90.0, "maximum": 90.0},
+                "lon": {"type": "number", "minimum": -180.0, "maximum": 180.0},
             },
             "required": ["id"],
             "additionalProperties": False,
@@ -232,7 +236,7 @@ def _reject_unknown(args: Mapping[str, Any], tool: str) -> None:
 
 def _connector_key(label: Any) -> Optional[str]:
     text = " ".join(str(label or "").lower().replace("_", " ").split())
-    if not text:
+    if not text or "unspecified" in text or "unknown" in text:
         return None
     if text in _CONNECTOR_ALIASES:
         return _CONNECTOR_ALIASES[text]
@@ -256,6 +260,8 @@ def _row_power_kw(row: Mapping[str, Any], backend: Any) -> Optional[float]:
 
 
 def _price_now(row: Mapping[str, Any], backend: Any) -> Optional[float]:
+    if backend.station_currency(dict(row)) != "EUR":
+        return 0.0 if row.get("is_free") is True else None
     current = backend.safe_float(row.get("current_price_min"))
     if current is not None:
         return current
@@ -318,6 +324,7 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
         "name": row.get("name"),
         "address": row.get("address"),
         "city": row.get("city"),
+        "country_code": row.get("country_code") or row.get("country"),
         "lat": _round(row.get("lat"), 6),
         "lon": _round(row.get("lon"), 6),
         "distance_km": _round(row.get("distance_km"), 2),
@@ -342,8 +349,11 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
         },
         "price": {
             "is_free": row.get("is_free") is True,
-            "price_now_eur_kwh": _round(row.get("current_price_min"), 3),
-            "lowest_published_eur_kwh": _round(row.get("price_min"), 3),
+            "currency": backend.station_currency(dict(row)),
+            "price_native_min": _round(row.get("price_native_min"), 3),
+            "native_unit": (row.get("tariff") or {}).get("unit") or row.get("price_native_unit"),
+            "price_now_eur_kwh": _round(backend.euro_price(dict(row), "current_price_min"), 3),
+            "lowest_published_eur_kwh": _round(backend.euro_price(dict(row)), 3),
             "label": row.get("price_label"),
             "note": charge_claim.get("summary") or row.get("free_condition"),
             "source": charge_claim.get("source"),
@@ -425,17 +435,17 @@ def _summary_line(index: int, view: Mapping[str, Any]) -> str:
 
 def _resolve_origin(args: Mapping[str, Any], backend: Any) -> Tuple[float, float, Optional[str]]:
     place = _text(args, "place", max_len=120)
-    lat = _number(args, "lat", low=27.0, high=44.5)
-    lon = _number(args, "lon", low=-18.5, high=5.0)
+    lat = _number(args, "lat", low=-90.0, high=90.0)
+    lon = _number(args, "lon", low=-180.0, high=180.0)
     if (lat is None) != (lon is None):
         raise ToolInputError("Pass both `lat` and `lon`, or a `place`.")
     if lat is not None and lon is not None:
         return lat, lon, None
     if not place:
-        raise ToolInputError("Pass a `place` in Spain or `lat` and `lon`.")
+        raise ToolInputError("Pass a `place` or `lat` and `lon`.")
     results = backend.geocode_search(place, limit=1)
     if not results:
-        raise ToolInputError(f"No place in Spain matched {place!r}. Try a town name or pass lat/lon.")
+        raise ToolInputError(f"No place matched {place!r}. Try a town name or pass lat/lon.")
     best = results[0]
     return float(best["lat"]), float(best["lon"]), str(best.get("label") or place)
 
@@ -532,9 +542,13 @@ def find_chargers(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
         },
         "count": len(views),
         "total_matches": len(kept),
+        "total_matches_is_complete": not bool(meta.get("truncated")),
+        "truncated": bool(meta.get("truncated")),
+        "candidate_records": meta.get("candidate_records"),
         "chargers": views,
         "excluded": {k: v for k, v in excluded.items() if v},
         "live": {
+            "supported": coverage.get("supported", True),
             "fresh_live_data": bool(cache.get("fresh_live_authority")),
             "live_source_failed": bool(cache.get("live_failed")),
             "stale_live_rows": bool(cache.get("stale")),
@@ -543,7 +557,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
         "coverage_note": coverage.get("summary"),
         "warning": payload.get("warning"),
         "as_of": backend.now_iso(),
-        "scope": "Spain",
+        "scope": "worldwide",
         "caveat": "The provider app and signs at the site override this data. Only live_verified rows have live availability.",
     }
     header = f"{len(views)} of {len(kept)} chargers within {radius:g} km"
@@ -562,7 +576,21 @@ _ID_INDEX_LOCK = threading.Lock()
 
 def _stored_row(charger_id: str, backend: Any) -> Optional[Dict[str, Any]]:
     """Find an intelligence/seed row by id or merged id, returning a private copy."""
-    intel, _coords, seeds, _seed_coords = backend._intel_enriched_pool()
+    raw = backend.load_intelligence_meta()
+    intel = raw.get("records") or []
+    seeds = backend.load_seed_leads()
+    if isinstance(intel, backend.IndexedRecords):
+        row = intel.index.get_by_id(charger_id)
+        if row is not None:
+            row = backend._normalize_lead(row, "free/cheap intelligence DB")
+        else:
+            row = next((deepcopy(seed) for seed in seeds
+                        if charger_id in [str(seed.get("id"))] + list(seed.get("merged_ids") or [])), None)
+        if row is not None:
+            backend.apply_corroboration(row)
+            backend.attach_community_rows([row])
+            backend._refresh_time_derived_fields([row])
+        return row
     with _ID_INDEX_LOCK:
         if _ID_INDEX["pool"] is not intel:
             index: Dict[str, Tuple[int, int]] = {}
@@ -578,6 +606,8 @@ def _stored_row(charger_id: str, backend: Any) -> Optional[Dict[str, Any]]:
         return None
     table, position = hit
     row = deepcopy((intel, seeds)[table][position])
+    if table == 0:
+        row = backend._normalize_lead(row, "free/cheap intelligence DB")
     backend.apply_corroboration(row)
     backend.attach_community_rows([row])
     backend._refresh_time_derived_fields([row])
@@ -599,8 +629,8 @@ def get_charger(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
     charger_id = _text(args, "id", max_len=200)
     if not charger_id:
         raise ToolInputError("Pass the charger `id` from find_chargers.")
-    lat = _number(args, "lat", low=27.0, high=44.5)
-    lon = _number(args, "lon", low=-18.5, high=5.0)
+    lat = _number(args, "lat", low=-90.0, high=90.0)
+    lon = _number(args, "lon", low=-180.0, high=180.0)
     if (lat is None) != (lon is None):
         raise ToolInputError("Pass both `lat` and `lon`, or neither.")
 
@@ -658,7 +688,7 @@ def get_data_status(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
             intel = health.get("intelligence") or {}
             live_cache = health.get("live_cache") or {}
             cached = {
-                "scope": "Spain: mainland, Balearic and Canary Islands, Ceuta and Melilla",
+                "scope": "worldwide directory coverage; regional live feeds in Spain",
                 "dataset": {
                     "built_at": intel.get("generated_at"),
                     "records": intel.get("total_records"),
@@ -666,6 +696,8 @@ def get_data_status(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
                     "map_eligible": intel.get("map_eligible_records"),
                     "by_evidence_tier": {tier: row.get("total") for tier, row in (intel.get("by_tier") or {}).items()},
                     "top_sources": dict(list((intel.get("by_source") or {}).items())[:12]),
+                    "by_country": intel.get("by_country") or {},
+                    "source_manifest": health.get("source_manifest") or {},
                 },
                 "live_sources": {
                     name: {k: info.get(k) for k in ("name", "status", "has_payload", "age_seconds", "fresh", "stale", "error", "policy") if k in info}

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="See the charger data, countries and source integrations reported by this Volta Go service, with live coverage and compatibility limits.">
+  <title>Coverage &amp; sources — Volta Go</title>
+  <link rel="stylesheet" href="/coverage/coverage.css">
+  <script src="/coverage/coverage.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to coverage</a>
+  <header class="site-header"><a class="brand" href="/">Volta Go<span aria-hidden="true">.</span></a><a class="button secondary" href="/">Open charger map</a></header>
+  <main id="content">
+    <div class="page-heading"><div><p class="eyebrow">Data transparency</p><h1>Coverage &amp; sources</h1><p class="intro">What this service has loaded, where it has records, and which connections still need work.</p></div><button id="refresh" class="button" type="button">Refresh data</button></div>
+    <p id="load-status" class="load-status" role="status" aria-live="polite">Loading the current source inventory…</p>
+    <div id="error" class="notice error" role="alert" hidden></div>
+    <noscript><p class="notice">JavaScript is needed to load this service’s coverage. You can inspect the <a href="/api/sources">source inventory API</a> directly.</p></noscript>
+
+    <div id="inventory" hidden>
+      <dl class="metrics">
+        <div><dt>Dataset records</dt><dd id="record-count">—</dd></div>
+        <div><dt>Countries with records</dt><dd id="country-count">—</dd></div>
+        <div><dt>Map-eligible records</dt><dd id="map-count">—</dd></div>
+      </dl>
+      <p id="dataset-date" class="meta"></p>
+      <p class="notice">A record is evidence about a charging location. Counts can include multiple charging points at one site. They do not measure all chargers in a country, available bays, or direct operator partnerships. Map eligibility verifies location evidence, not a tariff or live status.</p>
+
+      <section aria-labelledby="sources-heading">
+        <div class="section-heading"><div><h2 id="sources-heading">Data currently loaded</h2><p>Source attribution in the deduplicated inventory, including curated leads. Its total can differ from the raw dataset count. Stored records can remain available when a collector has not run recently.</p></div><label class="search">Find a source<input id="source-filter" type="search" placeholder="Name or source" autocomplete="off"></label></div>
+        <p id="source-results" class="meta" role="status"></p>
+        <div class="table-wrap" role="region" aria-label="Loaded sources" tabindex="0"><table><thead><tr><th scope="col">Source</th><th scope="col" class="number">Records</th><th scope="col" class="number">Map eligible</th></tr></thead><tbody id="loaded-sources"></tbody></table></div>
+      </section>
+
+      <section aria-labelledby="adapters-heading">
+        <h2 id="adapters-heading">Worldwide collection connections</h2><p>Implementation and collection are separate. “Not run” means this deployment has no recorded collection run for that adapter. Stored data is never live availability.</p>
+        <div class="table-wrap" role="region" aria-label="Worldwide collection connections" tabindex="0"><table><thead><tr><th scope="col">Connection / scope</th><th scope="col">Collection status</th><th scope="col" class="number">Current records from adapter</th><th scope="col">Method / remaining requirement</th></tr></thead><tbody id="adapters"></tbody></table></div>
+        <details id="manifest-details"><summary>Collection run details</summary><p class="meta">Individual scopes can succeed, fail or be deferred independently. Accepted counts describe a run, not additional unique locations.</p><div class="table-wrap" role="region" aria-label="Collection runs" tabindex="0"><table><thead><tr><th scope="col">Source / scope</th><th scope="col">Result</th><th scope="col" class="number">Accepted</th><th scope="col">Collection notes</th></tr></thead><tbody id="manifests"></tbody></table></div></details>
+      </section>
+
+      <section aria-labelledby="countries-heading">
+        <div class="section-heading"><div><h2 id="countries-heading">Countries in this inventory</h2><p id="country-explanation">Counts come from the loaded source inventory, not a worldwide completeness estimate.</p></div><label class="search">Find a country<input id="country-filter" type="search" placeholder="Country name or code" autocomplete="off"></label></div>
+        <p id="country-results" class="meta" role="status"></p>
+        <div class="table-wrap" role="region" aria-label="Country coverage" tabindex="0"><table><thead><tr><th scope="col">Country</th><th scope="col">Code</th><th scope="col" class="number">Records</th></tr></thead><tbody id="countries"></tbody></table></div>
+      </section>
+
+      <section aria-labelledby="live-heading"><h2 id="live-heading">Live status has a smaller footprint</h2><p>Searching a place worldwide does not connect its operators’ live feeds. A missing cached response is not proof that an implemented connection is unavailable.</p><div class="table-wrap" role="region" aria-label="Live source coverage" tabindex="0"><table><thead><tr><th scope="col">Connection</th><th scope="col">Supported area</th><th scope="col">Current cache evidence</th></tr></thead><tbody id="live-sources"></tbody></table></div></section>
+
+      <section aria-labelledby="networks-heading"><h2 id="networks-heading">Networks, apps &amp; connections still needed</h2><p>An operator name in a station record does not mean its own API is connected. Navigation links, records from other sources and direct collection have different roles.</p><div class="table-wrap" role="region" aria-label="Networks and app integrations" tabindex="0"><table><thead><tr><th scope="col">Network / app</th><th scope="col">Integration</th><th scope="col">How it is used / what is missing</th></tr></thead><tbody id="networks"></tbody></table></div></section>
+    </div>
+
+    <section aria-labelledby="support-heading"><h2 id="support-heading">Connectors, vehicles &amp; product limits</h2><div class="table-wrap" role="region" aria-label="Product support" tabindex="0"><table><thead><tr><th scope="col">Area</th><th scope="col">Implemented support</th><th scope="col">Limit</th></tr></thead><tbody>
+      <tr><th scope="row">Connector standards</th><td>Type 1 / J1772, Type 2, CCS1, CCS2, CHAdeMO, NACS / J3400, GB/T AC, GB/T DC, Tesla and Schuko labels.</td><td>Shown when reported by a source. CCS1 and CCS2 are distinct; a generic Tesla connector label does not prove NACS compatibility.</td></tr>
+      <tr><th scope="row">Vehicle models</th><td>Connector evidence and limited Tesla compatibility checks.</td><td>No model-specific vehicle catalogue or universal compatibility guarantee. Confirm your vehicle, cable, adapter and site access.</td></tr>
+      <tr><th scope="row">Prices &amp; parking</th><td>Free and reported euro-price filters; separate parking evidence.</td><td>Other currencies are not converted. Unknown tariffs never count as free; charging may be free while parking is paid.</td></tr>
+      <tr><th scope="row">Web / PWA</th><td>Map, city search, location search, list, filters, source evidence and navigation links.</td><td>Wide views use bounded samples of stored data. Offline support caches the fixed starting area, not a worldwide catalogue.</td></tr>
+      <tr><th scope="row">Native iPhone app</th><td>iOS client implemented with map, search, filters, favourites and check-ins.</td><td>This API does not report App Store, TestFlight or device-install status.</td></tr>
+      <tr><th scope="row">Starting a charge</th><td>Links to provider pages and navigation apps.</td><td>Volta does not start charging sessions or take charging payments.</td></tr>
+    </tbody></table></div></section>
+  </main>
+  <footer><span>Volta Go · source evidence before driving</span><a href="/api/sources">Inspect source data</a><a href="/privacy/">Privacy</a></footer>
+</body>
+</html>

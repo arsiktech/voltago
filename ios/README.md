@@ -13,6 +13,12 @@ Go-now, and only map-pinned when their location is verified). This is the app's 
 hiding leads previously left the national overview empty (fixed 2026-07-18, WS-1). Detailed
 nonfatal source warnings live in Settings rather than competing with the route decision.
 
+Place search and map navigation work worldwide, with Spain as the initial region.
+Overview requests include the visible bounds instead of downloading a global catalog.
+Crossing the date line and reaching the poles preserve valid API coordinates; views wider
+than the backend's default live budget (1.2° latitude, longitude adjusted for latitude)
+load stored evidence. Geographic support does not imply live coverage or a verified tariff.
+
 ## Requirements
 - iOS 18.0 or later (iPhone XS/XR and newer), so drivers on older iPhones are covered. The
   only iOS 26+ APIs (Liquid Glass, and StoreKit's refund-type revocation detail on 26.4+)

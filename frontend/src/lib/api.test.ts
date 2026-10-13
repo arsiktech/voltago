@@ -18,9 +18,10 @@ const neighbor: Bbox = { south: 39.409, west: -0.409, north: 39.489, east: -0.32
 
 describe('chargers request identity', () => {
   it('preloads exactly the first overview request from index.html', () => {
-    // A drifted href would make the browser download the national list twice.
+    // A drifted href would download the initial area twice or fetch a global catalog.
     const href = indexHtml.match(/<link rel="preload" href="([^"]+)" as="fetch"/)?.[1]?.replaceAll('&amp;', '&')
-    expect(href).toBe(chargersUrl({ filters: DEFAULT_FILTERS, overview: true, compact: true }))
+    expect(href).toBe(chargersUrl({ filters: DEFAULT_FILTERS, overview: true, compact: true,
+      bbox: { south: 35.8, west: -9.6, north: 43.9, east: 3.4 } }))
   })
 
   it('keeps the exact bbox in the client cache key', () => {

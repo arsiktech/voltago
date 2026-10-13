@@ -30,13 +30,14 @@ def recordset_sha256(records: Iterable[Dict[str, Any]]) -> str:
         (record for record in records if isinstance(record, dict)),
         key=lambda record: str(record.get("id") or ""),
     )
-    encoded = json.dumps(
-        ordered,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    digest = hashlib.sha256(b"[")
+    for index, record in enumerate(ordered):
+        if index:
+            digest.update(b",")
+        digest.update(json.dumps(record, ensure_ascii=False, sort_keys=True,
+                                 separators=(",", ":")).encode("utf-8"))
+    digest.update(b"]")
+    return digest.hexdigest()
 
 
 def _canonical_family_matches(value: Any, exclusion: Dict[str, Any]) -> bool:

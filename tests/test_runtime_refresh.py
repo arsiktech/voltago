@@ -129,6 +129,7 @@ class RuntimeRefreshTests(unittest.TestCase):
             refresh.refresh(self.root, self.root / "data/runtime", 1)
 
     def test_failed_build_keeps_current_and_records_failure(self):
+        (self.run / "free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture"}]}))
         refresh.publish_bundle(self.state, self.run)
         with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
              mock.patch.object(refresh, "run_stage", side_effect=RuntimeError("fixture upstream failure")), \
@@ -201,6 +202,137 @@ class RuntimeRefreshTests(unittest.TestCase):
             self.assertEqual(refresh.refresh(self.root, self.state, 1, dry_run=True), 1)
         self.assertEqual(json.loads((self.state / "last.json").read_text()), {"real": True})
         self.assertFalse((self.state / "current").exists())
+
+
+class GlobalRuntimeRefreshTests(unittest.TestCase):
+    setUp = RuntimeRefreshTests.setUp
+    tearDown = RuntimeRefreshTests.tearDown
+    def configure_pipeline(self):
+        self.baseline = self.root / "data/free_intelligence.json"
+        self.baseline.write_text(json.dumps({"records": [{"id": "existing"}]}))
+        self.world = {"records": [{"id": "existing"}, {"id": "global_ocm_42"}],
+                      "geographic_scope": "global", "global_coverage": {"requested_sources_complete": True},
+                      "generated_at": "2026-10-13T00:00:00Z", "errors": []}
+        self.commands = []
+
+        def stage(root, run, name, argv, timeout):
+            self.commands.append((name, argv))
+            candidate = run / "free_intelligence.json"
+            if name == "build":
+                output = Path(argv[argv.index("--out") + 1])
+                output.write_text(json.dumps(self.world))
+                payload = {}
+            elif name == "delta":
+                payload = {"ok": True, "delta": {"missing_ids": 0}}
+            else:
+                sha = shared.sha256_file(candidate)
+                payload = {"ok": True, "candidate_reused": True, "candidate_sha256": sha,
+                           "candidate_sha256_after": sha, "baseline_sha256": shared.sha256_file(self.baseline)}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+        def reports(**kwargs):
+            kwargs["free_report"].write_text('{}')
+            kwargs["valencia_report"].write_text('{}')
+            return {"fixture": True}
+
+        def index(root, run, candidate, sha, records, timeout):
+            self.assertEqual(sha, shared.sha256_file(candidate))
+            self.assertEqual(records, 2)
+            (run / refresh.INDEX_NAME).write_bytes(b"fixture-index")
+            return {"source_sha256": sha, "records": records}
+
+        self.enterContext(mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}))
+        self.enterContext(mock.patch.object(refresh, "run_stage", side_effect=stage))
+        self.enterContext(mock.patch.object(refresh.shared, "generate_reports", side_effect=reports))
+        self.index_builder = self.enterContext(mock.patch.object(refresh, "build_runtime_index", side_effect=index))
+
+    def test_detects_global_baseline_and_rejects_spain_override(self):
+        for metadata in ({"geographic_scope": "global"}, {"global_coverage": {}}):
+            self.assertEqual(refresh.resolve_strategy("auto", metadata), "global")
+            with self.assertRaisesRegex(ValueError, "Spain-only"):
+                refresh.resolve_strategy("spain", metadata)
+        self.assertEqual(refresh.resolve_strategy("auto", {}), "spain")
+        self.assertEqual(refresh.resolve_strategy("auto", {}, {"geographic_scope": "global"}), "global")
+
+    def test_global_build_uses_current_baseline_and_pinned_revision(self):
+        self.configure_pipeline()
+        self.baseline.write_text(json.dumps({**self.world, "records": [{"id": "existing"}]}))
+        revision = "a" * 40
+        self.assertEqual(refresh.refresh(self.root, self.state, 1, ocm_revision=revision), 0)
+        command = self.commands[0][1]
+        self.assertIn("scripts/build_global_intelligence.py", command)
+        self.assertEqual(command[command.index("--baseline") + 1], str(self.baseline))
+        self.assertEqual(command[command.index("--ocm-revision") + 1], revision)
+        self.assertIn("candidate", Path(command[command.index("--out") + 1]).name)
+        receipt = json.loads((self.state / "last.json").read_text())
+        self.assertEqual(receipt["strategy"], "global")
+        self.assertEqual(receipt["ocm_revision"], revision)
+        self.assertIn("append-only", receipt["refresh_semantics"])
+        self.assertIn(refresh.INDEX_NAME, receipt["bundle_sha256"])
+        self.assertEqual((self.state / "current" / refresh.INDEX_NAME).read_bytes(), b"fixture-index")
+
+    def test_candidate_adoption_preserves_bytes_and_skips_collection(self):
+        self.configure_pipeline()
+        candidate = self.base / "reviewed.candidate.json"
+        candidate.write_text(json.dumps(self.world, indent=4) + "\n")
+        original = candidate.read_bytes()
+        self.assertEqual(refresh.refresh(self.root, self.state, 1, candidate_path=candidate), 0)
+        self.assertEqual(candidate.read_bytes(), original)
+        self.assertEqual((self.state / "current/free_intelligence.json").read_bytes(), original)
+        self.assertEqual([name for name, _ in self.commands], ["delta", "canary"])
+        receipt = json.loads((self.state / "last.json").read_text())
+        self.assertEqual(receipt["imported_candidate_sha256"], shared.sha256_file(candidate))
+        self.assertTrue(receipt["promoted"])
+
+    def test_failed_index_keeps_previous_bundle(self):
+        self.configure_pipeline()
+        self.index_builder.side_effect = RuntimeError("index mismatch")
+        self.assertEqual(refresh.refresh(self.root, self.state, 1, strategy="global"), 1)
+        self.assertFalse((self.state / "current").exists())
+        receipt = json.loads((self.state / "last.json").read_text())
+        self.assertEqual(receipt["stage"], "index")
+        self.assertFalse(receipt["promoted"])
+
+    def test_dry_run_global_does_not_publish_index_or_replace_receipt(self):
+        self.configure_pipeline()
+        (self.state / "last.json").write_text('{"previous":true}')
+        self.assertEqual(refresh.refresh(self.root, self.state, 1, strategy="global", dry_run=True), 0)
+        self.assertFalse((self.state / "current").exists())
+        self.assertEqual(json.loads((self.state / "last.json").read_text()), {"previous": True})
+        receipt = json.loads((self.state / "dry-run-last.json").read_text())
+        self.assertIn(refresh.INDEX_NAME, receipt["bundle_sha256"])
+        self.assertFalse(receipt["promoted"])
+
+    def test_changed_index_cannot_publish(self):
+        (self.run / refresh.INDEX_NAME).write_bytes(b"index")
+        hashes = {name: shared.sha256_file(self.run / name) for name in refresh.bundle_names(self.run)}
+        (self.run / refresh.INDEX_NAME).write_bytes(b"changed")
+        with self.assertRaisesRegex(RuntimeError, "changed"):
+            refresh.publish_bundle(self.state, self.run, hashes)
+        self.assertFalse((self.state / "current").exists())
+
+    def test_missing_gated_index_cannot_publish(self):
+        hashes = {name: shared.sha256_file(self.run / name) for name in refresh.bundle_names(self.run)}
+        hashes[refresh.INDEX_NAME] = "expected"
+        with self.assertRaisesRegex(RuntimeError, "changed"):
+            refresh.publish_bundle(self.state, self.run, hashes)
+        self.assertFalse((self.state / "current").exists())
+
+    def test_metadata_reader_counts_without_retaining_rows(self):
+        candidate = self.base / "candidate.json"
+        candidate.write_text(json.dumps({"records": [{"id": "one"}, {"id": "two"}], "total_records": 999}))
+        summary = refresh.dataset_summary(candidate)
+        self.assertEqual(summary["record_count"], 2)
+        self.assertNotIn("records", summary)
+
+    def test_runtime_index_is_bound_to_gated_json(self):
+        candidate = self.base / "indexed.candidate.json"
+        candidate.write_text(json.dumps({"records": [{"id": "fixture", "lat": 39.4, "lon": -0.4}]}))
+        result = refresh.build_runtime_index(ROOT, self.run, candidate, shared.sha256_file(candidate), 1, 30)
+        self.assertEqual(result["source_sha256"], shared.sha256_file(candidate))
+        (self.run / refresh.INDEX_NAME).unlink()
+        with self.assertRaisesRegex(RuntimeError, "exact gated candidate"):
+            refresh.build_runtime_index(ROOT, self.run, candidate, "wrong-gated-sha", 1, 30)
 
 
 class RuntimeAlertTests(unittest.TestCase):

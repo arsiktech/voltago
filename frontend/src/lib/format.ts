@@ -1,4 +1,5 @@
 import type { Bbox, ChargersResponse, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
+import { containsCoordinate } from './geo'
 
 /** Title-case a station name with Spanish locale, preserving small connectors. */
 export function displayName(name = ''): string {
@@ -273,6 +274,7 @@ function hasExactDirectoryLocation(st: Station): boolean {
 
   const url = (primary?.url || st.source_url || '').toLowerCase()
   return (
+    /^https:\/\/(?:www\.)?openchargemap\.org\/site\/poi\/details\/\d+(?:[/?#]|$)/.test(url) ||
     url.includes('map.electromaps.com') ||
     /electromaps\.com\/(?:en|es|fr|pt)\/p\//.test(url) ||
     url.includes('chargemap.com/')
@@ -499,7 +501,7 @@ export function passesFilters(st: Station, filters: Filters, search: string): bo
 export function inViewport(st: Station, bbox: Bbox | null): boolean {
   if (!bbox) return true
   if (typeof st.lat !== 'number' || typeof st.lon !== 'number') return true
-  return st.lat >= bbox.south && st.lat <= bbox.north && st.lon >= bbox.west && st.lon <= bbox.east
+  return containsCoordinate(bbox, { lat: st.lat, lon: st.lon })
 }
 
 export interface CorroborationInfo {
@@ -603,6 +605,7 @@ export function responseHasFreshLiveAuthority(response?: ChargersResponse): bool
 
 /** A successful HTTP response can still have no live authority after upstream failure/offline fallback. */
 export function responseHasNoLiveAuthority(response?: ChargersResponse): boolean {
+  if (response?.cache?.live_supported === false || response?.meta?.coverage?.mode === 'directory') return true
   if (response?.meta?.offline === true) return true
   const fresh = responseHasFreshLiveAuthority(response)
   if (response?.cache?.live_failed === true && !fresh) return true

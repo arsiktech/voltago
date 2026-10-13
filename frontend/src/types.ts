@@ -223,7 +223,7 @@ export interface Station {
 }
 
 export interface Coverage {
-  mode?: 'standard' | 'degraded'
+  mode?: 'standard' | 'degraded' | 'directory' | 'overview'
   live_route_ready?: number
   minimum_live_route_ready?: number
   lead_count?: number
@@ -235,6 +235,7 @@ export interface Coverage {
 }
 
 export interface ChargersMeta {
+  truncated?: boolean
   province?: string
   price_cap_eur_kwh?: number
   refresh_policy?: string
@@ -244,6 +245,7 @@ export interface ChargersMeta {
 }
 
 export interface CacheInfo {
+  live_supported?: boolean
   offline?: boolean
   hit?: boolean
   stale?: boolean

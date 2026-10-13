@@ -1,7 +1,7 @@
 # Volta Go MCP server
 
 Volta Go exposes a read-only [Model Context Protocol](https://modelcontextprotocol.io)
-endpoint so AI agents can find EV chargers in Spain with the same evidence and
+endpoint so AI agents can find EV chargers in the loaded catalogue with the same evidence and
 honesty rules the apps use.
 
 - **Endpoint:** `POST https://voltago.app/mcp` (Streamable HTTP, JSON responses).
@@ -9,7 +9,9 @@ honesty rules the apps use.
   (30 a minute by default).
 - **Scope:** read-only. No tool writes community data, starts a charging session
   or takes payment.
-- **Coverage:** Spain: mainland, Balearic and Canary Islands, Ceuta and Melilla.
+- **Coverage:** worldwide directory coordinates/search in this implementation;
+  actual countries depend on the loaded dataset. Live feeds retain their regional
+  coverage. The worldwide candidate does not establish a production rollout.
 
 ## Connect
 
@@ -28,12 +30,16 @@ For a local server (`python3 server.py`), use `http://127.0.0.1:8765/mcp`.
 
 | Tool | Use it to |
 |---|---|
-| `find_chargers` | Search near a place name (`place`) or coordinates (`lat`, `lon`) within `radius_km` (default 5, max 25). Optional filters: `free_only`, `max_price_eur_kwh`, `connector` (`Type 2`, `CCS2`, `CHAdeMO`, `Tesla`, `Schuko`), `min_power_kw`, `available_now`, `limit` (max 30). |
+| `find_chargers` | Search near a place name (`place`) or coordinates (`lat`, `lon`) within `radius_km` (default 5, max 25). Optional filters: `free_only`, `max_price_eur_kwh`, `connector` (`Type 1`, `Type 2`, `CCS1`, `CCS2`, `NACS`, `GB/T AC`, `GB/T DC`, `CHAdeMO`, `Tesla`, `Schuko`), `min_power_kw`, `available_now`, `limit` (max 30). |
 | `get_charger` | Read one charger's full evidence by `id`: every source and its claim, tariff windows, connectors, access, parking and community check-ins. Pass `lat` and `lon` too to refresh live status; they are required for chargers known only from a live feed. |
 | `get_data_status` | Check dataset build time, record counts by evidence tier, live-source cache state and collection policy before claiming coverage or freshness. |
 
 Each result has a short text summary for the model and the full data in
 `structuredContent`.
+
+Directory results do not imply current availability. Check truncation metadata
+before claiming an exhaustive nearby inventory. Foreign tariffs retain their
+native currency and units; the euro price filter does not perform FX conversion.
 
 ## How to read a charger
 

@@ -1,14 +1,21 @@
 # Volta Go
 
-A free-first EV charging decision tool for Spain. A Python standard-library API
+A free-first EV charging decision tool with worldwide directory support. A Python standard-library API
 combines live availability with source-backed intelligence; React and native iOS
 clients show charging price, parking conditions, freshness, and provenance.
 
-Live app: [voltago.app](https://voltago.app). Coverage is Spain only.
+Live app: [voltago.app](https://voltago.app). The worldwide expansion in this checkout
+is a local candidate, not evidence of a production rollout. Live integrations retain
+their regional coverage; a directory record does not establish current availability.
 
 This repository ships a small sample of charger records so tests and local runs
 work offline. Build the full dataset from public sources with
 `python3 scripts/ingest_sources.py`; see [data/README.md](data/README.md).
+
+For worldwide candidates, use `python3 scripts/build_global_intelligence.py
+--all-countries --sources ocm`. The build preserves its baseline, records per-source
+coverage and licences, and never promotes itself. See the [worldwide source matrix
+and runbook](docs/global-coverage.md) for additional adapters, validation and local serving.
 
 ## Run locally
 

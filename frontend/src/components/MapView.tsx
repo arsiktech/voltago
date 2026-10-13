@@ -6,6 +6,7 @@ import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { FeatureCollection, Point } from 'geojson'
 import type { Bbox, Coords, Station, Viewport } from '../types'
+import { mapBounds, normalizeBbox, wrapLongitude } from '../lib/geo'
 import {
   decisionLevel,
   hasVerifiedPrice,
@@ -785,9 +786,9 @@ export const MapView = memo(function MapView({
       const b = map.getBounds()
       const ctr = map.getCenter()
       onViewportRef.current?.({
-        bbox: { south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() },
+        bbox: normalizeBbox({ south: b.getSouth(), west: b.getWest(), north: b.getNorth(), east: b.getEast() }),
         zoom: map.getZoom(),
-        center: { lat: ctr.lat, lon: ctr.lng },
+        center: { lat: ctr.lat, lon: wrapLongitude(ctr.lng) },
         userInitiated: userViewportIntentRef.current !== null,
         userInitiatedAt: userViewportIntentRef.current ?? undefined,
       })
@@ -830,10 +831,7 @@ export const MapView = memo(function MapView({
       const target = flyTargetRef.current ?? start
       if (target?.bbox) {
         map.fitBounds(
-          [
-            [target.bbox.west, target.bbox.south],
-            [target.bbox.east, target.bbox.north],
-          ],
+          mapBounds(target.bbox),
           { padding: MAP_PADDING, maxZoom: 13, duration: 0 },
         )
       }
@@ -921,10 +919,7 @@ export const MapView = memo(function MapView({
     const reduce = prefersReducedMotion()
     if (flyTarget.bbox) {
       map.fitBounds(
-        [
-          [flyTarget.bbox.west, flyTarget.bbox.south],
-          [flyTarget.bbox.east, flyTarget.bbox.north],
-        ],
+        mapBounds(flyTarget.bbox),
         { padding: MAP_PADDING, maxZoom: 14, duration: reduce ? 0 : 800 },
       )
     } else {

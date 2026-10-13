@@ -1,6 +1,29 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Showing part of this area’s charger inventory. Zoom in or search a city to see more.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing part of this area’s charger inventory. Zoom in or search a city to see more."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se muestra parte de los cargadores de esta zona. Acerca el mapa o busca una ciudad para ver más."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показана часть зарядных станций в этой области. Увеличьте карту или найдите город, чтобы увидеть больше."
+          }
+        }
+      }
+    },
     "·": {
       "extractionState": "manual",
       "localizations": {
@@ -6748,25 +6771,25 @@
         }
       }
     },
-    "Type at least 3 characters to search Spain.": {
+    "Type at least 3 characters to search worldwide.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Type at least 3 characters to search Spain."
+            "value": "Type at least 3 characters to search worldwide."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Escribe al menos 3 caracteres para buscar en España."
+            "value": "Escribe al menos 3 caracteres para buscar en todo el mundo."
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Введите не менее 3 символов для поиска по Испании."
+            "value": "Введите не менее 3 символов для поиска по всему миру."
           }
         }
       }
@@ -8266,25 +8289,25 @@
         }
       }
     },
-    "Explore Spain": {
+    "Explore chargers": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Explore Spain"
+            "value": "Explore chargers"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Explora España"
+            "value": "Explora cargadores"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Исследуйте Испанию"
+            "value": "Найдите зарядные станции"
           }
         }
       }

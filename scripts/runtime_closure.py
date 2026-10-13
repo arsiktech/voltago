@@ -13,6 +13,8 @@ RUNTIME_FILES = (
     "community.py",
     "station_truth.py",
     "scripts/source_policy.py",
+    "scripts/json_recordset.py",
+    "scripts/intelligence_index.py",
     "scripts/source_transport.py",
     "data/free_intelligence.json",
     "data/seed_leads.json",

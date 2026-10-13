@@ -52,6 +52,7 @@ struct ChargersResponse: Decodable {
     var meta: Meta?
 
     struct Cache: Decodable, Equatable {
+        var liveSupported: Bool?
         var hit: Bool?
         var stale: Bool?
         var liveFailed: Bool?
@@ -64,6 +65,7 @@ struct ChargersResponse: Decodable {
 
     struct Meta: Decodable {
         var coverage: Coverage?
+        var truncated: Bool?
         struct Coverage: Decodable {
             var mode: String?
             var liveRouteReady: Int?
@@ -725,7 +727,8 @@ extension Station {
             return true
         }
         let url = (primarySource?.url ?? sourceUrl ?? "").lowercased()
-        return url.contains("map.electromaps.com")
+        return url.range(of: #"^https://(www\.)?openchargemap\.org/site/poi/details/\d+([/?#]|$)"#, options: .regularExpression) != nil
+            || url.contains("map.electromaps.com")
             || url.range(of: #"electromaps\.com/(en|es|fr|pt)/p/"#, options: .regularExpression) != nil
             || url.contains("chargemap.com/")
     }

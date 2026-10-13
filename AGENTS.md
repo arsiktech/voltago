@@ -1,9 +1,11 @@
 # Volta Go
 
-Help a driver in Spain find free chargers first, cheap options next, and decide
+Help a driver find free chargers first, cheap options next, and decide
 whether a stop is usable now. Keep availability, charging price, parking cost,
 provenance, and uncertainty clear. Product name: **Volta Go**; `Volta` remains the
 existing source, scheme, bundle, environment, and service identifier.
+Worldwide directory coverage grows through reviewed source adapters. Live feeds
+retain their actual regional scope; never equate a worldwide catalogue with live coverage.
 
 ## This repository is public
 

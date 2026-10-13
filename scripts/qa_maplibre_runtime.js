@@ -299,7 +299,7 @@ async function supportedMap(browser, mapChunk) {
   const finalRegion = await page.evaluate(() => ({ center: window.__qaMap.getCenter().toArray(), moving: window.__qaMap.isMoving() }));
   assert(!finalRegion.moving && Math.abs(finalRegion.center[0] + 15.8) < 1 && Math.abs(finalRegion.center[1] - 28.5) < 1, "Pending pan displaced the Canary camera");
   assert(await canary.getAttribute("aria-pressed") === "true", "Pending auto-area search overwrote the explicit region selection");
-  assert(await page.getByText("Explore Spain", { exact: true }).isVisible(), "Pending pan changed the region overview into a live area search");
+  assert(await page.getByText("Explore chargers", { exact: true }).isVisible(), "Pending pan changed the region overview into a live area search");
   assert(areaRequests.length === 0, "Pending pan issued a stale live query after the region choice");
   assert(await page.locator('[data-station="map-qa-canary"]').count() === 1 && await page.locator("[data-station]").count() === 1, "Region choice did not retain the Canary list scope");
   page.off("request", recordAreaRequest);

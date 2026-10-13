@@ -11,16 +11,25 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
+
+try:
+    from .json_recordset import load_json_recordset
+except ImportError:
+    from json_recordset import load_json_recordset
 
 
 UNKNOWN_CONNECTOR_LABELS = {"", "unknown", "unknown connector", "connector", "other", "n/a", "none"}
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def has_known_connector_label(record: dict[str, Any]) -> bool:
@@ -69,14 +78,6 @@ REQUIRED = {
     and bool((r.get("primary_source") or {}).get("action")),
     "photo": lambda r: bool(((r.get("media") or {}).get("photos") or [])),
 }
-
-
-def load_records(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    records = raw.get("records") if isinstance(raw, dict) else raw
-    if not isinstance(records, list):
-        raise SystemExit(f"{path} is not a Volta intelligence record list")
-    return [r for r in records if isinstance(r, dict)]
 
 
 def sample(rows: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
@@ -133,6 +134,63 @@ def gap_reason(record: dict[str, Any], key: str) -> str:
     return "missing required public-source evidence"
 
 
+def audit_records(path: Path, *, strict: bool = False) -> dict:
+    """Keep only aggregate counters and the same bounded examples as the report."""
+    total = free_count = limited_count = 0
+    by_source, by_photo_status, limited_by_source = Counter(), Counter(), Counter()
+    missing_counts = Counter()
+    reason_counts = {key: Counter() for key in REQUIRED}
+    missing_samples = {key: [] for key in REQUIRED}
+    reason_examples = {key: [] for key in REQUIRED}
+    source_gaps = {}
+
+    def consume(row):
+        nonlocal total, free_count, limited_count
+        if not isinstance(row, dict):
+            return None
+        total += 1
+        source = str(row.get("source") or "Unknown")
+        if row.get("price_claim_type") == "access_limited_free":
+            limited_count += 1
+            limited_by_source[source] += 1
+        if not row.get("is_free"):
+            return None
+        free_count += 1
+        by_source[source] += 1
+        by_photo_status[str((row.get("media") or {}).get("photo_status") or "missing_media")] += 1
+        source_gaps.setdefault(source, {key: 0 for key in REQUIRED})
+        for key, predicate in REQUIRED.items():
+            if predicate(row):
+                continue
+            missing_counts[key] += 1
+            source_gaps[source][key] += 1
+            reason = gap_reason(row, key)
+            reason_counts[key][reason] += 1
+            if len(missing_samples[key]) < 10:
+                item = sample([row], 1)[0]
+                missing_samples[key].append(item)
+                reason_examples[key].append({**item, "reason": reason})
+        return None
+
+    metadata = load_json_recordset(path, record_transform=consume, allow_root_array=True, strict_records=False)
+    if "records" not in metadata:
+        raise SystemExit(f"{path} is not a Volta intelligence record list")
+    coverage, gap_reasons, failures = {}, {}, []
+    for key in REQUIRED:
+        missing = missing_counts[key]
+        present = free_count - missing
+        coverage[key] = {"present": present, "missing": missing,
+                         "coverage_pct": round(present / free_count * 100 if free_count else 100.0, 2)}
+        gap_reasons[key] = {"counts": dict(reason_counts[key].most_common()), "examples": reason_examples[key]}
+        if strict and missing:
+            failures.append(f"{key}: {missing} free records missing")
+    return {"records": total, "free_records": free_count, "access_limited_free_records": limited_count,
+            "access_limited_free_by_source": dict(limited_by_source.most_common()),
+            "coverage": coverage, "by_source": dict(by_source.most_common()),
+            "by_photo_status": dict(by_photo_status.most_common()), "source_gaps": source_gaps,
+            "missing_samples": missing_samples, "gap_reasons": gap_reasons, "failures": failures}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data/free_intelligence.json")
@@ -145,60 +203,14 @@ def main() -> int:
     args = parser.parse_args()
 
     path = Path(args.data)
-    records = load_records(path)
-    free = [r for r in records if r.get("is_free")]
-    access_limited_free = [r for r in records if r.get("price_claim_type") == "access_limited_free"]
-    by_source = Counter(str(r.get("source") or "Unknown") for r in free)
-    by_photo_status = Counter(str((r.get("media") or {}).get("photo_status") or "missing_media") for r in free)
-    coverage: dict[str, Any] = {}
-    missing_samples: dict[str, Any] = {}
-    gap_reasons: dict[str, Any] = {}
-    failures: list[str] = []
-
-    for key, predicate in REQUIRED.items():
-        missing = [r for r in free if not predicate(r)]
-        present = len(free) - len(missing)
-        coverage[key] = {
-            "present": present,
-            "missing": len(missing),
-            "coverage_pct": round((present / len(free) * 100) if free else 100.0, 2),
-        }
-        missing_samples[key] = sample(missing)
-        reason_counts = Counter(gap_reason(r, key) for r in missing)
-        gap_reasons[key] = {
-            "counts": dict(reason_counts.most_common()),
-            "examples": [
-                {
-                    **item,
-                    "reason": gap_reason(row, key),
-                }
-                for row, item in zip(missing[:10], sample(missing))
-            ],
-        }
-        if args.strict and missing:
-            failures.append(f"{key}: {len(missing)} free records missing")
-
-    source_gaps: dict[str, dict[str, int]] = defaultdict(dict)
-    for source in by_source:
-        rows = [r for r in free if str(r.get("source") or "Unknown") == source]
-        for key, predicate in REQUIRED.items():
-            source_gaps[source][key] = sum(1 for r in rows if not predicate(r))
+    audit = audit_records(path, strict=args.strict)
+    failures = audit["failures"]
 
     result = {
         "ok": not failures,
         "data": args.data_label or str(path),
         "data_sha256": sha256_file(path),
-        "records": len(records),
-        "free_records": len(free),
-        "access_limited_free_records": len(access_limited_free),
-        "access_limited_free_by_source": dict(Counter(str(r.get("source") or "Unknown") for r in access_limited_free).most_common()),
-        "coverage": coverage,
-        "by_source": dict(by_source.most_common()),
-        "by_photo_status": dict(by_photo_status.most_common()),
-        "source_gaps": dict(source_gaps),
-        "missing_samples": missing_samples,
-        "gap_reasons": gap_reasons,
-        "failures": failures,
+        **audit,
         "policy": {
             "no_guessing": "Missing fields remain explicit gaps; this audit does not count placeholders as facts.",
             "photo": "Photo coverage requires a real public media URL in media.photos.",
@@ -212,10 +224,10 @@ def main() -> int:
     print(json.dumps({
         "ok": result["ok"],
         "out": str(out),
-        "free_records": len(free),
-        "access_limited_free_records": len(access_limited_free),
-        "coverage": coverage,
-        "top_sources": dict(by_source.most_common(8)),
+        "free_records": audit["free_records"],
+        "access_limited_free_records": audit["access_limited_free_records"],
+        "coverage": audit["coverage"],
+        "top_sources": dict(list(audit["by_source"].items())[:8]),
         "failures": failures,
     }, ensure_ascii=False, indent=2))
     return 0 if result["ok"] else 1

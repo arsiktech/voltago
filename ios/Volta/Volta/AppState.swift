@@ -47,6 +47,7 @@ final class AppState: NSObject, ObservableObject {
     @Published var liveCache: ChargersResponse.Cache?
     @Published var stations: [Station] = []
     @Published var leads: [Station] = []
+    @Published var resultsTruncated = false
     @Published var warning: String?
     /// Tracks whether `warning` currently holds the client-composed "can't reach the Volta
     /// server" message (set alongside `warning` at every assignment site below), so
@@ -281,11 +282,10 @@ final class AppState: NSObject, ObservableObject {
             }
         }
         if !connectorTypes.isEmpty {
-            let needles = connectorTypes.map { $0.lowercased() }
             rows = rows.filter { station in
-                let labels = (station.connectorLabels ?? []) + (station.connectors ?? []).compactMap { $0.type ?? $0.label }
+                let labels = (station.connectorLabels ?? []) + (station.connectors ?? []).flatMap { [$0.type, $0.label].compactMap { $0 } }
                 return labels.contains { label in
-                    needles.contains { label.lowercased().contains($0) }
+                    connectorTypes.contains { ConnectorKind.matches(label, selection: $0) }
                 }
             }
         }
@@ -426,10 +426,11 @@ final class AppState: NSObject, ObservableObject {
             return
         }
         do {
-            let resp = try await api.overview(maxPrice: maxPrice)
+            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox)
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
             if mode == .overview {
                 leads = resp.leads
+                resultsTruncated = resp.meta?.truncated == true
                 stations = resp.stations // [] by contract
                 previousRouteReadyCount = 0
                 dismissRouteMoment()
@@ -444,6 +445,7 @@ final class AppState: NSObject, ObservableObject {
                 // touching live's warning, stations, or route notice. A successful live response
                 // already owns its presentation and never satisfies this branch.
                 leads = resp.leads
+                resultsTruncated = resp.meta?.truncated == true
             }
             overviewState = .loaded
             recordFirstMeaningfulContentIfNeeded()
@@ -473,6 +475,7 @@ final class AppState: NSObject, ObservableObject {
         warningIsServerUnreachable = false
         stations = []
         leads = []
+        resultsTruncated = false
         dismissRouteMoment()
         previousRouteReadyCount = 0
         liveState = .idle
@@ -486,7 +489,7 @@ final class AppState: NSObject, ObservableObject {
     /// One-shot connectivity probe for the Settings sheet.
     func testConnection() async -> String {
         do {
-            _ = try await api.overview(maxPrice: maxPrice)
+            _ = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox)
             return String(localized: "✓ Connected — server and data reachable")
         } catch {
             return String(localized: "✗ Unreachable: \(error.localizedDescription)")
@@ -496,6 +499,20 @@ final class AppState: NSObject, ObservableObject {
 
     /// Enter/refresh live mode for the current viewport (debounced by the map's onEnd events).
     func fetchLive(reason: String = "") {
+        // Continental/world views use stored evidence; live providers have a local budget.
+        guard visibleRegion.bbox.supportsLiveLookup else {
+            liveTask?.cancel()
+            refreshTimer?.invalidate()
+            mode = .overview
+            stations = []
+            previousRouteReadyCount = 0
+            dismissRouteMoment()
+            liveState = .idle
+            liveQuality = .overview
+            liveCache = nil
+            Task { await loadOverview() }
+            return
+        }
         mode = .live
         liveTask?.cancel()
         let qualityBeforeRequest = liveQuality
@@ -528,6 +545,7 @@ final class AppState: NSObject, ObservableObject {
 
                 stations = currentStations
                 leads = resp.leads
+                resultsTruncated = resp.meta?.truncated == true
                 liveCache = resp.cache
                 warning = resp.warning ?? resp.meta?.coverage?.warning
                 warningIsServerUnreachable = false
@@ -560,6 +578,7 @@ final class AppState: NSObject, ObservableObject {
     }
 
     private static func liveQuality(for response: ChargersResponse) -> LiveQuality {
+        if response.cache?.liveSupported == false || response.meta?.coverage?.mode == "directory" { return .overview }
         if response.cache?.mixedLive == true { return .mixed }
         if response.cache?.freshLiveAuthority == true {
             if response.meta?.coverage?.mode == "degraded" { return .degraded }
@@ -768,11 +787,13 @@ final class AppState: NSObject, ObservableObject {
         clearSearch()
         let region: MKCoordinateRegion
         if let bb = result.bbox {
+            let bounds = BBox(south: bb.latitudeSw, west: bb.longitudeSw,
+                              north: bb.latitudeNe, east: bb.longitudeNe)
             region = MKCoordinateRegion(
-                center: .init(latitude: (bb.latitudeSw + bb.latitudeNe) / 2,
-                              longitude: (bb.longitudeSw + bb.longitudeNe) / 2),
-                span: .init(latitudeDelta: max(0.04, (bb.latitudeNe - bb.latitudeSw) * 1.2),
-                            longitudeDelta: max(0.04, (bb.longitudeNe - bb.longitudeSw) * 1.2))
+                center: .init(latitude: (bounds.south + bounds.north) / 2,
+                              longitude: bounds.centerLongitude),
+                span: .init(latitudeDelta: min(180, max(0.04, (bounds.north - bounds.south) * 1.2)),
+                            longitudeDelta: min(360, max(0.04, bounds.longitudeSpan * 1.2)))
             )
         } else {
             region = MKCoordinateRegion(center: .init(latitude: result.lat, longitude: result.lon),
@@ -935,7 +956,7 @@ extension AppState: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last else { return }
+        guard let loc = locations.last, CLLocationCoordinate2DIsValid(loc.coordinate) else { return }
         Task { @MainActor in
             #if DEBUG
             if let override = Self.debugLocationOverride {

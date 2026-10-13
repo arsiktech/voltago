@@ -19,17 +19,35 @@ def normalize_connector_label(token: Any) -> Optional[str]:
     if not raw:
         return None
     normalized = raw.upper()
+    if ("CCS" in normalized or "COMBO" in normalized) and "UNSPECIFIED" in normalized:
+        return "CCS (unspecified)"
+    # The two CCS standards are physically different. Match explicit Type 1
+    # before the legacy European shorthand so a US plug never becomes CCS2.
+    if ("CCS" in normalized or "COMBO" in normalized) and re.search(
+        r"(?:CCS[ _-]*1|(?:TYPE[ _-]*|T)1(?:\b|_)|J1772)", normalized
+    ):
+        return "CCS1"
     if "CCS" in normalized or "COMBO" in normalized:
         return "CCS2"
     if "CHADEMO" in normalized:
         return "CHAdeMO"
+    if "NACS" in normalized or "J3400" in normalized or (
+        "TESLA" in normalized and "NORTH AMERICA" in normalized
+    ):
+        return "NACS"
+    if re.search(r"GB[ /_-]*T", normalized):
+        if "DC" in normalized or "20234.3" in normalized:
+            return "GB/T DC"
+        if "AC" in normalized or "20234.2" in normalized:
+            return "GB/T AC"
+        return "GB/T"
     if "TESLA" in normalized:
         return "Tesla"
     if any(alias in normalized for alias in ("T2", "MENNEKES", "TYPE 2", "TIPO 2")):
         return "Type 2"
     if any(alias in normalized for alias in ("SCHUKO", "SHUKO", "DOMESTIC", "SCEE")):
         return "Schuko"
-    if "T1" in normalized:
+    if "T1" in normalized or "TYPE 1" in normalized or "J1772" in normalized:
         return "Type 1"
     return raw.replace("_", " ").title()
 

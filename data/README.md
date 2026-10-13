@@ -26,3 +26,19 @@ This queries public sources only, applies `source_policy_exclusions.json`, and w
 `data/free_intelligence.json`. Do not commit a full build: several sources have not
 granted bulk redistribution. See [DEPLOY.md](../DEPLOY.md) for the gated refresh that
 production uses.
+
+## Worldwide candidates
+
+`python3 scripts/build_global_intelligence.py --all-countries --sources ocm`
+adds eligible records from the current OpenChargeMap export to the existing
+baseline, using disk-backed staging and bounded downloads. The default export is
+pinned to a reviewed Git revision; pass `--ocm-revision` to advance it explicitly.
+It writes `global_intelligence.candidate.json` and a matching manifest, never the
+canonical dataset. Large generated files and caches remain local.
+
+Additional adapters support bounded OpenStreetMap queries and official national
+datasets. The [source matrix and runbook](../docs/global-coverage.md) distinguishes
+populated sources, implemented adapters, credential requirements and exclusions.
+Run the delta/canary gates against the exact candidate before local activation or
+any separately authorized production promotion. Preserve each original source's
+attribution and reuse obligations, including ODbL obligations for OSM-derived data.

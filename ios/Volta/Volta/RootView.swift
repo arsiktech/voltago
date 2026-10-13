@@ -18,7 +18,7 @@ struct RootView: View {
     var body: some View {
         GeometryReader { proxy in
             // The map frames its content in the part the medium sheet leaves visible, so
-            // Spain, a searched city or a chosen charger lands above the sheet, not under it.
+            // The initial region, searched city or chosen charger lands above the sheet.
             MapLayer(onSelect: select)
                 .safeAreaPadding(.top, 56)
                 .safeAreaPadding(.bottom, proxy.size.height * 0.46)
@@ -157,8 +157,10 @@ struct MapLayer: View {
         }
         .onGeometryChange(for: CGSize.self) { $0.size } action: { mapSize = $0 }
         .onMapCameraChange(frequency: .onEnd) { ctx in
+            let areaChanged = state.visibleRegion.bbox != ctx.region.bbox
             state.visibleRegion = ctx.region
             if state.mode == .live { state.fetchLive(reason: "pan") }
+            else if areaChanged { Task { await state.loadOverview() } }
         }
         // Sparing: pin and cluster taps are the only map haptic; pan, zoom and locate stay silent.
         .sensoryFeedback(.selection, trigger: mapTapFeedback)

@@ -266,7 +266,7 @@ class AgentMcpHttpTests(unittest.TestCase):
         result = self.call("find_chargers", {"lat": ORIGIN_LAT})
         self.assertTrue(result["isError"])
         self.assertIn("lon", result["content"][0]["text"])
-        result = self.call("find_chargers", {"lat": 51.5, "lon": -0.1})
+        result = self.call("find_chargers", {"lat": 91.0, "lon": -0.1})
         self.assertTrue(result["isError"])
         result = self.call("find_chargers", {"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "connector": "NACS-ish"})
         self.assertTrue(result["isError"])
