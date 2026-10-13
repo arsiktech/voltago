@@ -416,17 +416,29 @@ def _summaries_uncached() -> Dict[str, Any]:
         now = datetime.now(timezone.utc)
         fresh_cut = now - timedelta(days=FRESH_DAYS)
         fail_cut = now - timedelta(days=DOWNGRADE_WINDOW_DAYS)
+        # Count all stations in one query. Looking this up inside the station
+        # loop made every summary refresh perform one extra query per station.
+        recent_failure_counts = {
+            row["station_id"]: row["n"]
+            for row in conn.execute(
+                "SELECT failures.station_id, COUNT(*) AS n FROM checkins AS failures"
+                " LEFT JOIN (SELECT station_id, MAX(created_at) AS last_success"
+                " FROM checkins WHERE status='active' AND verdict='charged'"
+                " GROUP BY station_id) AS successes USING(station_id)"
+                " WHERE failures.status='active'"
+                " AND failures.verdict IN ('failed','offline','blocked')"
+                " AND failures.created_at>=?"
+                " AND (successes.last_success IS NULL OR failures.created_at>successes.last_success)"
+                " GROUP BY failures.station_id",
+                (fail_cut.isoformat(timespec="seconds"),),
+            )
+        }
         for sid, summary in stations.items():
             block = summary["checkins"]
             last_success = _parse_iso(block["last_success_at"])
             last_failure = _parse_iso(block["last_failure_at"])
             summary["recent_success"] = bool(last_success and last_success >= fresh_cut)
-            recent_failures = conn.execute(
-                "SELECT COUNT(*) AS n FROM checkins WHERE status='active' AND station_id=?"
-                " AND verdict IN ('failed','offline','blocked') AND created_at>=?"
-                " AND (? IS NULL OR created_at>?)",
-                (sid, fail_cut.isoformat(timespec="seconds"), block["last_success_at"], block["last_success_at"]),
-            ).fetchone()["n"]
+            recent_failures = recent_failure_counts.get(sid, 0)
             failure_after_success = bool(last_failure and (last_success is None or last_failure > last_success))
             summary["recent_failure"] = bool(recent_failures and failure_after_success and last_failure and last_failure >= fail_cut)
             summary["recent_failure_count"] = recent_failures if summary["recent_failure"] else 0

@@ -3866,6 +3866,109 @@ def compact_station_for_ui(station: Dict[str, Any]) -> Dict[str, Any]:
     return row
 
 
+# Opt-in first-paint contract: every closed-card, map, filter and safety field stays
+# available. Long provenance, photos and ingestion mirrors are fetched only when a
+# driver opens Details. Keep short attribution references even in offline summaries.
+SUMMARY_OVERVIEW_FIELDS = frozenset("""
+    id name operator owner city address lat lon
+    price_min price_max current_price_min price_label is_free is_cheap free_condition price_claim_type
+    tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
+    status available total_evse source source_url source_label primary_source source_count reliability confidence
+    claim_conflict parking access verification decision pricing price_window_status
+    freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
+""".split())
+SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution"})
+# Community generations are process-local. A restart must not accidentally accept
+# an old token merely because its write counter has reached the same value again.
+_DETAIL_SNAPSHOT_PROCESS = os.urandom(16).hex()
+
+
+def catalogue_detail_snapshot() -> str:
+    """Opaque binding to one immutable catalogue, seeds, policy and community state.
+
+    No large JSON/index hashing or catalogue enumeration on the request path. The
+    resolved path and inode/stat identity bind the published immutable bundle;
+    seed and policy replacements are also detected. Private paths are only hashed.
+    """
+    def identity(path: Path) -> Any:
+        path = path.resolve()
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            return [str(path), None]
+        return [str(path), stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+
+    binding = [
+        "directory-detail-v1", _DETAIL_SNAPSHOT_PROCESS,
+        identity(intelligence_path()), identity(DATA / "seed_leads.json"),
+        identity(DATA / "source_policy_exclusions.json"),
+        intelligence_health_fingerprint(), community_store.generation(),
+    ]
+    return hashlib.sha256(json.dumps(binding, separators=(",", ":")).encode()).hexdigest()
+
+
+def summary_station_for_ui(station: Dict[str, Any], snapshot: str) -> Dict[str, Any]:
+    row = {key: value for key, value in station.items() if key in SUMMARY_OVERVIEW_FIELDS}
+    if isinstance(station.get("sources"), list):
+        row["sources"] = [
+            {key: value for key, value in source.items() if key in SUMMARY_SOURCE_FIELDS}
+            for source in station["sources"] if isinstance(source, dict)
+        ]
+    row["detail_snapshot"] = snapshot
+    return row
+
+
+def station_detail_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
+    """Stored directory disclosure only; exact canonical IDs, never live/upstream I/O."""
+    identifiers, snapshots = params.get("id") or [], params.get("snapshot") or []
+    if (len(identifiers) != 1 or len(snapshots) != 1
+            # Existing imported canonical IDs can exceed the community-write
+            # limit (128). A bounded read lookup must still address those rows.
+            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,255}", identifiers[0])
+            or not re.fullmatch(r"[0-9a-f]{64}", snapshots[0])):
+        return 400, {"error": "invalid_station_request"}
+    identifier, requested_snapshot = identifiers[0], snapshots[0]
+    snapshot = catalogue_detail_snapshot()
+    if not hmac.compare_digest(requested_snapshot, snapshot):
+        return 409, {"error": "snapshot_changed"}
+
+    records = load_intelligence_meta().get("records") or []
+    matches: List[Tuple[Dict[str, Any], str]] = []
+    if isinstance(records, IndexedRecords):
+        # The general index lookup resolves merged aliases. Details intentionally
+        # require a unique canonical row, so an alias or duplicate ID cannot open
+        # another station's evidence. This uses station_identifiers, not a scan.
+        with records.index.connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM stations WHERE identifier=? ORDER BY seq LIMIT 2", (identifier,),
+            ).fetchall()
+        matches.extend((records.index.decode(row[0]), "free/cheap intelligence DB") for row in rows)
+    else:
+        for row in records:
+            if str(row.get("id") or "") == identifier:
+                matches.append((row, "free/cheap intelligence DB"))
+                if len(matches) > 1:
+                    break
+    matches.extend((row, "manual research lead") for row in _raw_seed_records()
+                   if str(row.get("id") or "") == identifier)
+    if len(matches) != 1:
+        return 404, {"error": "not_found"}
+    raw, default_source = matches[0]
+    if not source_policy_record_allowed(raw):
+        return 404, {"error": "not_found"}
+    station = _normalize_lead(deepcopy(raw), default_source)
+    if reject_station_reason(station):
+        return 404, {"error": "not_found"}
+    _refresh_time_derived_fields(attach_community_rows([station]))
+    apply_corroboration(station)
+    station["recommendation_score"] = recommendation_score(station)
+    # Publication/community changes while the row was decoded must never pair a
+    # newer disclosure with the caller's older card (even with the same ID).
+    if not hmac.compare_digest(snapshot, catalogue_detail_snapshot()):
+        return 409, {"error": "snapshot_changed"}
+    return 200, {"station": station, "snapshot": snapshot}
+
+
 def overview_candidates(bbox: Dict[str, float], price_cap: float, fast_only: bool, origin: Optional[Tuple[float, float]] = None) -> Tuple[List[Dict[str, Any]], int]:
     raw = load_intelligence_meta()
     records = raw.get("records")
@@ -3917,6 +4020,8 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         "latitude_ne": SPAIN_BBOX["latitude_ne"], "longitude_ne": SPAIN_BBOX["longitude_ne"],
     }
     compact = (params.get("compact") or ["false"])[0].lower() == "true"
+    summary = compact and (params.get("summary") or ["false"])[0].lower() == "true"
+    snapshot = catalogue_detail_snapshot() if summary else None
     free_only = (params.get("free_only") or ["false"])[0].lower() == "true"
     price_cap = 0.0 if free_only else max_price
     out: List[Dict[str, Any]] = []
@@ -3969,6 +4074,11 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
         "cache": {"hit": False, "overview": True},
         "warning": None,
     }
+    if summary:
+        if not hmac.compare_digest(snapshot, catalogue_detail_snapshot()):
+            return 409, {"error": "snapshot_changed"}
+        payload["leads"] = [summary_station_for_ui(row, snapshot) for row in out]
+        payload["meta"]["summary"] = True
     return 200, payload
 
 
@@ -4000,6 +4110,8 @@ STATIC_GZ_CACHE: Dict[Any, bytes] = {}
 def overview_response_bytes(params: Dict[str, List[str]], max_price: float, fast_only: bool) -> Tuple[int, bytes, Optional[bytes]]:
     db = intelligence_path()
     seeds = DATA / "seed_leads.json"
+    summary = ((params.get("compact") or ["false"])[0].lower() == "true"
+               and (params.get("summary") or ["false"])[0].lower() == "true")
     base_key = (
         (str(db), db.stat().st_mtime_ns) if db.exists() else None,
         seeds.stat().st_mtime if seeds.exists() else 0,
@@ -4007,6 +4119,8 @@ def overview_response_bytes(params: Dict[str, List[str]], max_price: float, fast
         fast_only,
         (params.get("free_only") or ["false"])[0].lower() == "true",
         (params.get("compact") or ["false"])[0].lower() == "true",
+        catalogue_detail_snapshot() if summary else None,
+        community_store.generation(),
         safe_float((params.get("lat") or [None])[0]),
         safe_float((params.get("lon") or [None])[0]),
         # Serialized rows carry minute-derived evidence age. Keep fast repeated
@@ -4029,6 +4143,8 @@ def overview_response_bytes(params: Dict[str, List[str]], max_price: float, fast
     status, payload = overview_response(params, max_price, fast_only)
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     gz = gzip_lib.compress(body, 6)
+    if status != 200:
+        return status, body, gz
     with _CACHE_LOCKS["overview"]:
         cache[key] = {"status": status, "json": body, "gz": gz}
         while len(cache) > cap:
@@ -5329,7 +5445,7 @@ def source_catalog_payload() -> Dict[str, Any]:
 # are the sensitive part), while leaving every other logged path -- and the client IP,
 # which log_message logs separately via address_string() -- untouched. Operates on the
 # fully-formatted message so it is agnostic to exactly which fmt/args produced it.
-_LOG_QUERY_STRIP_RE = re.compile(r"(/api/(?:geocode|chargers))\?\S*")
+_LOG_QUERY_STRIP_RE = re.compile(r"(/api/(?:geocode|chargers|station))\?\S*")
 
 
 def _sanitize_log_line(message: str) -> str:
@@ -5538,6 +5654,11 @@ class Handler(BaseHTTPRequestHandler):
             attach_community_rows(payload.get("stations") or [])
             if status == 200 and (params.get("free_only") or ["false"])[0].lower() == "true":
                 payload = apply_free_only_filter(payload)
+            return self.send_json(status, payload)
+        if path == "/api/station":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
+            status, payload = station_detail_response(params)
             return self.send_json(status, payload)
         if path == "/api/free-registry":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
@@ -5855,7 +5976,7 @@ class VoltaHTTPServer(ThreadingHTTPServer):
 # The SPA's first request (preloaded by frontend/index.html). Its serialized body is keyed
 # per minute (row ages), so without a warm-up the first visitor each minute, and the first
 # after a restart, paid the full enrich+serialize+gzip before seeing any charger.
-DEFAULT_OVERVIEW_QUERY = "include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true"
+DEFAULT_OVERVIEW_QUERY = "include_leads=true&max_price=5.0&overview=true&bbox=35.8%2C-9.6%2C43.9%2C3.4&compact=true&summary=true"
 
 
 def warm_default_overview_forever() -> None:
