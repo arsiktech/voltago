@@ -971,7 +971,7 @@ extension AppState: CLLocationManagerDelegate {
             self.locationState = .located
             self.userCoordinate = loc.coordinate
             let region = MKCoordinateRegion(center: loc.coordinate,
-                                            span: .init(latitudeDelta: 0.16, longitudeDelta: 0.16))
+                                            latitudinalMeters: 1_200, longitudinalMeters: 1_200)
             self.visibleRegion = region
             withAnimation(self.cameraAnimation) { self.camera = .region(region) }
             self.fetchLive(reason: "locate")

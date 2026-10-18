@@ -400,7 +400,7 @@ export default function App() {
       setOrigin({ coords, label: 'your location', kind: 'device' })
       setOverview(false)
       setCommittedBbox(boxAround(coords, 0.18))
-      setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 13, nonce: Date.now() })
+      setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 16, nonce: Date.now() })
     })
   }
 
