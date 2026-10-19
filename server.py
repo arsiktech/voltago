@@ -937,7 +937,15 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
         # free/cheap option. They are never green: the price standard is not met or unknown.
         price = safe_float(item.get("price_min"))
         if price is None:
-            return {"level": "lead", "label": "Price lead", "reason": "No source publishes a tariff for this charger; check the price in the operator app before charging."}
+            tariff = item.get("tariff_details") or {}
+            hourly = safe_float(tariff.get("hour_eur"))
+            if hourly is not None and hourly >= 0:
+                reason = "No unconditional energy price is published. This source lists an hourly tariff; check its conditions before charging."
+            elif tariff.get("text") or tariff.get("components") or tariff.get("conditions") or tariff.get("minimum_eur") is not None:
+                reason = "The source publishes tariff conditions but no unconditional price per kWh; check its conditions before charging."
+            else:
+                reason = "No source publishes a tariff for this charger; check the price in the operator app before charging."
+            return {"level": "lead", "label": "Price lead", "reason": reason}
         return {"level": "lead", "label": "Paid", "reason": f"Charging costs €{price:.2f}/kWh, above the €{PRICE_MAX_DEFAULT:.2f}/kWh free/cheap standard; confirm the price in the operator app."}
     if access.get("level") in {"restricted", "unknown"}:
         return {"level": "verify", "label": "Verify first", "reason": access["note"]}
@@ -995,7 +1003,10 @@ def attach_connector_summary(item: Dict[str, Any]) -> Dict[str, Any]:
         if power_kw:
             power_values.append(power_kw)
 
-    snapshot_mode = (item.get("source_integration") or {}).get("mode") in {"community_snapshot", "community_tags", "official_snapshot"}
+    integration = item.get("source_integration") or {}
+    snapshot_mode = integration.get("mode") in {
+        "community_snapshot", "community_tags", "official_snapshot", "public_map_snapshot",
+    } or (item.get("lead") is True and integration.get("live_status_integrated") is False)
     if snapshot_mode and connectors:
         counts = [safe_float(connector.get("count")) for connector in connectors]
         complete = all(value is not None and value > 0 and value.is_integer() for value in counts)
@@ -3874,7 +3885,7 @@ SUMMARY_OVERVIEW_FIELDS = frozenset("""
     price_min price_max current_price_min price_label is_free is_cheap free_condition price_claim_type
     tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
     status available total_evse source source_url source_label primary_source source_count reliability confidence
-    claim_conflict parking access verification decision pricing price_window_status
+    claim_conflict parking access verification decision pricing price_window_status tariff_details
     freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
 """.split())
 SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution"})

@@ -1,13 +1,29 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Station } from '../types'
 import { stationDetailsQueryOptions, TransportError } from '../lib/api'
-import { stationPhoto } from '../lib/format'
+import { connectorInventoryText, publicWebUrl, stationPhoto } from '../lib/format'
 import { stationTitle } from '../lib/provider'
 import { SourceProvenance } from './SourceProvenance'
 
 function Evidence({ st }: { st: Station }) {
   const photo = stationPhoto(st)
   return <>
+    {st.connectors && st.connectors.length > 0 && (
+      <section className="mt-3 space-y-2" aria-label="Connector inventory">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Connectors</h3>
+        <ul className="space-y-1.5 text-sm text-fg-soft">
+          {st.connectors.map((connector, index) => {
+            const source = publicWebUrl(connector.source_url)
+            return <li key={`${connector.connector_id || 'connector'}:${index}`}>
+              <span>{connectorInventoryText(connector)}</span>
+              {source && <a href={source} target="_blank" rel="noopener noreferrer"
+                className="ml-2 inline-flex min-h-11 items-center font-medium text-brand-strong underline">View connector source</a>}
+            </li>
+          })}
+        </ul>
+        <p className="text-xs text-muted">Source-reported hardware. Current socket availability is not verified by these details.</p>
+      </section>
+    )}
     {photo && (
       <div className="mt-3 overflow-hidden rounded-xl border border-border bg-surface-2"
         title={`Public source photo via ${photo.source}. May be stale; onsite view wins.`}>

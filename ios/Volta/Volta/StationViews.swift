@@ -102,6 +102,12 @@ struct StationPriceBlock: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if !station.tariffNotes.isEmpty {
+                Text(station.tariffNotes.joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .accessibilityElement(children: .combine)
     }
@@ -397,27 +403,114 @@ struct StationDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     ForEach(Array(connectors.enumerated()), id: \.offset) { _, c in
-                        HStack {
-                            Circle()
-                                .fill(station.canShowLiveAvailability ? connectorColor(c.status) : Color.secondary)
-                                .frame(width: 8, height: 8)
-                            Text(c.label ?? c.type ?? "Plug")
-                                .font(.subheadline)
-                            Spacer()
-                            if let kw = c.powerKw {
-                                Text("\(Int(kw)) kW")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .monospacedDigit()
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Circle()
+                                    .fill(station.canShowLiveAvailability ? connectorColor(c.status) : Color.secondary)
+                                    .frame(width: 8, height: 8)
+                                Text(c.inventoryLabel)
+                                    .font(.subheadline)
+                                Spacer()
+                                if let power = c.powerText {
+                                    Text(power)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                }
+                                if station.canShowLiveAvailability, let s = c.status {
+                                    Text(s.replacingOccurrences(of: "_", with: " ").lowercased())
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            if station.canShowLiveAvailability, let s = c.status {
-                                Text(s.replacingOccurrences(of: "_", with: " ").lowercased())
+                            // Label, quantity, power and status form one VoiceOver stop.
+                            .accessibilityElement(children: .combine)
+                            if let source = c.safeSourceURL {
+                                Link("View connector source", destination: source)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Theme.actionInk)
+                                    .frame(minHeight: 44)
                             }
                         }
-                        // One VoiceOver stop per connector (label + power + status combined).
-                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+
+            if !station.sourcePageConnectors.isEmpty {
+                Section("Source-page connectors") {
+                    if let name = station.sourceDetails?.sourceName, !name.isEmpty {
+                        Text(name).font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let count = station.sourceDetails?.connectorCount, count > 0 {
+                        Text("Published sockets: \(count)")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(station.sourcePageConnectors.enumerated()), id: \.offset) { _, connector in
+                        if let source = connector.safeSourceURL {
+                            Link(destination: source) {
+                                Text(connector.inventoryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.actionInk)
+                            .frame(minHeight: 44)
+                        } else {
+                            Text(connector.inventoryText)
+                                .font(.subheadline)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            if let tariff = station.tariffDetails, tariff.text?.isEmpty == false || !station.tariffNotes.isEmpty {
+                Section("Charging tariff") {
+                    if let text = tariff.text, !text.isEmpty {
+                        Text(text).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                    }
+                    ForEach(station.tariffNotes, id: \.self) { note in
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let source = tariff.safeSourceURL {
+                        Link("View tariff source", destination: source)
+                            .foregroundStyle(Theme.actionInk)
+                            .frame(minHeight: 44)
+                    }
+                }
+            }
+
+            if let details = station.sourceDetails {
+                Section("Charger information") {
+                    if let description = details.description, !description.isEmpty {
+                        Text(description).font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let hours = details.openingHours, !hours.isEmpty {
+                        row(icon: "clock", title: String(localized: "Opening hours"), detail: hours)
+                    }
+                    if let access = details.access, !access.isEmpty {
+                        row(icon: "figure.walk", title: String(localized: "Access"), detail: access)
+                    }
+                    if let contact = details.contact {
+                        let contactText = [contact.name, contact.phone, contact.email].compactMap { $0 }
+                            .filter { !$0.isEmpty }.joined(separator: " · ")
+                        if !contactText.isEmpty {
+                            row(icon: "phone", title: String(localized: "Source contact"), detail: contactText)
+                        }
+                        if let website = contact.safeWebsiteURL {
+                            Link("Contact website", destination: website)
+                                .foregroundStyle(Theme.actionInk)
+                                .frame(minHeight: 44)
+                        }
+                    }
+                    ForEach(Array((details.notes ?? []).enumerated()), id: \.offset) { _, note in
+                        Text(note).font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let source = details.safeSourceURL {
+                        Link("View information source", destination: source)
+                            .foregroundStyle(Theme.actionInk)
+                            .frame(minHeight: 44)
                     }
                 }
             }
@@ -501,6 +594,24 @@ struct StationDetailView: View {
                 Section("Source photo") {
                     PublicPhotoView(photo: photo)
                         .listRowInsets(EdgeInsets())
+                }
+            }
+
+            if let photos = station.media?.photos, photos.contains(where: { $0.safeSourceURL != nil }) {
+                Section("Source photos") {
+                    ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
+                        if let source = photo.safeSourceURL {
+                            VStack(alignment: .leading, spacing: 3) {
+                                if let caption = photo.caption, !caption.isEmpty {
+                                    Text(caption).font(.caption).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Link("View source photo", destination: source)
+                                    .foregroundStyle(Theme.actionInk)
+                                    .frame(minHeight: 44)
+                            }
+                        }
+                    }
                 }
             }
 
