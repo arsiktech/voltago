@@ -114,6 +114,55 @@ export function mapsUrl(st: Station): string {
   return `https://www.google.com/maps/search/?api=1&query=${st.lat},${st.lon}`
 }
 
+/** A place listing is different from the coordinate/directions handoff above. */
+function googleMapsWebUrl(value?: string | null): URL | null {
+  const safe = publicWebUrl(value)
+  if (!safe) return null
+  const url = new URL(safe)
+  if (url.protocol !== 'https:' || (url.port && url.port !== '443')) return null
+  if (['maps.app.goo.gl', 'goo.gl'].includes(url.hostname)) return url
+  if (!['google.com', 'www.google.com', 'maps.google.com', 'google.es', 'www.google.es', 'maps.google.es'].includes(url.hostname)) return null
+  return url.pathname === '/maps' || url.pathname.startsWith('/maps/') ||
+    (url.hostname.startsWith('maps.google.') && url.pathname === '/') ? url : null
+}
+
+function googleListingUrl(value?: string | null): string | null {
+  const url = googleMapsWebUrl(value)
+  if (!url) return null
+  if (url.hostname === 'maps.app.goo.gl') return /^\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) ? url.href : null
+  if (url.hostname === 'goo.gl') return /^\/maps\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) ? url.href : null
+  if (url.pathname.startsWith('/maps/dir')) return null
+  const idPattern = /^[A-Za-z0-9_-]{3,255}$/
+  const q = url.searchParams.get('q') || ''
+  return idPattern.test(url.searchParams.get('query_place_id') || '') ||
+    (q.startsWith('place_id:') && idPattern.test(q.slice(9))) ||
+    /^[1-9][0-9]{0,19}$/.test(url.searchParams.get('cid') || '') ||
+    /^0x[\da-f]+:0x[\da-f]+$/i.test(url.searchParams.get('ftid') || '') ||
+    (url.pathname.startsWith('/maps/place/') && /!1[6]?s[^!/?]+/.test(url.pathname)) ? url.href : null
+}
+
+export function googleMapsLink(st: Station): { href: string; listing: boolean } {
+  for (const candidate of [st.navigation?.google_listing, st.navigation?.google, st.source_url, st.primary_source?.url]) {
+    const listing = googleListingUrl(candidate)
+    if (listing) return { href: listing, listing: true }
+  }
+  const search = googleMapsWebUrl(st.navigation?.google_search)
+  if (search && ['google.com', 'www.google.com', 'maps.google.com', 'google.es', 'www.google.es', 'maps.google.es'].includes(search.hostname) &&
+      /^\/maps\/search\/?$/.test(search.pathname) && search.searchParams.get('api') === '1' && search.searchParams.get('query')?.trim()) {
+    return { href: search.href, listing: false }
+  }
+  const parts = ['EV charging station']
+  for (const value of [st.name, st.address, st.city]) {
+    const clean = value?.replace(/\s+/g, ' ').trim().slice(0, 300)
+    if (clean && !parts.some((part) => part.toLowerCase() === clean.toLowerCase())) parts.push(clean)
+  }
+  if (Number.isFinite(st.lat) && Number.isFinite(st.lon) && Math.abs(st.lat) <= 90 && Math.abs(st.lon) <= 180) {
+    parts.push(`near ${st.lat.toFixed(6)},${st.lon.toFixed(6)}`)
+  }
+  const params = new URLSearchParams({ api: '1', query: parts.join(' ') })
+  return { href: `https://www.google.com/maps/search/?${params}`, listing: false }
+}
+
 export interface RemoteStartAction {
   href: string
   label: string

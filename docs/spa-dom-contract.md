@@ -137,6 +137,13 @@ this file in the same change.
 - Connector chips: `.badge` rows `"<label> · <kW> kW"` + `+N more` when >6.
 - Actions: `a` `Open in Maps` (Google/Apple maps href), `a` `Source` (provider page), both
   `target="_blank" rel="noopener noreferrer"`; `button` `Details` with `aria-expanded`.
+- Each card also has a full-width secondary `a[data-google-maps]`: `listing` is
+  named `View <station> on Google Maps` and displays `View Google Maps`; `search`
+  is named `Find <station> on Google Maps` and displays `Search Google Maps`.
+  The former uses a known listing ID/URL; the latter uses name/address/location
+  to find a match and makes no coverage claim. Both have a 44px minimum target.
+  Map popup cards expose the same listing/search action, including directory and
+  cached cards, without upgrading their evidence or enabling directions there.
 - Details (expanded): the public source photo when one exists (it is no longer on the
   collapsed card), then `Why “<label>”:` decision reason; `Charging claim` / `Parking claim`
   sections with external `view source` links; `Corroboration: N independent sources…`;

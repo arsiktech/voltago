@@ -12,6 +12,7 @@ import {
   hasVerifiedPrice,
   isPrivateAccess,
   mapsUrl,
+  googleMapsLink,
   powerText,
   priceText,
   priceUnit,
@@ -393,6 +394,7 @@ function popupHTML(st: Station): string {
           .join(', ') || 'Unknown'
   const accessNote = privateAccess(st)?.label
   const maps = notLive ? null : mapsUrl(st)
+  const googleMaps = googleMapsLink(st)
   const start = notLive ? null : remoteStartAction(st)
   const handoff = notLive || start ? null : providerHandoff(st)
   const source = publicWebUrl(st.primary_source?.url || st.source_url)
@@ -405,14 +407,15 @@ function popupHTML(st: Station): string {
     `<div style="display:grid;grid-template-columns:72px 1fr;gap:6px 8px;font-size:12px;line-height:1.4;padding:4px 0"><span style="color:var(--muted)">${escapeHtml(label)}</span><span style="font-weight:700;color:var(--fg);overflow-wrap:anywhere">${escapeHtml(value)}</span></div>`
 
   const btn = (href: string, label: string, primary: boolean) =>
-    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;flex:1;min-height:40px;padding:8px 10px;border-radius:10px;font-size:12px;font-weight:650;text-align:center;text-decoration:none;${
+    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;flex:1;min-height:44px;padding:8px 10px;border-radius:10px;font-size:12px;font-weight:650;text-align:center;text-decoration:none;${
       primary
         ? 'background:var(--brand);color:var(--brand-contrast)'
         : 'border:1px solid var(--border);color:var(--fg);background:var(--surface-2)'
     }">${escapeHtml(label)}</a>`
 
+  const googleAction = btn(googleMaps.href, googleMaps.listing ? 'View Google Maps' : 'Search Google Maps', false)
   const actionMarkup = notLive
-    ? source ? btn(source, 'Source', true) : ''
+    ? (source ? btn(source, 'Source', true) : '') + googleAction
     : (maps ? btn(maps, 'Open in Maps', true) : '') +
       (start
         ? btn(start.href, start.label, false)
@@ -442,7 +445,8 @@ function popupHTML(st: Station): string {
         ? 'Source-backed lead. Confirm price and access before driving.'
         : 'Live public data. Provider app and onsite signs still win.'
     }</p>` +
-    (actionMarkup ? `<div style="display:flex;gap:6px">${actionMarkup}</div>` : '') +
+    (actionMarkup ? `<div${notLive ? ` data-google-maps="${googleMaps.listing ? 'listing' : 'search'}"` : ''} style="display:flex;gap:6px">${actionMarkup}</div>` : '') +
+    (!notLive ? `<div data-google-maps="${googleMaps.listing ? 'listing' : 'search'}" style="display:flex;margin-top:6px">${googleAction}</div>` : '') +
     `</div>`
   )
 }
