@@ -7,7 +7,7 @@ this file in the same change.
 ## Shell / layout
 - App mounts in `#root`. The map is a **backdrop enhancement**: `div[aria-hidden="true"]`
   wrapping the MapLibre canvas (`.maplibregl-canvas`). The list panel is the primary surface.
-- Panel: the only `section` element, `.discovery-panel`, with an opaque theme surface.
+- Main results panel: `section.discovery-panel`, with an opaque theme surface.
   Mobile: a sheet starting at 42dvh below the map. Desktop (≥768px): a left column, with
   width controlled by `--discovery-width`. `.discovery-map` occupies its own adjacent
   canvas area; camera fitting never includes area hidden under the results.
@@ -36,6 +36,35 @@ this file in the same change.
 - Mode label (`[data-search-area]`): `Explore Spain` | `Near you` | `Near <place>`.
 - Icon buttons (all `button[aria-label]`): `Use my location`, `Refresh known charger leads` (overview) / `Refresh live data` (nearby).
   Theme controls live in the app header: `Switch to dark mode` / `Switch to light mode`.
+
+## Your EV
+
+- Header `button.ev-header-control`, visible name beginning `Your EV`, opens the
+  nonmodal `aside#vehicle-panel[role="dialog"][aria-labelledby="vehicle-panel-title"]`.
+  Station search and details remain usable behind the desktop drawer. `Close your EV`
+  or Escape closes it and restores focus to the header control.
+- Empty state offers `Connect your car` when live linking is configured,
+  `Enter manually` and an explicitly labeled `Explore an example`. Missing live
+  setup never produces fake connected data; manual entries persist in this browser,
+  and an example does not. `Add your EV` converts the example into a blank manual form.
+- Manual form labels: `Car name`, `Battery (%)`, `Range (km)`, `Usable battery capacity
+  (kWh)`, `Max AC (kW)`, `Max DC (kW)`; connector buttons expose `aria-pressed`.
+  `Save readings` returns to the battery view. `Edit readings` and connection actions
+  stay pinned while readings scroll. `Remove this EV` removes manual data and photo.
+- Native range input `#vehicle-charge-target`, accessible name `Charge target`,
+  accepts 50–100 in five-point steps and updates energy immediately. It is a planning
+  target, not a vehicle command. The battery bar is a named `role="meter"`.
+- `Change car photo` opens a local file input (JPG/PNG/WebP, up to 1.5 MB).
+  Photos remain in this browser; `Remove car photo` restores the labeled illustration.
+- Provider telemetry is fetched without storage caching, refreshed at most once per
+  minute while visible, and marked stale by its observation deadline. Provider test
+  mode is labeled `Simulated readings`. `Refresh car readings` retries an update.
+  `Disconnect` removes this browser's server session; OEM grant revocation remains
+  in the provider's account settings.
+- A station's `Source details for <name>` disclosure includes
+  `section.ev-station-estimate` when a vehicle is selected. Estimates use the selected
+  target, matched connector, car limits and verified current euro tariff; stale
+  readings withhold time/cost. No estimate changes a station's decision pill.
 
 ## Search
 - Input: `input[inputmode="search"]` with `aria-label="Enter home address or city"`,

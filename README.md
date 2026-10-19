@@ -43,6 +43,18 @@ VITE_API_TARGET=http://127.0.0.1:8773 npm --prefix frontend run dev
 Vite normally serves `http://127.0.0.1:5183`; check its output for the actual port.
 Its default API target, without the override, is port 8799.
 
+### Your EV
+
+The web and iPhone clients include an owned-vehicle panel with battery readings,
+remaining energy, range, car photos and a planning charge target. Manual readings
+work without a provider account; live linking uses owner-authorized Smartcar access.
+Station details estimate energy, minimum charging time and verified euro charging
+cost without changing station availability decisions.
+
+Live linking requires a configured Smartcar application, approved network access,
+and an owner's supported vehicle account. Read [vehicle connection setup and data
+semantics](docs/vehicle-connection.md). No provider credentials are included.
+
 ## Verify the affected work
 
 | Change | Check |

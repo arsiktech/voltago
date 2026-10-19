@@ -1,0 +1,142 @@
+/* The EV drawer extends the neutral instrument palette. Battery and connection
+   states never borrow the green reserved for route-ready charging stations. */
+.ev-header-control { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 14px;
+  background: var(--surface); color: var(--fg); font-size: 13px; font-weight: 650; white-space: nowrap; }
+.ev-header-percent { border-left: 1px solid var(--border-strong); padding-left: 8px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ev-header-control:active, .ev-button:active, .ev-icon-button:active { transform: scale(0.97); }
+.ev-header-control, .ev-button, .ev-icon-button { transition: background-color 180ms ease-out, border-color 180ms ease-out, transform 120ms ease-out; }
+.vehicle-panel { position: fixed; z-index: 50; top: calc(var(--header-height) + 12px); right: var(--page-gutter);
+  bottom: 20px; width: 420px; max-width: calc(100vw - 32px); display: flex; flex-direction: column;
+  overflow: hidden; border: 1px solid var(--border-strong); border-radius: 24px; background: var(--surface);
+  color: var(--fg); box-shadow: var(--shadow-lg); transform-origin: top right; }
+.ev-panel-header { display: flex; align-items: center; justify-content: space-between; flex: none; padding: 14px 20px 8px 24px; }
+.ev-panel-header h2 { font-size: 20px; font-weight: 750; }
+.ev-panel-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 8px 20px 24px 24px; }
+.ev-button, .ev-icon-button { min-height: 44px; border: 1px solid var(--border-strong); border-radius: 14px;
+  background: var(--surface); color: var(--fg); display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; font-size: 13px; font-weight: 650; line-height: 1.4; padding: 10px 14px; cursor: pointer; }
+.ev-icon-button { width: 44px; flex: none; padding: 0; }
+.ev-primary { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); }
+.ev-button:disabled, .ev-icon-button:disabled { cursor: not-allowed; opacity: 0.55; transform: none; }
+.ev-muted, .ev-field-help { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.ev-field-help { font-size: 11px; margin-top: 8px; }
+.ev-portrait { position: relative; overflow: hidden; border-radius: 16px; background: var(--surface-2); margin: 0 0 16px; }
+.ev-portrait img { display: block; width: 100%; aspect-ratio: 2.3; object-fit: cover; }
+.ev-portrait figcaption { padding: 6px 12px 8px; color: var(--muted); font-size: 11px; }
+.ev-photo-button { position: absolute; top: 8px; right: 8px; box-shadow: var(--shadow-sm); }
+.ev-photo-remove { position: absolute; bottom: 0; right: 0; border-radius: 12px 0 0; }
+.ev-owner-photo img { aspect-ratio: 2.3; object-fit: cover; }
+.ev-car-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ev-car-title h3 { font-size: 20px; font-weight: 750; overflow-wrap: anywhere; line-height: 1.35; }
+.ev-car-title .ev-muted { margin-top: 4px; }
+.ev-preview-note { margin-top: 10px; padding: 8px 12px; background: var(--surface-2); color: var(--muted); font-size: 11px; border-radius: 10px; line-height: 1.5; }
+.ev-battery-hero { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 20px 0 12px; }
+.ev-battery-hero > div { display: flex; flex-direction: column; gap: 4px; }
+.ev-metric-number { display: inline-flex; align-items: baseline; gap: 2px; font-size: 48px; font-weight: 750; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.ev-metric-unit { font-size: 32px; }
+.ev-range { text-align: right; }
+.ev-range .ev-metric-number { font-size: 30px; gap: 5px; }
+.ev-range .ev-metric-unit { font-size: 16px; font-weight: 600; }
+.ev-hero-label { font-size: 12px; color: var(--muted); }
+.ev-battery-track { width: 100%; height: 13px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+.ev-battery-track > span { display: block; height: 100%; border-radius: inherit; background: var(--fg); }
+.ev-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 16px 0; margin-top: 20px;
+  border-block: 1px solid var(--border); gap: 12px; }
+.ev-stats > div + div { border-left: 1px solid var(--border); padding-left: 12px; }
+.ev-stats dt { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.ev-stats dd { font-size: 15px; line-height: 1.4; font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.ev-stats dd span { font-size: 12px; font-weight: 650; white-space: nowrap; }
+.ev-charge-power { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 12px; }
+.ev-charge-target { display: flex; align-items: center; justify-content: space-between; margin-top: 20px; }
+.ev-charge-target label { font-size: 13px; font-weight: 600; }
+.ev-charge-target output { font-size: 20px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.ev-target-slider { display: flex; align-items: center; gap: 12px; margin: 6px 0 10px; }
+.ev-target-slider > span { color: var(--muted); font-size: 11px; }
+.ev-target-slider input { appearance: none; width: 100%; min-width: 0; height: 44px; background: transparent; accent-color: var(--brand); cursor: pointer; }
+.ev-target-slider input::-webkit-slider-runnable-track { height: 6px; border-radius: 999px; background: linear-gradient(to right, var(--brand) var(--target-progress), var(--surface-3) var(--target-progress)); }
+.ev-target-slider input::-webkit-slider-thumb { appearance: none; width: 28px; height: 28px; margin-top: -11px; border: 3px solid var(--surface); border-radius: 50%; background: var(--brand); box-shadow: var(--shadow-sm); }
+.ev-target-slider input::-moz-range-track { height: 6px; border-radius: 999px; background: var(--surface-3); }
+.ev-target-slider input::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--brand); }
+.ev-target-slider input::-moz-range-thumb { width: 22px; height: 22px; border: 3px solid var(--surface); border-radius: 50%; background: var(--brand); box-shadow: var(--shadow-sm); }
+.ev-energy-to-target { display: flex; align-items: center; gap: 10px; border-radius: 12px; background: var(--surface-2); padding: 13px 14px; color: var(--fg-soft); font-size: 12px; line-height: 1.6; }
+.ev-energy-to-target svg { flex: none; }
+.ev-next-stop { position: relative; background: var(--surface-2); border-radius: 16px; padding: 16px 40px 16px 16px; margin-top: 16px; }
+.ev-next-stop h4 { font-size: 14px; font-weight: 700; }
+.ev-next-stop p { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.65; }
+.ev-next-stop > svg { position: absolute; right: 16px; top: 18px; }
+.ev-reading-source { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 11px; margin-top: 20px; min-height: 24px; }
+.ev-footer-actions { display: flex; gap: 8px; margin-top: 16px; }
+.ev-panel-footer { flex: none; padding: 14px 24px 18px; border-top: 1px solid var(--border); background: var(--surface); }
+.ev-panel-footer .ev-footer-actions { margin-top: 0; }
+.ev-footer-actions > button { flex: 1; }
+.ev-remove { color: var(--muted); margin-top: 16px; width: 100%; }
+.ev-connect-another { width: 100%; margin-top: 12px; }
+.ev-vehicle-select { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 12px; margin-bottom: 16px; }
+.ev-vehicle-select select { appearance: none; background: transparent; min-height: 44px; width: 100%; color: var(--fg); font-size: 12px; font-weight: 600; padding-right: 2px; }
+.ev-vehicle-select select option { background: var(--surface); color: var(--fg); }
+.ev-vehicle-select > svg { flex: none; }
+.ev-empty-intro { margin: 26px 0; }
+.ev-empty-intro h3 { font-size: 25px; font-weight: 750; line-height: 1.3; }
+.ev-empty-intro p { font-size: 14px; line-height: 1.7; color: var(--muted); margin-top: 10px; }
+.ev-benefit { display: flex; align-items: flex-start; gap: 14px; padding: 18px 0; border-top: 1px solid var(--border); }
+.ev-benefit > svg { margin-top: 2px; flex: none; }
+.ev-benefit strong { font-size: 13px; font-weight: 650; }
+.ev-benefit p { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 4px; }
+.ev-connect-entry { margin-top: 20px; }
+.ev-connect-entry > .ev-button { width: 100%; margin-top: 10px; }
+.ev-connect-entry > .ev-button:first-child { margin-top: 0; }
+.ev-preview-action { background: var(--surface-2); }
+.ev-privacy { display: flex; align-items: flex-start; gap: 10px; color: var(--muted); margin-top: 24px; }
+.ev-privacy svg { flex: none; margin-top: 2px; }
+.ev-privacy p { font-size: 11px; line-height: 1.6; }
+.ev-notice { padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 12px; color: var(--fg-soft);
+  font-size: 12px; line-height: 1.6; margin: 12px 0; }
+.ev-editor, .vehicle-editor { display: flex; flex-direction: column; gap: 16px; }
+.ev-back { align-self: flex-start; }
+.vehicle-editor h3 { font-size: 21px; font-weight: 700; }
+.vehicle-editor label { display: flex; flex-direction: column; gap: 8px; font-size: 12px; font-weight: 600; }
+.vehicle-editor input { height: 46px; width: 100%; padding: 0 12px; border: 1px solid var(--border-strong);
+  border-radius: 12px; background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; }
+.vehicle-editor input::placeholder { color: var(--muted); opacity: 1; }
+.ev-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.vehicle-editor .ev-field-help { margin-top: -8px; }
+.vehicle-editor legend { font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+.ev-connectors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ev-connectors .ev-button { justify-content: flex-start; font-size: 12px; }
+.ev-connectors .ev-button[aria-pressed='true'] { background: var(--brand); color: var(--brand-contrast); border-color: var(--brand); }
+.ev-station-estimate { border-block: 1px solid var(--border); padding: 16px 0; margin-top: 12px; }
+.ev-estimate-heading { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.ev-estimate-heading > span { margin-left: auto; color: var(--muted); font-size: 11px; }
+.ev-station-estimate p { font-size: 11px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+.ev-estimate-values { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 14px; }
+.ev-estimate-values > div { display: flex; flex-direction: column; gap: 5px; }
+.ev-estimate-values span { color: var(--muted); font-size: 11px; display: inline-flex; align-items: center; gap: 3px; }
+.ev-estimate-values strong { font-variant-numeric: tabular-nums; font-size: 12px; }
+.ev-station-estimate .ev-notice { display: flex; align-items: flex-start; gap: 8px; }
+.ev-station-estimate .ev-notice svg { flex: none; margin-top: 3px; }
+@media (hover: hover) and (pointer: fine) {
+  .ev-button:not(:disabled):hover, .ev-icon-button:not(:disabled):hover, .ev-header-control:hover { background: var(--surface-2); border-color: var(--muted); }
+  .ev-primary:not(:disabled):hover { background: var(--brand-strong); color: var(--brand-contrast); }
+  .ev-connectors .ev-button[aria-pressed='true']:hover { background: var(--brand-strong); }
+}
+@media (max-width: 767px) {
+  .vehicle-panel { top: calc(var(--header-height) + 8px); bottom: 8px; left: 8px; right: 8px; width: auto;
+    max-width: none; border-radius: 22px; box-shadow: var(--shadow-lg); transform-origin: top center; }
+  .ev-header-control { padding: 0 10px; gap: 6px; font-size: 12px; }
+  .ev-panel-content { padding: 8px 16px max(20px, env(safe-area-inset-bottom)); }
+  .ev-panel-header { padding: 10px 12px 6px 16px; }
+  .ev-panel-footer { padding: 12px 16px max(12px, env(safe-area-inset-bottom)); }
+  .ev-stats { gap: 8px; }
+  .ev-stats > div + div { padding-left: 8px; }
+}
+@media (max-width: 374px) { .ev-header-percent { display: none; } .ev-stats dd { font-size: 13px; } }
+@media (prefers-reduced-motion: reduce) {
+  .ev-header-control, .ev-button, .ev-icon-button { transition: none; }
+  .ev-header-control:active, .ev-button:active, .ev-icon-button:active { transform: none; }
+  .vehicle-panel .animate-spin { animation: none; }
+}
+@media (forced-colors: active) {
+  .ev-battery-track { border: 1px solid CanvasText; }
+  .ev-battery-track > span { background: Highlight; forced-color-adjust: none; }
+}

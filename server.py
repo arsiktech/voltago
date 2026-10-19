@@ -3,9 +3,10 @@
 
 No third-party Python dependencies. It serves static files and exposes a small JSON
 API that combines regional live feeds with source-backed chargers worldwide
-(viewport/bbox-driven). MapaREVE's read-only bbox data query is one of two narrow,
-owner-approved POST exceptions (scripts/source_transport.py); every other non-GET request
-is refused before a socket opens. Community/manual leads stay separate from live results.
+(viewport/bbox-driven). Public station collection has two narrow, owner-approved POST
+exceptions (scripts/source_transport.py); every other station-source non-GET is refused.
+Owner-authorized vehicle OAuth is a separate, fixed-provider integration (vehicles.py).
+Community/manual leads stay separate from live results.
 """
 from __future__ import annotations
 
@@ -57,10 +58,12 @@ from station_truth import (
 
 import agent_mcp
 import community as community_store
+import vehicles as vehicle_store
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 SOURCE_POLICY_EXCLUSIONS = load_source_policy_exclusions(DATA / "source_policy_exclusions.json")
+VEHICLES = vehicle_store.VehicleConnections()
 
 
 def source_policy_record_allowed(record: Dict[str, Any]) -> bool:
@@ -3871,7 +3874,7 @@ def compact_station_for_ui(station: Dict[str, Any]) -> Dict[str, Any]:
 # driver opens Details. Keep short attribution references even in offline summaries.
 SUMMARY_OVERVIEW_FIELDS = frozenset("""
     id name operator owner city address lat lon
-    price_min price_max current_price_min price_label is_free is_cheap free_condition price_claim_type
+    price_min price_max current_price_min price_currency price_native_unit price_label is_free is_cheap free_condition price_claim_type
     tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
     status available total_evse source source_url source_label primary_source source_count reliability confidence
     claim_conflict parking access verification decision pricing price_window_status
@@ -5440,12 +5443,10 @@ def source_catalog_payload() -> Dict[str, Any]:
     }
 
 
-# Public-hardening log minimization: strip the query string from /api/geocode and
-# /api/chargers request lines before they hit stdout (search terms, exact lat/lon/bbox
-# are the sensitive part), while leaving every other logged path -- and the client IP,
-# which log_message logs separately via address_string() -- untouched. Operates on the
-# fully-formatted message so it is agnostic to exactly which fmt/args produced it.
-_LOG_QUERY_STRIP_RE = re.compile(r"(/api/(?:geocode|chargers|station))\?\S*")
+# Minimize sensitive searches, station positions and vehicle OAuth codes/state in
+# request logs. Keep paths and the client IP (logged separately by address_string),
+# and redact before formatting details can escape through a request-line log.
+_LOG_QUERY_STRIP_RE = re.compile(r"(/api/(?:geocode|chargers|station|vehicles(?:/[^?\s]*)?))\?\S*")
 
 
 def _sanitize_log_line(message: str) -> str:
@@ -5464,10 +5465,8 @@ class Handler(BaseHTTPRequestHandler):
     _headers_sent = False
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        # Public-hardening log minimization: ISO-8601 UTC (not bare HH:MM:SS, and not
-        # naive local time); for /api/geocode and /api/chargers, strip the query string
-        # (search terms, exact viewport) but KEEP the client IP -- the rate limiter needs
-        # it, and address_string() is untouched by _sanitize_log_line.
+        # ISO-8601 UTC, with sensitive API query strings removed. Keep the client
+        # IP for the existing rate limiter's operational diagnostics.
         message = _sanitize_log_line(fmt % args)
         print(f"[{datetime.now(timezone.utc).isoformat(timespec='seconds')}] {self.address_string()} {message}")
 
@@ -5477,7 +5476,7 @@ class Handler(BaseHTTPRequestHandler):
     def _rate_limit_key(self) -> Optional[str]:
         return _rate_limit_client_key(self)
 
-    def _enforce_rate_limit(self, route: str, limit_rpm: int) -> bool:
+    def _enforce_rate_limit(self, route: str, limit_rpm: int, extra_headers: Optional[Dict[str, str]] = None) -> bool:
         """Returns True if the request may proceed. Sends 429 + Retry-After and
         returns False otherwise. Trusted/internal callers (see
         _rate_limit_client_key) are exempt entirely -- local dev/QA is never throttled."""
@@ -5495,7 +5494,7 @@ class Handler(BaseHTTPRequestHandler):
                 "warning": "Too many requests; please slow down and try again shortly.",
                 "retry_after_seconds": retry_after_seconds,
             },
-            extra_headers={"Retry-After": str(retry_after_seconds)},
+            extra_headers={**(extra_headers or {}), "Retry-After": str(retry_after_seconds)},
         )
         return False
 
@@ -5517,19 +5516,19 @@ class Handler(BaseHTTPRequestHandler):
             gz = gzip_lib.compress(body, 6)
         out = gz if (use_gzip and gz is not None) else body
         self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Access-Control-Allow-Origin", CORS_ORIGIN)
-        self.send_header("Vary", "Accept-Encoding")
         # Public-hardening response headers (unconditional -- always safe for a JSON API).
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "DENY")
+        headers = {
+            "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": CORS_ORIGIN, "Vary": "Accept-Encoding",
+            "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY",
+        }
         if use_gzip and gz is not None:
-            self.send_header("Content-Encoding", "gzip")
+            headers["Content-Encoding"] = "gzip"
         if extra_headers:
-            for header_name, header_value in extra_headers.items():
-                self.send_header(header_name, header_value)
+            headers.update(extra_headers)
+        for header_name, header_value in headers.items():
+            self.send_header(header_name, header_value)
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self._headers_sent = True
@@ -5622,6 +5621,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+        if path == "/api/vehicles" or path.startswith("/api/vehicles/"):
+            return self._route_vehicle_get(path, params)
         if path == agent_mcp.MCP_PATH:
             # MCP is POST-only: no standalone SSE stream, so GET is 405 (never the SPA).
             return self._send_mcp_method_not_allowed()
@@ -5731,6 +5732,20 @@ class Handler(BaseHTTPRequestHandler):
         return self.serve_static(path)
 
     def do_OPTIONS(self) -> None:
+        if urllib.parse.urlparse(self.path).path.startswith("/api/vehicles"):
+            try:
+                VEHICLES.require_origin(self.headers.get("Origin"))
+            except vehicle_store.VehicleError as exc:
+                return self.send_json(exc.status, {"error": exc.code, "warning": exc.warning}, extra_headers=self._vehicle_headers())
+            self.send_response(204)
+            for name, value in self._vehicle_headers().items():
+                self.send_header(name, value)
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            self._headers_sent = True
+            return
         # CORS preflight for the community POST endpoints (same-origin SPA never needs
         # it; native/external clients might). Mirrors send_json's CORS origin.
         self.send_response(204)
@@ -5769,6 +5784,90 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
             except BrokenPipeError:
                 return
+
+    def _vehicle_headers(self) -> Dict[str, str]:
+        # Private telemetry never inherits the public station API's wildcard CORS.
+        return {
+            "Access-Control-Allow-Origin": VEHICLES.config.app_origin if VEHICLES.config.configured else "null",
+            "Cache-Control": "private, no-store", "Vary": "Cookie, Origin, Accept-Encoding",
+            "Cross-Origin-Resource-Policy": "same-origin",
+        }
+
+    def _vehicle_redirect(self, location: str, cookie: Optional[str] = None) -> None:
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.send_header("Cache-Control", "private, no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        if cookie:
+            self.send_header("Set-Cookie", cookie)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+        self._headers_sent = True
+
+    def _route_vehicle_get(self, path: str, params: Dict[str, List[str]]) -> None:
+        try:
+            if not self._enforce_rate_limit("vehicle-read", RATE_LIMIT_RPM, self._vehicle_headers()):
+                return
+            if path in {"/api/vehicles", "/api/vehicles/status"}:
+                return self.send_json(200, VEHICLES.status(self.headers.get("Cookie")), extra_headers=self._vehicle_headers())
+            if path == "/api/vehicles/native/start":
+                if not self._enforce_rate_limit("vehicle-native", 10, self._vehicle_headers()):
+                    return
+                location, cookie = VEHICLES.native_start(params)
+                return self._vehicle_redirect(location, cookie)
+            if path == "/api/vehicles/callback":
+                location, cookie = VEHICLES.callback(self.headers.get("Cookie"), params)
+                return self._vehicle_redirect(location, cookie)
+            status = 405 if path in {"/api/vehicles/connect", "/api/vehicles/refresh", "/api/vehicles/disconnect", "/api/vehicles/native/exchange"} else 404
+            return self.send_json(status, {"error": "method_not_allowed" if status == 405 else "not_found"},
+                                  extra_headers={**self._vehicle_headers(), **({"Allow": "POST"} if status == 405 else {})})
+        except vehicle_store.VehicleError as exc:
+            return self.send_json(exc.status, {"error": exc.code, "warning": exc.warning}, extra_headers=self._vehicle_headers())
+        except Exception as exc:
+            # OAuth exceptions must never put token/code-bearing locals or URLs in a traceback.
+            self.log_message("Vehicle connection failed (%s)", type(exc).__name__)
+            return self.send_json(500, {"error": "vehicle_connection_error", "warning": "Vehicle connection could not be updated."},
+                                  extra_headers=self._vehicle_headers())
+
+    def _route_vehicle_post(self, path: str) -> None:
+        try:
+            if path not in {"/api/vehicles/connect", "/api/vehicles/refresh", "/api/vehicles/disconnect", "/api/vehicles/native/exchange"}:
+                return self.send_json(404, {"error": "not_found"}, extra_headers=self._vehicle_headers())
+            VEHICLES.require_origin(self.headers.get("Origin"))
+            if not self._enforce_rate_limit("vehicle-write", 10, self._vehicle_headers()):
+                return
+            if self.headers.get_content_type() != "application/json" or self.headers.get("Transfer-Encoding"):
+                raise vehicle_store.VehicleError(415, "vehicle_json_required", "Send a JSON object to manage a vehicle connection.")
+            try:
+                body = json.loads(self._read_body(4096).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                raise vehicle_store.VehicleError(400, "bad_json", "Body must be a valid JSON object.") from None
+            allowed_keys = ({"vehicle_id"} if path == "/api/vehicles/refresh" else
+                            {"code", "verifier"} if path == "/api/vehicles/native/exchange" else set())
+            if not isinstance(body, dict) or set(body) - allowed_keys:
+                raise vehicle_store.VehicleError(400, "bad_vehicle_request", "The vehicle request contains unsupported fields.")
+            cookie, headers = self.headers.get("Cookie"), self._vehicle_headers()
+            if path == "/api/vehicles/connect":
+                payload, new_cookie = VEHICLES.connect(cookie, self.headers.get("Origin"))
+                if new_cookie:
+                    headers["Set-Cookie"] = new_cookie
+            elif path == "/api/vehicles/disconnect":
+                payload, headers["Set-Cookie"] = VEHICLES.disconnect(cookie, self.headers.get("Origin"))
+            elif path == "/api/vehicles/native/exchange":
+                payload, headers["Set-Cookie"] = VEHICLES.native_exchange(self.headers.get("Origin"), body.get("code"), body.get("verifier"))
+            else:
+                payload = VEHICLES.refresh(cookie, self.headers.get("Origin"), body.get("vehicle_id"))
+            return self.send_json(200, payload, extra_headers=headers)
+        except vehicle_store.VehicleError as exc:
+            return self.send_json(exc.status, {"error": exc.code, "warning": exc.warning}, extra_headers=self._vehicle_headers())
+        except community_store.CommunityError as exc:
+            return self.send_json(exc.status, {"error": exc.code, "warning": exc.message}, extra_headers=self._vehicle_headers())
+        except Exception as exc:
+            self.log_message("Vehicle connection failed (%s)", type(exc).__name__)
+            return self.send_json(500, {"error": "vehicle_connection_error", "warning": "Vehicle connection could not be updated."},
+                                  extra_headers=self._vehicle_headers())
 
     def _route_mcp_post(self) -> None:
         try:
@@ -5845,6 +5944,8 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
+        if path == "/api/vehicles" or path.startswith("/api/vehicles/"):
+            return self._route_vehicle_post(path)
         if path == agent_mcp.MCP_PATH:
             return self._route_mcp_post()
         if not path.startswith("/api/community/"):

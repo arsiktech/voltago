@@ -50,6 +50,16 @@ struct SheetView: View {
                             Text("Places")
                         }
                     } else {
+                        NavigationLink {
+                            VehicleGarageView()
+                        } label: {
+                            VehicleSummaryCard()
+                        }
+                        .buttonStyle(VoltaPressButtonStyle(pressedScale: 0.985))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .accessibilityHint("Opens your car's battery, range and connection")
                         resultsHeading
                         statusRows
                         if !state.savedStationsInView.isEmpty || state.showingSavedOnly {

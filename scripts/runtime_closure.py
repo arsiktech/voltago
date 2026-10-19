@@ -12,6 +12,7 @@ RUNTIME_FILES = (
     "agent_mcp.py",
     "community.py",
     "station_truth.py",
+    "vehicles.py",
     "scripts/source_policy.py",
     "scripts/json_recordset.py",
     "scripts/global_source_catalog.py",

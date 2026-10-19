@@ -90,6 +90,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var lon: Double
 
     var priceMin: Double?
+    var priceCurrency: String?
+    var priceNativeUnit: String?
     var priceLabel: String?
     var isFree: Bool?
     var isCheap: Bool?
@@ -151,7 +153,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case id, name
         case operatorName = "operator"
         case owner, city, address, lat, lon
-        case priceMin, priceLabel, isFree, isCheap
+        case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap
         case teslaOk, fast, maxPowerKw, connectorLabels, connectors, connectorSummary
         case status, available, totalEvse
         case source, sourceUrl, sources, primarySource, reliability
@@ -284,6 +286,7 @@ struct Connector: Decodable, Hashable {
     var status: String?
     var powerKw: Double?
     var isFree: Bool?
+    var fast: Bool?
 }
 
 struct ConnectorSummary: Decodable, Hashable {
@@ -418,10 +421,14 @@ struct Corroboration: Decodable, Hashable {
 struct PriceWindowStatus: Decodable, Hashable {
     var label: String?
     var isCurrentlyWithinStandard: Bool?
+    var currentWindows: [PricingWindow]?
 }
 
 struct PricingWindow: Decodable, Hashable {
     var price: Double?
+    var currency: String?
+    var unit: String?
+    var isCurrentlyValid: Bool?
     var validFrom: String?
     var validUntil: String?
     var label: String?
