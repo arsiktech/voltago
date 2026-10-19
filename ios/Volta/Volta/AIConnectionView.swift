@@ -15,6 +15,9 @@ struct AIConnectionPrompt: View {
                 .frame(minWidth: 44, minHeight: 44)
                 .background(Theme.surface, in: .capsule)
                 .overlay { Capsule().strokeBorder(Theme.hairlineStrong, lineWidth: 1) }
+                // Preserve the quiet 44-point capsule while giving the system sheet's
+                // scaled presentation enough room for a full-size touch target.
+                .padding(.vertical, 2)
                 .contentShape(.capsule)
         }
         .buttonStyle(VoltaPressButtonStyle())
