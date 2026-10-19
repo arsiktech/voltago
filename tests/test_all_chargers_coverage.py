@@ -172,6 +172,35 @@ class DecisionAndRankingTests(unittest.TestCase):
         row = self.enrich(price_min=None, is_free=False, is_cheap=False)
         self.assertEqual(row["decision"]["level"], "lead")
         self.assertEqual(row["decision"]["label"], "Price lead")
+        self.assertEqual(row["decision"]["reason"], "No source publishes a tariff for this charger; check the price in the operator app before charging.")
+
+    def test_hourly_tariff_is_described_without_claiming_an_energy_price(self) -> None:
+        row = self.enrich(price_min=None, is_free=False, is_cheap=False,
+                          tariff_details={"hour_eur": 2, "conditions": ["First hour free"]})
+        self.assertEqual(row["decision"]["level"], "lead")
+        self.assertEqual(row["decision"]["label"], "Price lead")
+        self.assertIn("hourly tariff", row["decision"]["reason"])
+        self.assertNotIn("No source publishes a tariff", row["decision"]["reason"])
+        self.assertIsNone(row["price_min"])
+        self.assertFalse(row["is_free"])
+        self.assertFalse(row["is_cheap"])
+        self.assertFalse(row["verification"]["live_verified"])
+        self.assertFalse(server.route_ready_now(row))
+
+    def test_tariff_conditions_without_energy_price_are_not_described_as_missing_tariff(self) -> None:
+        for tariff in ({"minimum_eur": 2, "text": "Minimum charge €2"},
+                       {"conditions": ["Validation required"]},
+                       {"components": [{"type": "FLAT", "price": 1, "unit": "session"}]}):
+            with self.subTest(tariff=tariff):
+                row = self.enrich(price_min=None, is_free=False, is_cheap=False, tariff_details=tariff)
+                self.assertEqual(row["decision"]["level"], "lead")
+                self.assertEqual(row["decision"]["label"], "Price lead")
+                self.assertIn("publishes tariff conditions", row["decision"]["reason"])
+                self.assertNotIn("No source publishes a tariff", row["decision"]["reason"])
+                self.assertIsNone(row["price_min"])
+                self.assertFalse(row["is_free"])
+                self.assertFalse(row["is_cheap"])
+                self.assertFalse(row["verification"]["live_verified"])
 
     def test_free_lead_ranks_before_a_nearer_paid_lead(self) -> None:
         free = self.enrich(id="free", price_min=0.0, is_free=True, is_cheap=True)

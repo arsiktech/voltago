@@ -100,6 +100,26 @@ class StationSummaryTests(unittest.TestCase):
                 self.assertIn("evidence", response["leads"][0]["sources"][0])
                 self.assertIn("charge_claim", response["leads"][0])
 
+    def test_hourly_tariff_and_minimum_survive_summary_while_source_details_wait(self):
+        tariff = {"hour_eur": 2, "minimum_eur": 1,
+                  "conditions": ["First hour free with validation"],
+                  "source_url": "https://example.org/charging/tariff"}
+        details = {"description": "Use the entrance on the lower level", "opening_hours": "08:00–22:00"}
+        self.rows = [directory_row("hourly_map", source="Canarias te recarga public map",
+                                   reliability="directory-page", tariff_details=tariff,
+                                   source_details=details, is_free=False, is_cheap=False)]
+        self.write_rows()
+        summary = self.overview(summary=True)["leads"][0]
+        self.assertEqual(summary["tariff_details"], tariff)
+        self.assertIsNone(summary["price_min"])
+        self.assertFalse(summary["is_free"])
+        self.assertFalse(summary["is_cheap"])
+        self.assertNotIn("source_details", summary)
+        status, disclosure = self.detail("hourly_map", summary["detail_snapshot"])
+        self.assertEqual(status, 200)
+        self.assertEqual(disclosure["station"]["source_details"], details)
+        self.assertEqual(disclosure["station"]["tariff_details"], tariff)
+
     def test_detail_restores_full_provenance_and_stays_directory_without_network(self):
         summary = self.overview(summary=True)["leads"][0]
         with patch.object(server, "policy_urlopen", side_effect=AssertionError("upstream I/O")):
