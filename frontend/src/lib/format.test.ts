@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { DecisionLevel, Filters, Station } from '../types'
+import StationDetails from '../components/StationDetails'
 import stationTruthCasesRaw from '../../../contracts/station_truth_cases.json?raw'
 import {
   DECISION_META,
@@ -8,6 +11,7 @@ import {
   chooseChargersData,
   cityLabel,
   corroboration,
+  connectorInventoryText,
   decisionLevel,
   distanceText,
   hasVerifiedPrice,
@@ -19,6 +23,7 @@ import {
   passesFilters,
   powerText,
   priceText,
+  priceUnit,
   privateAccess,
   publicWebUrl,
   remoteStartAction,
@@ -27,10 +32,13 @@ import {
   resultScopeLabel,
   sortNearbyBySafetyAndDistance,
   sourceTier,
+  sourcePhotoLinks,
+  sourcePageConnectors,
   stationAgeText,
   stationPhoto,
   statusTrustSummary,
   tariffWindow,
+  tariffNotes,
 } from './format'
 
 const mk = (partial: Partial<Station>): Station => ({
@@ -51,6 +59,117 @@ describe('priceText', () => {
   it('cheap price formats euros; unknown is dash', () => {
     expect(priceText(mk({ price_min: 0.19 }))).toBe('€0.19')
     expect(priceText(mk({ price_min: null }))).toBe('—')
+  })
+})
+
+describe('source tariff presentation', () => {
+  it('shows a published hourly charge without inventing an energy price', () => {
+    const station = mk({ price_min: null, tariff_details: { hour_eur: 2, conditions: ['First hour free'] } })
+    expect(priceText(station)).toBe('€2.00')
+    expect(priceUnit(station)).toBe('/hour')
+    expect(tariffNotes(station)).toEqual(['First hour free'])
+    expect(passesFilters(station, filters({ maxPrice: 0.25 }), '')).toBe(false)
+  })
+
+  it('keeps an energy price, minimum charge and extra time component together', () => {
+    const station = mk({ price_min: 0.35, tariff_details: {
+      hour_eur: 1, minimum_eur: 2, conditions: ['Customers only', 'Customers only'],
+    } })
+    expect(priceText(station)).toBe('€0.35')
+    expect(priceUnit(station)).toBe('/kWh')
+    expect(tariffNotes(station)).toEqual(['Minimum charge €2.00', 'Charging time €1.00/hour', 'Customers only'])
+  })
+
+  it('keeps an unknown or conditional energy price unknown and rejects malformed amounts', () => {
+    const station = mk({ tariff_details: { energy_eur_per_kwh: 0, unconditional_free: false, conditions: ['With a purchase'] } })
+    expect(priceText(station)).toBe('—')
+    expect(priceUnit(station)).toBe('')
+    expect(tariffNotes(station)).toEqual(['With a purchase'])
+    expect(priceText(mk({ tariff_details: { hour_eur: -1 } }))).toBe('—')
+    expect(priceUnit(mk({ tariff_details: { hour_eur: Number.NaN } }))).toBe('')
+  })
+
+  it('preserves minimum and flat session components without treating them as energy charges', () => {
+    const station = mk({ tariff_details: { components: [
+      { type: 'MINIMUM', price: 2, unit: 'session' },
+      { type: 'FLAT', price: 0.5, unit: 'session' },
+    ] } })
+    expect(priceText(station)).toBe('—')
+    expect(tariffNotes(station)).toEqual(['Minimum charge €2.00', 'Session fee €0.50'])
+  })
+})
+
+describe('source detail inventory and links', () => {
+  it('shows quantities only when published and retains decimal power and unknown connector labels', () => {
+    expect(connectorInventoryText({ label: 'Type 2', count: 3, power_kw: 7.4 })).toBe('3 × Type 2 · 7.4 kW')
+    expect(connectorInventoryText({ label: 'Unknown connector', count: null })).toBe('Unknown connector')
+    expect(connectorInventoryText({ label: 'CCS2' })).toBe('CCS2')
+    expect(connectorInventoryText({ label: 'Type 2', count: 1, power_kw: 22.1 })).toBe('1 × Type 2 · 22.1 kW')
+  })
+
+  it('keeps a different source-page inventory separate from the selected source', () => {
+    const pageInventory = [
+      { label: 'CCS2', count: 1, power_kw: 50 },
+      { label: 'CHAdeMO', count: 1, power_kw: 50 },
+      { label: 'Type 2', count: 1, power_kw: 43 },
+      { label: 'Type 2', count: 6, power_kw: 22 },
+    ]
+    const station = mk({ lead: true, connectors: [{ label: 'Type 2', count: 2, power_kw: 22 }],
+      source_details: { connectors: pageInventory, connector_count: 9, max_power_kw: 50,
+        source_name: 'Canarias te recarga', source_url: 'https://canariasterecarga.com/es/p00246/' },
+    })
+    expect(sourcePageConnectors(station)).toEqual(pageInventory)
+    const markup = renderToStaticMarkup(createElement(StationDetails, { st: station }))
+    expect(markup).toContain('2 × Type 2 · 22 kW')
+    expect(markup).toContain('Source-page connectors')
+    expect(markup).toContain('Canarias te recarga')
+    expect(markup).toMatch(/Published sockets: (?:<!-- -->)?9/)
+    expect(markup).toContain('1 × CCS2 · 50 kW')
+    expect(markup).toContain('1 × CHAdeMO · 50 kW')
+    expect(markup).toContain('1 × Type 2 · 43 kW')
+    expect(markup).toContain('6 × Type 2 · 22 kW')
+    expect(station.connectors?.[0].count).toBe(2)
+  })
+
+  it('does not duplicate the same inventory because source IDs, URLs or row order differ', () => {
+    const station = mk({ connectors: [{ label: 'Type 2', count: 2, power_kw: 22 }, { label: 'CCS2', power_kw: 50 }],
+      source_details: { connectors: [
+        { label: 'CCS2', power_kw: 50, source_url: 'https://canariasterecarga.com/es/p123/' },
+        { label: 'Type 2', count: 2, power_kw: 22, connector_id: 'directory-row' },
+      ] },
+    })
+    expect(sourcePageConnectors(station)).toEqual([])
+    expect(renderToStaticMarkup(createElement(StationDetails, { st: station }))).not.toContain('Source-page connectors')
+  })
+
+  it('offers safe source photo links while keeping automatic image loading disabled', () => {
+    const station = mk({ media: { photos: [
+      { url: 'https://canariasterecarga.com/photo.jpg', source_url: 'https://canariasterecarga.com/es/p123/', caption: 'Charger entrance' },
+      { url: 'file:///private/photo.jpg', source_url: 'javascript:alert(1)' },
+    ] } })
+    expect(stationPhoto(station)).toBeNull()
+    expect(sourcePhotoLinks(station)).toEqual([{
+      href: 'https://canariasterecarga.com/es/p123/', source: 'public source', caption: 'Charger entrance',
+    }])
+  })
+
+  it('renders all source connectors, source facts and conditions without loading unapproved photos', () => {
+    const station = mk({ lead: true,
+      connectors: Array.from({ length: 8 }, (_, index) => ({ label: index === 7 ? 'Unknown connector' : 'Type 2', count: index === 0 ? 3 : null, power_kw: 7.4, source_url: 'https://canariasterecarga.com/es/p123/' })),
+      source_details: { source_url: 'https://canariasterecarga.com/es/p123/', description: 'Parking level -1', opening_hours: '08:00–22:00', access: 'Customers only', contact: { phone: '123456789', website: 'javascript:alert(1)' } },
+      tariff_details: { text: '0.35 €/kWh, minimum €2', minimum_eur: 2, conditions: ['Check onsite signs'] },
+      media: { photos: [{ url: 'https://canariasterecarga.com/photo.jpg', caption: 'Entrance', source_url: 'https://canariasterecarga.com/es/p123/' }] },
+    })
+    const markup = renderToStaticMarkup(createElement(StationDetails, { st: station }))
+    expect(markup.match(/View connector source/g)).toHaveLength(8)
+    expect(markup).toContain('3 × Type 2 · 7.4 kW')
+    expect(markup).toContain('Unknown connector')
+    expect(markup).toContain('08:00–22:00')
+    expect(markup).toContain('Minimum charge €2.00')
+    expect(markup).toContain('Check onsite signs')
+    expect(markup).toContain('View photo at public source')
+    expect(markup).not.toContain('<img')
+    expect(markup).not.toContain('javascript:')
   })
 })
 

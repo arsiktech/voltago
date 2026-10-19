@@ -133,6 +133,57 @@ class GlobalEvidenceTests(unittest.TestCase):
         self.assertIsNone(row["connector_summary"]["total"])
         self.assertIsNone(row["total_evse"])
 
+    def test_public_map_socket_quantities_never_become_live_availability(self):
+        raw = directory(lat=28.4, lon=-16.5, country="ES", currency="EUR", price=0)
+        raw.update(source="Canarias te recarga public map", reliability="directory-page",
+                   source_integration={"mode": "public_map_snapshot"},
+                   connectors=[{"label": "Type 2", "count": 3, "status": "AVAILABLE"},
+                               {"label": "CCS2", "count": 1, "status": "CHARGING"}])
+        row = server._normalize_lead(raw, "directory")
+        self.assertEqual(row["connector_summary"]["total"], 4)
+        self.assertEqual(row["connector_summary"]["unknown"], 4)
+        self.assertEqual(row["connector_count"], 4)
+        self.assertEqual(row["total_evse"], 4)
+        self.assertEqual(row["available"], 0)
+        self.assertEqual(row["charging"], 0)
+        self.assertFalse(row["verification"]["live_verified"])
+        self.assertFalse(server.route_ready_now(row))
+
+    def test_public_map_partial_socket_quantity_stays_unknown(self):
+        raw = directory(lat=28.4, lon=-16.5, country="ES", currency="EUR", price=None)
+        raw.update(source="Canarias te recarga public map", reliability="directory-page",
+                   source_integration={"mode": "public_map_snapshot"},
+                   connector_count=8, total_evse=8,
+                   connectors=[{"label": "Type 2", "count": 3, "status": "AVAILABLE"},
+                               {"label": "CCS2", "status": "AVAILABLE"}])
+        row = server._normalize_lead(raw, "directory")
+        self.assertIsNone(row["connector_summary"]["total"])
+        self.assertIsNone(row["connector_count"])
+        self.assertIsNone(row["total_evse"])
+        self.assertEqual(row["available"], 0)
+        self.assertFalse(row["verification"]["live_verified"])
+
+    def test_nonlive_official_lead_uses_inventory_counts_and_clears_stale_availability(self):
+        raw = directory(lat=28.4, lon=-16.5, country="ES", currency="EUR", price=None)
+        raw.update(source="DGT National Access Point charging registry",
+                   reliability="official-charger-location-price-unknown",
+                   source_integration={"mode": "public_source", "live_status_integrated": False,
+                                       "source_modes": ["public_source", "official_ocpi_snapshot", "public_map_snapshot"]},
+                   available=2, charging=1, out_of_service=1,
+                   connectors=[{"label": "Type 2", "count": 2, "status": "AVAILABLE"}])
+        row = server._normalize_lead(raw, "directory")
+        self.assertTrue(row["lead"])
+        self.assertEqual(row["connector_summary"]["total"], 2)
+        self.assertEqual(row["connector_summary"]["unknown"], 2)
+        self.assertEqual(row["connector_count"], 2)
+        self.assertEqual(row["total_evse"], 2)
+        self.assertEqual(row["available"], 0)
+        self.assertEqual(row["available_connectors"], 0)
+        self.assertEqual(row["charging"], 0)
+        self.assertEqual(row["out_of_service"], 0)
+        self.assertFalse(row["verification"]["live_verified"])
+        self.assertFalse(server.route_ready_now(row))
+
     def test_non_euro_pricing_windows_do_not_pass_euro_cap(self):
         status = server.pricing_status([{"price": 0.1, "currency": "USD", "unit": "kWh"}])
         self.assertFalse(status["is_cheap"])

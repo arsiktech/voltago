@@ -96,7 +96,7 @@ MADRID_CHARGERS_CATALOG_URL = "https://datos.madrid.es/dataset/208979-0-puntos-r
 # Canarias te recarga: a public Canary Islands charger map (Maps Marker Pro on WordPress).
 # The map export renders every marker server-side, including the tariff badge; the AJAX
 # marker route returns the same stations with per-marker icons but no popup text. Volta
-# reads the export only (single bounded request, cached) and never claims live availability.
+# reads the export and bounded, identity-checked station pages; neither is live telemetry.
 CANARIAS_TE_RECARGA_MAP_ID = "4"
 CANARIAS_TE_RECARGA_GEOJSON_URL = "https://canariasterecarga.com/maps/export/geojson/4/"
 CANARIAS_TE_RECARGA_MAP_PAGE_URL = "https://canariasterecarga.com/es/mapa/"
@@ -3573,6 +3573,69 @@ def merge_media(items: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def merge_source_details(items: List[Dict[str, Any]], base: Dict[str, Any]) -> None:
+    """Carry station-page metadata through both merge stages without changing authority."""
+    try:
+        from .canarias_details import page_identity_matches
+    except ImportError:
+        from canarias_details import page_identity_matches
+    candidates = []
+    for item in items:
+        raw = item.get("raw") or {}
+        carried = item.get("source_details_evidence") or {}
+        overlay = item.get("canarias_detail_evidence") or {}
+        detail = raw.get("detail") or overlay.get("detail") or carried.get("identity")
+        if not item.get("source_details") or not detail or not page_identity_matches(base, detail)[0]:
+            continue
+        # A canonical row can keep another source's raw payload. Carry only the
+        # correlated station identity and original fetch facts separately, so a
+        # later merge can re-check that page without inheriting the wrong raw.
+        identity = {key: detail[key] for key in (
+            "recognized", "name", "station_name", "address", "source_url", "canonical_url") if key in detail}
+        if isinstance(detail.get("coordinates"), dict):
+            identity["coordinates"] = dict(detail["coordinates"])
+        proof = {"identity": identity,
+                 "source_url": item["source_details"].get("source_url") or detail.get("source_url")}
+        fetch = raw.get("detail_fetch") or overlay.get("fetch") or {}
+        fetched_at = fetch.get("fetched_at") or carried.get("fetched_at")
+        if fetched_at:
+            proof["fetched_at"] = fetched_at
+        cache = fetch.get("cache") or {}
+        for key in ("stale", "fallback"):
+            if key in cache:
+                proof[key] = cache[key]
+            elif key in carried:
+                proof[key] = carried[key]
+        tariff = item.get("tariff_details") or {}
+        if proof.get("stale"):
+            tariff = {}
+        # A metadata-only row cannot hide a known hourly/session condition.
+        # Keep the input reliability order when no such condition exists.
+        conditional = item.get("price_min") is None and tariff_has_conditions_or_cost(tariff)
+        candidates.append((conditional, item, tariff, proof))
+    if not candidates:
+        return
+    _, item, tariff, proof = max(candidates, key=lambda candidate: candidate[0])
+    base["source_details"] = {**item["source_details"], "notes": list(item["source_details"].get("notes") or [])}
+    base["source_details_evidence"] = proof
+    if base.get("price_min") == 0 and item.get("price_min") is None and tariff_has_conditions_or_cost(tariff):
+        base["price_min"] = None
+        base["charge_claim"] = item.get("charge_claim")
+        base["free_condition"] = item.get("free_condition")
+        for key in ("pricing", "price_current", "price_max", "price_label"):
+            base.pop(key, None)
+    if base.get("price_min") is None and tariff:
+        base["tariff_details"] = tariff
+    elif tariff and (base.get("charge_claim") or {}).get("source") != item.get("source"):
+        base["source_details"]["notes"].append("Canarias te recarga tariff: " + tariff.get("text", ""))
+
+
+def tariff_has_conditions_or_cost(tariff: Dict[str, Any]) -> bool:
+    return bool(tariff.get("conditions")) or any(
+        c.get("type") in {"TIME", "MINIMUM", "FLAT"} and (fnum(c.get("price")) or 0) > 0
+        for c in tariff.get("components") or [])
+
+
 def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> None:
     """Keep the ids of rows folded into this pin, so a refresh can show where they went."""
     merged_ids = set(base.get("merged_ids") or [])
@@ -3638,7 +3701,8 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             base["connectors"] = merged_connectors
             labels = connector_labels_from_rows(merged_connectors)
             base["connector_labels"] = labels
-            base["connector_count"] = sum(count_int(c.get("count")) for c in merged_connectors)
+            base["connector_count"] = (None if any(c.get("count") is None and "canariasterecarga.com" in str(c.get("source_url")) for c in merged_connectors)
+                                       else sum(count_int(c.get("count")) for c in merged_connectors))
             base["total_evse"] = base["connector_count"]
             base["tesla_ok"] = tesla_compat(labels)
             connector_powers = [fnum(c.get("power_kw")) for c in merged_connectors]
@@ -3649,6 +3713,7 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             base["fast"] = bool(base.get("max_power_kw") and base["max_power_kw"] >= 43)
         base["source_integration"] = merge_source_integration(items, base)
         base["media"] = merge_media(items)
+        merge_source_details(items, base)
         has_restricted_free = (
             any(((item.get("access") or {}).get("level") == "restricted") for item in items)
             or any(ACCESS_LIMIT_RE.search(s.get("evidence") or "") for s in sources)
@@ -3880,6 +3945,8 @@ def charge_price_candidates(items: Iterable[Dict[str, Any]]) -> List[Dict[str, A
             }
             if candidate.get("pricing"):
                 tariff["pricing"] = list(candidate["pricing"])
+            if candidate.get("tariff_details"):
+                tariff["tariff_details"] = candidate["tariff_details"]
             timestamp = None
             if record_source_family(candidate) == record_source_family(tariff):
                 timestamp = raw_last_seen(candidate.get("raw") or {})
@@ -3921,9 +3988,14 @@ def merge_charge_price(items: List[Dict[str, Any]], base: Dict[str, Any], *, pre
         base["pricing"] = list(chosen["pricing"])
     else:
         base.pop("pricing", None)
+    if chosen.get("tariff_details"):
+        base["tariff_details"] = chosen["tariff_details"]
+    else:
+        base.pop("tariff_details", None)
 
 
 def charge_price_conflict(items: Iterable[Dict[str, Any]], base: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    items = list(items)
     claims: List[Dict[str, Any]] = []
     seen = set()
     for item in charge_price_candidates(items):
@@ -3944,6 +4016,15 @@ def charge_price_conflict(items: Iterable[Dict[str, Any]], base: Dict[str, Any])
             "source": claim.get("source") or item.get("source"),
             "summary": claim.get("summary") or item.get("free_condition") or "",
         })
+    conditional = next((item for item in items if item.get("price_min") is None
+                        and tariff_has_conditions_or_cost(item.get("tariff_details") or {})), None)
+    if conditional and any(claim["price"] == 0 for claim in claims):
+        return {"level": "mixed_sources",
+                "summary": "A public source lists free energy, but another source publishes tariff conditions or additional charges. Confirm the current tariff before routing.",
+                "charge_url": (conditional.get("tariff_details") or {}).get("source_url")
+                or (conditional.get("charge_claim") or {}).get("url") or conditional.get("source_url"),
+                "alternate_charge_url": claims[0]["url"],
+                "charge_prices": [{"source": c["source"], "url": c["url"], "price_min": c["price"], "summary": c["summary"]} for c in claims]}
     if len(claims) < 2:
         return None
     low = min(claims, key=lambda c: c["price"])
@@ -4099,7 +4180,8 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
             base["connectors"] = merged_connectors
             labels = connector_labels_from_rows(merged_connectors)
             base["connector_labels"] = labels
-            base["connector_count"] = sum(count_int(c.get("count")) for c in merged_connectors)
+            base["connector_count"] = (None if any(c.get("count") is None and "canariasterecarga.com" in str(c.get("source_url")) for c in merged_connectors)
+                                       else sum(count_int(c.get("count")) for c in merged_connectors))
             base["total_evse"] = base["connector_count"]
             connector_powers = [fnum(c.get("power_kw")) for c in merged_connectors]
             connector_powers = [p for p in connector_powers if p is not None]
@@ -4108,6 +4190,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
             base["max_power_kw"] = max(inventory_powers or connector_powers) if (inventory_powers or connector_powers) else None
         base["source_integration"] = merge_source_integration(items, base)
         base["media"] = merge_media(items)
+        merge_source_details(items, base)
         has_restricted_free = any(
             ((item.get("access") or {}).get("level") == "restricted")
             or any(ACCESS_LIMIT_RE.search(str(source.get("evidence") or "")) for source in item.get("sources", []) if isinstance(source, dict))
@@ -4468,12 +4551,12 @@ def source_dgt_nap(records: List[Dict[str, Any]]) -> None:
 
 
 # --- Canarias te recarga (public Canary Islands charger map) -----------------------------
-# One public GET (the map export) renders every marker with its tariff badge, connector
-# pictograms and station page link. The import stays deliberately strict:
+# The map export provides markers. Identity-checked station pages add rated power,
+# quantities, full tariffs, source images and access information. The import stays strict:
 #   * an explicit price badge always wins over the marker icon (stale icons are real);
 #   * only a plain "Gratis" badge or an icon-only free marker counts as free;
 #   * time-conditional ("Gratis - 1º Hora") and hourly ("€/Hora") badges are logged but
-#     never promoted to a free or €/kWh claim, because Volta has no duration-priced model;
+#     never promoted to a free or €/kWh claim; hourly rates keep their own units;
 #   * the popup's "Disponible N plazas" text is stored verbatim as a snapshot and is never
 #     presented as live availability.
 CANARIAS_TE_RECARGA_SOURCE = "Canarias te recarga public map"
@@ -4523,15 +4606,17 @@ def canarias_tecarga_connectors(popup_html: str, detail_url: str) -> Tuple[List[
         if not label:
             continue
         count_match = re.search(r'alt="x(\d+)"', tag, re.I)
-        rows.append(connector_ref(
+        row = connector_ref(
             label,
             count=int(count_match.group(1)) if count_match else 1,
             source_url=detail_url,
             raw={"basis": "canarias_te_recarga popup pictogram"},
-        ))
+        )
+        row["count"] = int(count_match.group(1)) if count_match else None
+        rows.append(row)
     if not rows:
         return [], None
-    return rows, sum(count_int(row.get("count")) for row in rows)
+    return rows, sum(row["count"] for row in rows) if all(row.get("count") for row in rows) else None
 
 
 def canarias_tecarga_detail_url(popup_html: str) -> str:
@@ -4545,6 +4630,10 @@ def parse_canarias_tecarga_geojson(
     minimum_features: int = CANARIAS_TE_RECARGA_MIN_FEATURES,
     source_artifact: Optional[FetchArtifact] = None,
 ) -> List[Dict[str, Any]]:
+    try:
+        from .canarias_details import popup_station_identity
+    except ImportError:
+        from canarias_details import popup_station_identity
     features = (payload or {}).get("features")
     if not isinstance(features, list):
         raise RuntimeError("Canarias te recarga export did not contain a feature list")
@@ -4563,8 +4652,12 @@ def parse_canarias_tecarga_geojson(
         if lat is None or lon is None or not name:
             skipped["missing_name_or_coordinates"] += 1
             continue
+        if not in_bbox(lat, lon, SPAIN_BBOX):
+            skipped["outside_source_region"] += 1
+            continue
         seen_points += 1
         popup_html = str(props.get("popup") or "")
+        popup_identity = popup_station_identity(popup_html)
         detail_url = canarias_tecarga_detail_url(popup_html)
         price, basis, badge = canarias_tecarga_price(popup_html)
         if not basis:
@@ -4637,6 +4730,8 @@ def parse_canarias_tecarga_geojson(
             raw={
                 "source_map_id": CANARIAS_TE_RECARGA_MAP_ID,
                 "source_record_id": str(props.get("id") or ""),
+                "popup_name": popup_identity["name"],
+                "popup_address": popup_identity["address"],
                 "marker_icon": str(props.get("icon") or ""),
                 "marker_badge": badge,
                 "tariff_basis": basis,
@@ -4650,6 +4745,9 @@ def parse_canarias_tecarga_geojson(
             port_count=port_count,
             source_artifact=source_artifact,
         )
+        if connectors and any(c.get("count") is None for c in connectors):
+            parsed[-1]["connector_count"] = parsed[-1]["total_evse"] = None
+            parsed[-1]["hardware_claim"]["port_count"] = None
     if seen_points < minimum_features:
         raise RuntimeError(
             f"Canarias te recarga export shrank to {seen_points} usable station points (<{minimum_features}); skipped={dict(skipped)}"
@@ -4659,6 +4757,10 @@ def parse_canarias_tecarga_geojson(
 
 
 def source_canarias_tecarga(records: List[Dict[str, Any]]) -> None:
+    try:
+        from .canarias_enrichment import enrich_records
+    except ImportError:
+        from canarias_enrichment import enrich_records
     artifact = cached_fetch(
         CANARIAS_TE_RECARGA_GEOJSON_URL,
         CANARIAS_TE_RECARGA_CACHE_NAME,
@@ -4666,7 +4768,10 @@ def source_canarias_tecarga(records: List[Dict[str, Any]]) -> None:
         timeout=45,
         headers={"Accept": "application/geo+json, application/json;q=0.9, */*;q=0.8"},
     )
-    records.extend(parse_canarias_tecarga_geojson(json.loads(artifact.decode("utf-8", "replace")), source_artifact=artifact))
+    parsed = parse_canarias_tecarga_geojson(json.loads(artifact.decode("utf-8", "replace")), source_artifact=artifact)
+    report = enrich_records(parsed, sys.modules[__name__])
+    print(f"canarias detail pages: {report['enriched']} enriched, {len(report['held'])} held, {len(report['fetch_errors'])} fetch failures")
+    records.extend(parsed)
 
 
 # --- MapaREVE public OCPI web API (Tenerife slice) ---------------------------------------

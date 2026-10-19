@@ -134,6 +134,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var driveEtaMinEst: Int?
     var navigation: [String: String]?
     var media: MediaProfile?
+    var sourceDetails: SourceDetails? = nil
+    var tariffDetails: TariffDetails? = nil
     var lead: Bool?
     /// Community evidence (plan 013) the server attaches to rows with driver check-ins/photos.
     /// It never affects live/Go-now trust — display + a fail-closed downgrade only.
@@ -147,6 +149,13 @@ struct Station: Decodable, Identifiable, Hashable {
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
     var isLead: Bool { lead ?? false }
 
+    /// A directory's hardware inventory remains separate when the selected source differs.
+    var sourcePageConnectors: [Connector] {
+        let sourceConnectors = sourceDetails?.connectors ?? []
+        return sourceConnectors.map(\.inventoryText).sorted() == (connectors ?? []).map(\.inventoryText).sorted()
+            ? [] : sourceConnectors
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name
         case operatorName = "operator"
@@ -159,6 +168,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case priceWindowStatus, pricing, chargeClaim, parkingClaim, claimConflict
         case sourceReportedUnavailable
         case freshnessMinutes, lastSeen, distanceKm, driveEtaMinEst, navigation, media, lead
+        case sourceDetails, tariffDetails
         case community, cacheStale, responseTrust
     }
 }
@@ -284,6 +294,75 @@ struct Connector: Decodable, Hashable {
     var status: String?
     var powerKw: Double?
     var isFree: Bool?
+    var count: Int? = nil
+    var sourceUrl: String? = nil
+
+    var inventoryLabel: String {
+        let name = [label, type].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? String(localized: "Unknown connector")
+        guard let count, count > 0 else { return name }
+        return "\(count) × \(name)"
+    }
+
+    var powerText: String? {
+        guard let powerKw, powerKw.isFinite, powerKw > 0 else { return nil }
+        return String(format: "%g kW", powerKw)
+    }
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+
+    var inventoryText: String {
+        guard let powerText else { return inventoryLabel }
+        return "\(inventoryLabel) · \(powerText)"
+    }
+}
+
+struct SourceDetails: Decodable, Hashable {
+    var sourceUrl: String?
+    var sourceName: String?
+    var description: String?
+    var openingHours: String?
+    var access: String?
+    var contact: SourceContact?
+    var notes: [String]?
+    var connectors: [Connector]?
+    var connectorCount: Int?
+    var maxPowerKw: Double?
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+}
+
+struct SourceContact: Decodable, Hashable {
+    var name: String?
+    var phone: String?
+    var email: String?
+    var website: String?
+
+    var safeWebsiteURL: URL? { PublicWebURL.validated(website) }
+}
+
+struct TariffDetails: Decodable, Hashable {
+    var sourceUrl: String?
+    var text: String?
+    var conditions: [String]?
+    var components: [TariffComponent]?
+    var energyEurPerKwh: Double?
+    var hourEur: Double?
+    var minimumEur: Double?
+    var unconditionalFree: Bool?
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+}
+
+struct TariffComponent: Decodable, Hashable {
+    var type: String?
+    var price: Double?
+    var unit: String?
+}
+
+private func validTariffAmount(_ value: Double?) -> Double? {
+    guard let value, value.isFinite, value >= 0 else { return nil }
+    return value
 }
 
 struct ConnectorSummary: Decodable, Hashable {
@@ -380,6 +459,11 @@ struct StationPhoto: Decodable, Hashable {
 }
 
 extension StationPhoto {
+    /// An explicit handoff can show the source without automatically loading its image.
+    var safeSourceURL: URL? {
+        PublicWebURL.validated(sourceUrl) ?? PublicWebURL.validated(url) ?? PublicWebURL.validated(thumbnailUrl)
+    }
+
     /// Automatic media loading shares the same public-web boundary as explicit source and
     /// navigation handoffs. Prefer the full image only when it is safe, then try its thumbnail.
     var safeURL: URL? {
@@ -664,7 +748,8 @@ extension Station {
 
     var priceText: String {
         if isFree == true || priceMin == 0 { return String(localized: "Free") }
-        if let p = priceMin { return String(format: "€%.2f", p) }
+        if let p = validTariffAmount(priceMin) { return String(format: "€%.2f", p) }
+        if let hourly = validTariffAmount(tariffDetails?.hourEur) { return String(format: "€%.2f", hourly) }
         return "—"
     }
 
@@ -678,7 +763,29 @@ extension Station {
     }
 
     var priceUnit: String? {
-        (isFree == true || priceMin == 0) ? nil : (priceMin != nil ? "/kWh" : nil)
+        if isFree == true || priceMin == 0 { return nil }
+        if validTariffAmount(priceMin) != nil { return "/kWh" }
+        return validTariffAmount(tariffDetails?.hourEur) != nil ? String(localized: "/hour") : nil
+    }
+
+    var tariffNotes: [String] {
+        guard let tariff = tariffDetails else { return [] }
+        var notes: [String] = []
+        let minimum = tariff.minimumEur ?? tariff.components?.first { $0.type == "MINIMUM" }?.price
+        if let minimum = validTariffAmount(minimum) {
+            notes.append(String(localized: "Minimum charge €\(String(format: "%.2f", minimum))"))
+        }
+        if (validTariffAmount(priceMin) != nil || isFree == true), let hourly = validTariffAmount(tariff.hourEur) {
+            notes.append(String(localized: "Charging time €\(String(format: "%.2f", hourly))/hour"))
+        }
+        for component in tariff.components ?? [] {
+            if component.type == "FLAT", let price = validTariffAmount(component.price) {
+                notes.append(String(localized: "Session fee €\(String(format: "%.2f", price))"))
+            }
+        }
+        notes += (tariff.conditions ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var seen = Set<String>()
+        return notes.filter { seen.insert($0).inserted }
     }
 
     /// Locale-INVARIANT tier classification (live / official / directory / community). Internal

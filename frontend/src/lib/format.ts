@@ -1,4 +1,4 @@
-import type { Bbox, ChargersResponse, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
+import type { Bbox, ChargersResponse, Connector, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
 import { containsCoordinate } from './geo'
 
 /** Title-case a station name with Spanish locale, preserving small connectors. */
@@ -25,14 +25,58 @@ export function displayName(name = ''): string {
 export function priceText(st: Station): string {
   if (st.is_free) return 'Free'
   const value = st.price_min
-  if (value == null) return '—'
   if (value === 0) return 'Free'
-  return `€${value.toFixed(2)}`
+  if (knownAmount(value)) return `€${value.toFixed(2)}`
+  const hourly = st.tariff_details?.hour_eur
+  return knownAmount(hourly) ? `€${hourly.toFixed(2)}` : '—'
 }
 
 export function priceUnit(st: Station): string {
   if (st.is_free || st.price_min === 0) return ''
-  return '/kWh'
+  if (knownAmount(st.price_min)) return '/kWh'
+  return knownAmount(st.tariff_details?.hour_eur) ? '/hour' : ''
+}
+
+function knownAmount(value?: number | null): value is number {
+  return value != null && Number.isFinite(value) && value >= 0
+}
+
+/** Conditions accompany a price; they never become an unconditional free/kWh claim. */
+export function tariffNotes(st: Station): string[] {
+  const tariff = st.tariff_details
+  if (!tariff) return []
+  const notes: string[] = []
+  const minimum = tariff.minimum_eur ?? tariff.components?.find((c) => c.type === 'MINIMUM')?.price
+  if (knownAmount(minimum)) notes.push(`Minimum charge €${minimum.toFixed(2)}`)
+  if ((knownAmount(st.price_min) || st.is_free) && knownAmount(tariff.hour_eur)) {
+    notes.push(`Charging time €${tariff.hour_eur.toFixed(2)}/hour`)
+  }
+  for (const component of tariff.components || []) {
+    if (component.type === 'FLAT' && knownAmount(component.price)) {
+      notes.push(`Session fee €${component.price.toFixed(2)}`)
+    }
+  }
+  notes.push(...(tariff.conditions || []).filter((note) => typeof note === 'string' && note.trim()).map((note) => note.trim()))
+  return [...new Set(notes)]
+}
+
+/** A connector row may represent several sockets; a missing count stays unspecified. */
+export function connectorInventoryText(connector: Connector): string {
+  const label = connector.label?.trim() || connector.type?.trim() || 'Unknown connector'
+  const count = connector.count
+  const quantity = count != null && Number.isInteger(count) && count > 0 ? `${count} × ` : ''
+  const kw = sanePowerKw(connector.power_kw)
+  const power = kw == null ? '' : `${Number(kw.toFixed(2))} kW`
+  return `${quantity}${label}${power ? ` · ${power}` : ''}`
+}
+
+/** Retain a directory's different inventory without replacing the selected source's facts. */
+export function sourcePageConnectors(st: Station): Connector[] {
+  const sourceConnectors = st.source_details?.connectors || []
+  const facts = (connectors: Connector[]) => connectors.map(connectorInventoryText).sort()
+  return JSON.stringify(facts(sourceConnectors)) === JSON.stringify(facts(st.connectors || []))
+    ? []
+    : sourceConnectors
 }
 
 /** A numeric/free price is displayable as a map price only with explicit evidence. */
@@ -137,6 +181,20 @@ export function stationPhoto(st: Station) {
     }
   }
   return null
+}
+
+/** Explicit source links need no automatic image load or display-rights assumption. */
+export function sourcePhotoLinks(st: Station): { href: string; source: string; caption: string }[] {
+  const links: { href: string; source: string; caption: string }[] = []
+  const seen = new Set<string>()
+  for (const photo of st.media?.photos || []) {
+    const href = publicWebUrl(photo.source_url) || publicWebUrl(photo.url) || publicWebUrl(photo.thumbnail_url)
+    const caption = photo.caption?.trim() || ''
+    if (!href || seen.has(`${href}:${caption}`)) continue
+    seen.add(`${href}:${caption}`)
+    links.push({ href, source: photo.source?.trim() || 'public source', caption })
+  }
+  return links
 }
 
 /**
