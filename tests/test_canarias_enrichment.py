@@ -83,6 +83,9 @@ class DetailProjectionTests(unittest.TestCase):
         self.assertIsNone(row["connectors"][0]["count"])
         self.assertIsNone(row["total_evse"])
         self.assertIsNone(row["hardware_claim"]["port_count"])
+        merged = ing.dedupe([row])[0]
+        self.assertIsNone(merged["total_evse"])
+        self.assertIsNone(merged["hardware_claim"]["port_count"])
 
 
 class OverlayTests(unittest.TestCase):

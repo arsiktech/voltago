@@ -920,7 +920,9 @@ def hardware_claim_for(item: Dict[str, Any]) -> Dict[str, Any]:
     labels = sorted(connector_labels_from_rows(connectors) if connectors else list(item.get("connector_labels") or []))
     port_count = item.get("total_evse") or item.get("connector_count")
     if port_count is None and connectors:
-        port_count = sum(count_int(c.get("count"), default=1) for c in connectors)
+        unknown_source_quantity = any(c.get("count") is None and
+            "canariasterecarga.com" in str(c.get("source_url") or "") for c in connectors)
+        port_count = None if unknown_source_quantity else sum(count_int(c.get("count"), default=1) for c in connectors)
     connector_powers = [fnum(c.get("power_kw")) for c in connectors]
     connector_powers = [p for p in connector_powers if p is not None]
     max_power = item.get("max_power_kw")
