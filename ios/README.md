@@ -72,6 +72,8 @@ blocker and move to a newer Xcode/iOS 27 runtime pair.
 The local `Volta.storekit` file lives under `VoltaTests/` only. The shared scheme points its
 Run and Test actions to that test fixture, while the production app target and Release archive
 contain no StoreKit configuration file.
+For `xcodebuild -project`, the scheme's `../../VoltaTests/Volta.storekit` references resolve
+from the project's embedded workspace, not from the scheme file's directory.
 
 ## Paywall implementation (default off)
 
