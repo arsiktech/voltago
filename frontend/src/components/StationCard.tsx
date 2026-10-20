@@ -3,37 +3,29 @@ import { Component, lazy, memo, Suspense, useState, type ReactNode } from 'react
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
   ChevronDown,
-  Clock,
   ExternalLink,
-  Lock,
   MapPin,
   Navigation,
   Plug,
-  SquareParking,
-  Store,
   Zap,
 } from 'lucide-react'
 import type { Station } from '../types'
 import {
-  TIER_META,
   availability,
   cityLabel,
-  corroboration,
   displayName,
-  hasVerifiedPrice,
   distanceText,
   durationText,
   googleMapsLink,
   isRouteReady,
-  isParkingRisk,
   mapsUrl,
   powerText,
   priceText,
   priceUnit,
-  privateAccess,
   remoteStartAction,
   sourceTier,
   stationAgeText,
+  TIER_META,
   tariffWindow,
   tariffNotes,
 } from '../lib/format'
@@ -48,10 +40,9 @@ import {
   staggerList,
   statusFlash,
 } from '../lib/motion'
-import { Badge } from './Badge'
 import { DecisionPill } from './DecisionPill'
 import { ConnectorChips } from './ConnectorChips'
-import { PriceEvidence } from './PriceEvidence'
+import { cardCautions } from '../lib/stationPresentation'
 const StationDetails = lazy(() => import('./StationDetails'))
 
 /** Keep the card and its source/Maps actions usable if the optional chunk fails. */
@@ -214,18 +205,16 @@ function StationCardBase({
 }) {
   const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
+  const cautions = cardCautions(st)
+  const caution = cautions[0]
   const tier = sourceTier(st)
-  const tm = TIER_META[tier]
-  const risk = isParkingRisk(st)
-  const access = privateAccess(st)
-  const AccessIcon = access?.icon === 'lock' ? Lock : Store
+  const tierLabel = tier === 'live' && !availability(st).live ? 'Source data' : TIER_META[tier].label
   const startAction = remoteStartAction(st)
-  const corr = corroboration(st)
   const windowInfo = tariffWindow(st)
-  const conflict = st.claim_conflict?.summary
   const routeReady = isRouteReady(st)
   const googleMaps = googleMapsLink(st)
-  const price = priceText(st)
+  const formattedPrice = priceText(st)
+  const price = formattedPrice === '—' ? 'Unknown' : formattedPrice
   const unit = priceUnit(st)
   const actionClass =
     'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -313,12 +302,9 @@ function StationCardBase({
                 {[cityLabel(st.city), st.address].filter(Boolean).join(' · ')}
               </p>
             )}
-            {st.distance_km != null && (
-              <p className="mt-1 text-xs font-medium text-muted">{distanceText(st.distance_km)}</p>
-            )}
           </div>
           <div className="max-w-[44%] flex-none text-right">
-            <span className="block text-[10px] font-medium uppercase tracking-[0.08em] text-muted">Charging</span>
+            <span className="block text-[11px] font-medium text-muted">Charging price</span>
             <span className="relative mt-0.5 inline-grid min-h-7 overflow-hidden align-baseline">
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
@@ -334,86 +320,38 @@ function StationCardBase({
               </AnimatePresence>
             </span>
             {unit && <span className="block text-[11px] leading-snug text-muted">{unit}</span>}
-            {tariffNotes(st).map(note => <span key={note} className="mt-1 block text-[11px] leading-snug text-muted">{note}</span>)}
+            {(windowInfo || tariffNotes(st).length > 0) && <span className="mt-1 block text-[11px] leading-snug text-muted">Conditions apply</span>}
           </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           <DecisionPill st={st} />
-          <span
-            className="badge text-xs font-medium text-muted"
-            style={{ background: 'transparent', border: 0, padding: 0, borderRadius: 0 }}
-            title={st.reliability}
-          >
-            {tm.label}
-          </span>
-          {corr.count >= 2 && (
-            <span
-              className="text-xs text-muted"
-              title={`Confirmed by ${corr.count} independent public sources${corr.families.length ? ': ' + corr.families.join(', ') : ''}. Raises confidence it exists at this price — not a live status.`}
-            >
-              · {corr.count} sources
+          {caution && (
+            <span data-card-caution role="note" className={`badge badge-${caution.tone}`}
+              aria-label={`${cautions.map(item => item.label).join('; ')}. Open Details for all cautions.`}
+              title={cautions.map(item => `${item.label}: ${item.detail}`).join('; ')}>
+              {caution.label}{cautions.length > 1 ? ` · +${cautions.length - 1} cautions` : ''}
             </span>
-          )}
-          {windowInfo && (
-            <Badge
-              tone={windowInfo.currentlyCheap ? 'brand' : 'warn'}
-              title={
-                windowInfo.currentlyCheap
-                  ? 'Time-of-use tariff — the cheap/free window applies right now.'
-                  : 'Time-of-use tariff — the cheap/free price does NOT apply right now; check the window before routing.'
-              }
-            >
-              <Clock size={11} className="flex-none" />
-              {windowInfo.label}
-            </Badge>
-          )}
-          {conflict && (
-            <Badge tone="danger" title={conflict}>Sources disagree</Badge>
-          )}
-          {access && (
-            <Badge tone="warn" title={st.access?.note || st.parking?.label}>
-              <AccessIcon size={11} className="flex-none" />
-              {access.short}
-            </Badge>
-          )}
-          {risk && (
-            <Badge tone="warn">{st.parking?.paid ? 'Paid parking' : 'Limited parking'}</Badge>
           )}
         </div>
 
         {/* Real-time availability + sockets + speed */}
         <AvailabilityRow st={st} />
+        <p data-source-tier={TIER_META[sourceTier(st)].label} className="mt-1 text-xs text-muted">{[tierLabel, stationAgeText(st)].filter(Boolean).join(' · ')}</p>
 
         {/* Route facts */}
         <motion.div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1" initial="hidden" animate="show">
           {st.distance_km != null && st.drive_eta_min_est != null && (
-            <motion.span custom={0} variants={staggerList(Boolean(reduceMotion), 4)}>
+            <motion.span data-distance={distanceText(st.distance_km)} custom={0} variants={staggerList(Boolean(reduceMotion), 4)}>
               <Fact icon={Navigation}>
                 {distanceText(st.distance_km)} · {durationText(st.drive_eta_min_est)} drive
               </Fact>
             </motion.span>
           )}
+          {st.distance_km != null && st.drive_eta_min_est == null && <span data-distance={distanceText(st.distance_km)}><Fact icon={Navigation}>{distanceText(st.distance_km)}</Fact></span>}
           {st.distance_km == null && (
             <motion.span custom={0} variants={staggerList(Boolean(reduceMotion), 4)}>
               <Fact icon={Navigation}>Locate to see ETA</Fact>
-            </motion.span>
-          )}
-          {st.parking?.label && (
-            <motion.span
-              custom={1}
-              variants={staggerList(Boolean(reduceMotion), 4)}
-              data-route-fact="parking"
-              aria-label={`Parking: ${st.parking.label}`}
-            >
-              <Fact icon={SquareParking} warn={risk}>
-                {st.parking.label}
-              </Fact>
-            </motion.span>
-          )}
-          {(st.last_seen || st.freshness_minutes != null) && (
-            <motion.span custom={2} variants={staggerList(Boolean(reduceMotion), 4)}>
-              <Fact icon={Clock}>{stationAgeText(st)}</Fact>
             </motion.span>
           )}
         </motion.div>
@@ -424,8 +362,6 @@ function StationCardBase({
           </div>
         )}
       </div>
-
-      <PriceEvidence items={st.price_evidence?.filter(item => !(item.kind === 'repsol_network_tariff' && st.price_min != null && hasVerifiedPrice(st)))} />
 
       {/* Actions. aria-labels carry the station name so a screen-reader links list is not
           just "Open in Maps" x N (found by qa_screen_reader_contract). */}
@@ -517,7 +453,7 @@ class StationCardBoundary extends Component<{ st: Station; children: ReactNode }
     if (this.state.failed) {
       return (
         <div className="card p-3.5 text-xs text-muted">
-          Couldn't display {displayName(this.props.st.name)} safely — hidden rather than shown wrong.
+          Couldn't display {displayName(this.props.st.name)} safely. Check its source instead.
         </div>
       )
     }

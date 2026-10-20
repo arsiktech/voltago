@@ -220,21 +220,21 @@ describe('statusTrustSummary', () => {
       liveReady: 0,
       leadCount: 1,
     })).toEqual({
-      label: 'Source-backed leads · not live',
+      label: 'Saved chargers · not live',
       badge: '1 leads · not live',
     })
   })
 
   it('never calls the national leads-only overview live', () => {
     expect(statusTrustSummary({ overview: true, sourceBackedOnly: false, isFetching: false, stale: false, updated: 'just now', liveReady: 0, leadCount: 913 })).toEqual({
-      label: 'Source-backed leads · not live',
+      label: 'Saved chargers · not live',
       badge: '913 leads · not live',
     })
   })
 
   it('never calls a stale cached response live', () => {
     expect(statusTrustSummary({ overview: false, sourceBackedOnly: false, isFetching: false, stale: true, updated: '2 min ago', liveReady: 0, leadCount: 20 })).toEqual({
-      label: 'Cached evidence · not live',
+      label: 'Cached chargers · not live',
       badge: 'Not live',
     })
   })
@@ -304,18 +304,18 @@ describe('statusTrustSummary', () => {
 
   it('keeps a stale cached response not live while a retry is in flight', () => {
     expect(statusTrustSummary({ overview: false, sourceBackedOnly: false, isFetching: true, stale: true, updated: '2 min ago', liveReady: 3, leadCount: 20 })).toEqual({
-      label: 'Cached evidence · not live',
+      label: 'Cached chargers · not live',
       badge: 'Not live',
     })
   })
 
   it('never calls instant leads live while a nearby live request is pending or has failed', () => {
     expect(statusTrustSummary({ overview: false, sourceBackedOnly: true, isFetching: true, stale: false, updated: '', liveReady: 4, leadCount: 20 })).toEqual({
-      label: 'Source-backed leads · not live',
+      label: 'Saved chargers · not live',
       badge: '20 leads · not live',
     })
     expect(statusTrustSummary({ overview: false, sourceBackedOnly: true, isFetching: false, stale: false, updated: 'just now', liveReady: 4, leadCount: 20 })).toEqual({
-      label: 'Source-backed leads · not live',
+      label: 'Saved chargers · not live',
       badge: '20 leads · not live',
     })
   })

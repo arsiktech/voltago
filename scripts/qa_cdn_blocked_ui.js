@@ -200,7 +200,7 @@ async function runOfflineScenario(browser) {
   await page.reload({ waitUntil: "domcontentloaded", timeout: 20000 });
   await page.waitForSelector(CARD_SEL, { timeout: 30000 });
   await page.waitForFunction(
-    () => /Cached evidence · not live/.test(document.querySelector("section .live-dot")?.parentElement?.textContent || ""),
+    () => /Cached chargers · not live/.test(document.querySelector("section .live-dot")?.parentElement?.textContent || ""),
     null,
     { timeout: 15000 },
   );
@@ -224,7 +224,7 @@ async function runOfflineScenario(browser) {
 
   if (!snap.controlled) failures.push("[offline-cached] page is not controlled by the service worker");
   if (snap.cards <= 0) failures.push("[offline-cached] no cached source-backed cards rendered");
-  if (!/Cached evidence · not live/.test(snap.status)) failures.push(`[offline-cached] trust status drifted: "${snap.status}"`);
+  if (!/Cached chargers · not live/.test(snap.status)) failures.push(`[offline-cached] trust status drifted: "${snap.status}"`);
   if (!/Showing cached data/.test(snap.warning) || !/Nothing is live/.test(snap.warning)) {
     failures.push(`[offline-cached] explicit offline/stale warning missing: "${snap.warning}"`);
   }

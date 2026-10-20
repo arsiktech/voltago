@@ -152,7 +152,7 @@ async function main() {
     // response the status row must NOT claim live/updated authority.
     if (statusBefore == null) {
       failures.push("live status row (section span.live-dot outside cards) was not found");
-    } else if (!/Cached evidence · not live|^Not live\b/.test(statusBefore)) {
+    } else if (!/Cached chargers · not live|^Not live\b/.test(statusBefore)) {
       failures.push(`degraded live view must stay honestly non-live in the status row, got: "${statusBefore}"`);
     }
   } else {
@@ -219,7 +219,7 @@ async function main() {
     }
     // Give the UI a moment to leave "Refreshing…" and re-render the updated text.
     // In the honest degraded mode the refreshed response has no live authority again:
-    // the honest settle is any non-loading status row ("Cached evidence · not live" is
+    // the honest settle is any non-loading status row ("Cached chargers · not live" is
     // the no-change case), which is validated by the assertion below.
     await page
       .waitForFunction(
@@ -227,7 +227,7 @@ async function main() {
           const row = window.__voltaStatusRow;
           if (!row) return false;
           const text = (row.textContent || "").replace(/\s+/g, " ").trim();
-          return /Live · updated|Live source \+ cached evidence · updated|Cached evidence · not live|^Not live\b/.test(text);
+          return /Live · updated|Live source \+ cached evidence · updated|Cached chargers · not live|^Not live\b/.test(text);
         },
         { timeout: 15000 },
       )

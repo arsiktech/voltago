@@ -268,7 +268,7 @@ async function supportedMap(browser, mapChunk) {
     return map.isStyleLoaded() && map.getLayer("station-selected")
       && JSON.stringify(map.getFilter("station-selected")).includes(selected)
       && map.queryRenderedFeatures({ layers: ["station-price"] }).length > 0
-      && document.querySelector(".volta-popup")?.textContent.includes("Source-backed lead");
+      && document.querySelector(".volta-popup")?.textContent.includes("Not live. Confirm price and access before driving.");
   }, point.id, { timeout: TIMEOUT });
   assert(await page.locator(`[data-station="${point.id}"]`).count() > 0, "Selected map station is missing from the accessible list");
   assert(await page.locator(".pill-go").count() === 0, "Source-backed fixture was promoted to Go now");

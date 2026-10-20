@@ -161,10 +161,7 @@ async function main() {
             id: cardWrap.getAttribute("data-station") || "",
             name: compactText(card.querySelector("h3") ? card.querySelector("h3").textContent : ""),
             price: priceSpan ? compactText(priceSpan.textContent) : "",
-            tier: (() => {
-              const badges = [...card.querySelectorAll(".badge")].map((b) => compactText(b.textContent));
-              return badges.find((t) => ["Live", "Official", "Directory", "Community"].includes(t)) || "";
-            })(),
+            tier: card.querySelector("[data-source-tier]")?.getAttribute("data-source-tier") || "",
             pill: card.querySelector(".pill") ? compactText(card.querySelector(".pill").textContent) : "",
             pillReason: card.querySelector(".pill") ? card.querySelector(".pill").getAttribute("title") || "" : "",
             availability: (cardText.match(/(\d+ free|Not live|Live · status unknown)/) || [""])[0],
@@ -326,13 +323,13 @@ async function main() {
   }
 
   // --- Status / trust surface ---------------------------------------------------------
-  if (!/(Source-backed leads · not live|Refreshing known chargers)/.test(dom.liveStatusText)) {
+  if (!/(Saved chargers · not live|Refreshing known chargers)/.test(dom.liveStatusText)) {
     failures.push(`overview trust status row text is empty or drifted: "${dom.liveStatusText}"`);
   }
   if (!/\d+ leads · not live/.test(dom.liveStatusText)) {
     failures.push(`overview not-live count badge missing from status row: "${dom.liveStatusText}"`);
   }
-  if (!findAx(nodes, { name: /^(Source-backed leads · not live|Refreshing known chargers…)$/ })) {
+  if (!findAx(nodes, { name: /^(Saved chargers · not live|Refreshing known chargers…)$/ })) {
     failures.push("AX tree missing overview trust status text");
   }
   if (!findAx(nodes, { name: /^\d+ leads · not live$/ })) {

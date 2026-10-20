@@ -126,7 +126,7 @@ async function main() {
   if (state.modeLabel !== "Explore Spain") {
     failures.push(`mode label did not explain data state: "${state.modeLabel}"`);
   }
-  if (!/Source-backed leads · not live|Refreshing known chargers/i.test(state.liveStatus)) {
+  if (!/Saved chargers · not live|Refreshing known chargers/i.test(state.liveStatus)) {
     failures.push(`overview trust status row missing/unexplained: "${state.liveStatus}"`);
   }
   if (!/\d+ leads · not live/.test(state.countBadge)) failures.push(`overview not-live count badge missing: "${state.countBadge}"`);

@@ -290,6 +290,7 @@ export interface Station {
   tariff_details?: TariffDetails
   /** Per-row marker for a station retained from a failed live refresh. */
   cache_stale?: boolean
+  source_reported_unavailable?: { summary?: string }
 }
 
 export interface Coverage {

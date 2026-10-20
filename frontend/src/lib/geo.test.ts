@@ -69,7 +69,7 @@ describe('worldwide location and bounds', () => {
     expect(responseHasNoLiveAuthority(response)).toBe(true)
     const summary = statusTrustSummary({ overview: false, sourceBackedOnly: responseHasNoLiveAuthority(response),
       isFetching: false, stale: false, updated: 'now', liveReady: 0, leadCount: 2 })
-    expect(summary.label).toBe('Source-backed leads · not live')
+    expect(summary.label).toBe('Saved chargers · not live')
     expect(responseHasNoLiveAuthority({ stations: [], leads: [], meta: { coverage: { mode: 'directory' } } })).toBe(true)
   })
 

@@ -110,7 +110,6 @@ function safetyDistanceViolations(rows, tierFor, distanceFor) {
 function collectCards() {
   const driveRe = /\b\d+(?:\.\d+)?\s*(?:km|m)\s*·\s*(?:\d+h(?:\s*\d+m)?|\d+\s*min)\s+drive/i;
   const locateRe = /Locate to see ETA/i;
-  const distanceRe = /^\d+(?:\.\d+)?\s*(?:km|m)$/;
   const wrappers = [...document.querySelectorAll("div[data-index]")]
     .filter((w) => w.querySelector("[data-station]"))
     .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index));
@@ -120,8 +119,7 @@ function collectCards() {
     const spanTexts = [...card.querySelectorAll("span")].map((s) =>
       (s.textContent || "").replace(/\s+/g, " ").trim(),
     );
-    const titleBlock = card.querySelector("h3")?.parentElement;
-    const distance = titleBlock ? [...titleBlock.querySelectorAll("p")].find((el) => distanceRe.test((el.textContent || "").trim())) : null;
+    const distance = card.querySelector("[data-distance]");
     const distanceVisible = Boolean(distance?.getClientRects().length && getComputedStyle(distance).visibility !== "hidden");
     const pill = card.querySelector(".pill");
     const links = [...card.querySelectorAll("a")];
@@ -135,7 +133,7 @@ function collectCards() {
       driveFact: spanTexts.find((t) => driveRe.test(t)) || "",
       hasDriveFact: spanTexts.some((t) => driveRe.test(t)),
       hasLocateFact: spanTexts.some((t) => locateRe.test(t)),
-      distanceFact: distanceVisible ? (distance.textContent || "").trim() : "",
+      distanceFact: distanceVisible ? distance.getAttribute("data-distance") : "",
       hasDistanceFact: distanceVisible,
       pillClass: pill ? [...pill.classList].find((c) => c.startsWith("pill-")) || "" : "",
       pillLabel: pill ? (pill.textContent || "").replace(/\s+/g, " ").trim() : "",

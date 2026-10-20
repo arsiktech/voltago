@@ -8,7 +8,7 @@ this file in the same change.
 - App mounts in `#root`. The map is a **backdrop enhancement**: `div[aria-hidden="true"]`
   wrapping the MapLibre canvas (`.maplibregl-canvas`). The list panel is the primary surface.
 - Main results panel: `section.discovery-panel`, with an opaque theme surface.
-  Mobile: a sheet starting at 42dvh below the map. Desktop (≥768px): a left column, with
+  Mobile: a sheet starting at 58dvh, capped to retain at least 300px for search and controls. Desktop (≥768px): a left column, with
   width controlled by `--discovery-width`. `.discovery-map` occupies its own adjacent
   canvas area; camera fitting never includes area hidden under the results.
 - Header: `header.app-header`, brand home link `a[aria-label="Volta Go home"]`, decorative
@@ -19,7 +19,7 @@ this file in the same change.
   tap or vertical drag (up for the list, down for the map), and a touch scroll of more than
   48px in the split layout raises the sheet to the list layout. Programmatic scrolls never
   change the layout. The initial layout stays split; switching views must retain query,
-  filters and results. Desktop hides both.
+  filters and results. Choosing a city raises the sheet to the list layout. Desktop hides both.
 
 ## Header (inside the panel)
 - The search block (`.discovery-search`) stays pinned. The "Find your next charge."
@@ -139,7 +139,8 @@ Spirii tariffs are not ingested or displayed by this integration.
 disclosures and fresh-to-stale behavior on desktop and touch-emulated mobile
 using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 
-- Live status: `span.live-dot` + text `Live · updated …` / `Refreshing…`; count badge
+- Trust status: `Saved chargers · not live` for saved leads, `Cached chargers · not live`
+  for stale data, or `Live · updated …` / `Refreshing…` for live requests. Count badge
   `.badge` with `"N live · M leads"`.
 - CoverageBanner: `div[role="status"]` titled `Limited live coverage` or `Showing cached data`
   — rendered ONLY when coverage is degraded or the main cache is stale.
@@ -148,6 +149,9 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   require currently route-ready rows. Guidance changes immediately with its evidence.
 - The compact trust badge and driver guidance replace duplicate counter tiles and the
   former timed route-ready toast/confetti. No separate readiness state or timer exists.
+- Truncated inventory uses the short `Partial results. Zoom in for more.` note.
+- `node scripts/qa_web_design_audit.js <base-url>` verifies the presentation contract
+  in light and dark at 320, 390 and 1440px, with true touch emulation on phones.
 - Coverage warnings use complete, bounded driver-facing copy. Raw transport diagnostics
   are not rendered, and a generic no-live hint does not duplicate a coverage warning.
 
@@ -158,24 +162,29 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 - Card select target: `div[role="button"][tabindex="0"]` (Enter/Space selects); the selected
   target has `aria-current="true"`. Filtering it away clears selection even if recovery
   later restores the same row.
-- Badge row: `.pill` decision pill (`pill-go|pill-check|pill-verify`; label `Go now` /
-  `Check first` / `Verify first` / `Cheap later` / `Check parking`…; `title` = decision reason),
-  `.badge` tier (`Live`/`Official`/`Directory`/`Community`), optional `N sources`,
-  tariff-window chip (clock, e.g. `Now Free 22:00–08:00`), `Sources disagree`,
-  `Customers only`/`Restricted`, `Paid parking`/`Limited parking`.
+- Summary row: one `.pill` decision and at most one `[data-card-caution][role="note"]`.
+  The caution names the highest-priority issue and counts the rest, for example
+  `Restricted · +3 cautions`. Its accessible name lists every caution. Priority:
+  out of service, restricted/customer access, source disagreement, parking, price window.
+  All conditions stay readable in Details, including when deferred evidence fails.
+- `[data-source-tier]` is plain source-tier and observation-age text, not a badge.
+  Source counts, tariff schedules and additional directory/network prices live in Details.
 - Title: `h3` (station name); city/address `p` below.
-- Price: large `span` `Free` or `€0.NN`, with `/kWh` for energy rates or `/hour`
-  for published hourly rates. Minimum charges and tariff conditions appear beside
-  the headline. Hourly rates never become energy prices or unconditional Free.
+- Price: `Charging price` label and large `span` `Free`, `€0.NN` or `Unknown`,
+  with `/kWh` for energy rates or `/hour` for published hourly rates. Conditional
+  prices say `Conditions apply`; full fees and conditions are in Details. Hourly rates never become energy prices or unconditional Free.
 - Availability row: exactly one visible `[data-availability="live"]` or
   `[data-availability="not-live"]` per card.
   Read its individual facts; whole-card textContent joins adjacent layout blocks without
   spaces. LIVE cards contain spans `N free`, `M in use`, `K out`, `T ports`, `up to X kW`.
   Leads show `Not live` (+ `T ports` when known). Unknown live: `Live · status unknown`.
-- Route facts: `Locate to see ETA` (no coords) or `X km · Y min drive`; parking label; age `N min ago`.
-  Located cards also show the matching standalone distance in a paragraph below the
-  station name/address; this inline fact replaces the former distance badge.
-- Connector chips: `.badge` rows `"<label> · <kW> kW"` + `+N more` when >6.
+- Route fact: `Locate to see ETA` without coordinates, otherwise distance and optional
+  drive estimate. `[data-distance]` holds the formatted distance without duplicating it.
+  Parking facts (`[data-route-fact="parking"]`) live in Details.
+- Hardware: `[data-connector-summary]` groups identical published type/power pairs,
+  summing published quantities, for example `10 × Wall outlet, type not published · 3.6 kW`.
+  Missing quantities stay unpublished. At most three groups appear, then `+N more types in Details`.
+  Hardware summaries never imply live per-port occupancy. Details retains every original port.
 - Actions: `a` `Open in Maps` (Google/Apple maps href), `a` `Source` (provider page), both
   `target="_blank" rel="noopener noreferrer"`; visible `Details` button with
   `aria-label="Source details for <station title>"` and `aria-expanded`.
@@ -228,7 +237,9 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   rejected; route-checked leads; exact public directory station pages; and exact OSM
   node/way/relation objects with finite coordinates can be shown. Directory/OSM points
   stay `Not live`; generic community and unlocated leads do not get pins.
-- A price pill (including `Free`) requires `verification.price_verified === true`. An
+- A price pill (including `Free`) requires `verification.price_verified === true`.
+  Canvas labels contain only the price and optional short power hint. Never connector
+  prose, operator names or truncated inventory. An
   exact source-backed location with an unverified price remains a plain dot, not a price
   claim. Cached/stale popup cards say `Cached · not live` and expose a source check rather
   than an `Open in Maps` action.
@@ -237,7 +248,9 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 ## Flows for tests
 - **Default open = Mainland inventory and map camera** (leads only, no geolocation prompt).
   `nav[aria-label="Explore a region"]` provides `Mainland`, `Canary Islands`, `Balearic Islands`
-  pressed-state buttons. Each fits that region without forcing a transcontinental initial zoom.
+  pressed-state buttons when the camera is centred near Spain. Outside that area a
+  single `Spain` shortcut returns to the mainland scope. These are navigation shortcuts,
+  not a country-boundary or catalogue-coverage claim. Each fits its region.
   Mainland excludes rows inside the Balearic bounds despite their overlapping rectangles;
   that exclusion ends when a manual pan takes ownership of the visible-area scope.
   Region bounds scope the inventory immediately, before map activation and even when WebGL

@@ -88,6 +88,7 @@ jobs:
           node scripts/qa_price_slider.js http://127.0.0.1:8773 2>&1 | tee "$RUNNER_TEMP/volta-verify/price-slider.log"
           node scripts/qa_search_debounce.js http://127.0.0.1:8773 2>&1 | tee "$RUNNER_TEMP/volta-verify/search-debounce.log"
           node scripts/qa_station_details.js http://127.0.0.1:8773 2>&1 | tee "$RUNNER_TEMP/volta-verify/station-details.log"
+          node scripts/qa_web_design_audit.js http://127.0.0.1:8773 2>&1 | tee "$RUNNER_TEMP/volta-verify/web-design-audit.log"
       - name: Build and smoke-test the runtime container
         run: |
           docker build --pull --tag volta-ci:${{ github.sha }} . 2>&1 | tee "$RUNNER_TEMP/volta-verify/container-build.log"

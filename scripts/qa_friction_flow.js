@@ -33,7 +33,7 @@ async function waitSettledOverview(page) {
   await page.waitForFunction(
     () => {
       const status = document.querySelector(".live-dot")?.parentElement?.textContent || "";
-      return /Source-backed leads · not live/.test(status) && !/Refreshing/.test(status);
+      return /Saved chargers · not live/.test(status) && !/Refreshing/.test(status);
     },
     null,
     { timeout: 30000 },
@@ -137,7 +137,7 @@ async function main() {
   await mobile.waitForFunction(
     () => {
       const status = document.querySelector(".live-dot")?.parentElement?.textContent || "";
-      return /Source-backed leads · not live/.test(status) && !/Refreshing/.test(status);
+      return /Saved chargers · not live/.test(status) && !/Refreshing/.test(status);
     },
     null,
     { timeout: 30000 },
