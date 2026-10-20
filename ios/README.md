@@ -72,6 +72,8 @@ blocker and move to a newer Xcode/iOS 27 runtime pair.
 The local `Volta.storekit` file lives under `VoltaTests/` only. The shared scheme points its
 Run and Test actions to that test fixture, while the production app target and Release archive
 contain no StoreKit configuration file.
+For `xcodebuild -project`, the scheme's `../../VoltaTests/Volta.storekit` references resolve
+from the project's embedded workspace, not from the scheme file's directory.
 
 ## Paywall implementation (default off)
 
@@ -173,6 +175,8 @@ Volta/            synchronized folder — new .swift files are picked up automat
                            lives in AppState, including clearFilters recovery
   SheetView.swift   persistent city-search field, visible discovery filters, recovery/status
                     panels and the full vertical list of ranked in-view stations
+  AIConnectionView.swift  quiet pinned Connect AI action and native MCP setup sheet;
+                          public server address, verified clipboard feedback and read-only scope
   StationViews.swift  row card, availability breakdown (N free · M in use · K out),
                       decision pill / tier / corroboration badges, detail screen with
                       full provenance (claims, connectors, public sources, license,

@@ -153,6 +153,17 @@ this file in the same change.
   (`Clear search` when a query is set).
 
 ## Footer
+- `button.agent-connect`, named `Connect AI agent`, stays pinned beside Data honesty,
+  outside the result scroller. It opens the native modal `dialog` named
+  `Connect your AI agent`; no dialog opens automatically. `aria-haspopup`,
+  `aria-expanded` and `aria-controls` expose its state. The footer and setup
+  modal respect the mobile bottom safe area.
+- The setup modal contains a read-only input named `Server address` with
+  `https://voltago.app/mcp`, and a `Copy address` button. A successful copy changes
+  the button to `Copied` and announces the next step through `role="status"`;
+  a clipboard failure explains manual copying. `Close connection setup` or Escape
+  closes the modal and returns focus to the permanent prompt. Copying never
+  claims the agent is connected, and closing/reopening resets the copy feedback.
 - `button[aria-controls="data-honesty-panel"]` `Data honesty`, with `aria-expanded`. It is
   pinned below the result scroller, never after the last card: focusing an item at the end
   of the virtual list would scroll past every result.

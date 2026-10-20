@@ -2,6 +2,12 @@ import Foundation
 import MapKit
 import SwiftUI
 
+private enum DiscoverySheet: String, Identifiable {
+    case settings, aiConnection
+
+    var id: String { rawValue }
+}
+
 /// One full-screen map and one persistent sheet, like Apple Maps. The sheet holds search,
 /// filters and results; choosing a station from the map or the list opens its details in
 /// the same sheet, so the driver never loses the map or their place in the list.
@@ -10,7 +16,7 @@ struct RootView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sheetPresented = true
-    @State private var settingsPresented = false
+    @State private var activeSheet: DiscoverySheet?
     @State private var selectedDetent: PresentationDetent = .medium
     /// Height of the sheet's search row, measured, so the collapsed sheet shows exactly it.
     @State private var peekHeight: CGFloat = 92
@@ -43,7 +49,8 @@ struct RootView: View {
             .sheet(isPresented: $sheetPresented) {
                 SheetView(
                     detent: $selectedDetent,
-                    onOpenSettings: { settingsPresented = true },
+                    onOpenSettings: { activeSheet = .settings },
+                    onOpenAIConnection: { activeSheet = .aiConnection },
                     onSelect: select,
                     onPeekHeight: { peekHeight = $0 }
                 )
@@ -53,7 +60,12 @@ struct RootView: View {
                 .presentationBackground(Theme.canvas)
                 .interactiveDismissDisabled()
                 .presentationDragIndicator(.visible)
-                .sheet(isPresented: $settingsPresented) { SettingsView() }
+                .sheet(item: $activeSheet) { sheet in
+                    switch sheet {
+                    case .settings: SettingsView()
+                    case .aiConnection: AIConnectionView()
+                    }
+                }
                 .onChange(of: dynamicTypeSize, initial: true) { _, size in
                     if size.isAccessibilitySize, selectedDetent == peekDetent { selectedDetent = .large }
                 }

@@ -57,7 +57,7 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <StoreKitConfigurationFileReference
-         identifier = "../../../VoltaTests/Volta.storekit">
+         identifier = "../../VoltaTests/Volta.storekit">
       </StoreKitConfigurationFileReference>
       <Testables>
          <TestableReference
@@ -95,7 +95,7 @@
       debugServiceExtension = "internal"
       allowLocationSimulation = "YES">
       <StoreKitConfigurationFileReference
-         identifier = "../../../VoltaTests/Volta.storekit">
+         identifier = "../../VoltaTests/Volta.storekit">
       </StoreKitConfigurationFileReference>
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
