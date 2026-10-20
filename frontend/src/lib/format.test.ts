@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createElement } from 'react'
+
+// Source-detail tests render StationDetails without the app's vehicle garage
+// provider; vehicle estimates have their own coverage in vehicles.test.ts.
+vi.mock('../components/VehicleEstimate', () => ({ VehicleEstimate: () => null }))
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { DecisionLevel, Filters, Station } from '../types'
 import StationDetails from '../components/StationDetails'
