@@ -5,10 +5,12 @@ import { connectorInventoryText, publicWebUrl, stationPhoto } from '../lib/forma
 import { stationTitle } from '../lib/provider'
 import { SourceProvenance } from './SourceProvenance'
 import { VehicleEstimate } from './VehicleEstimate'
+import { PriceEvidence } from './PriceEvidence'
 
 function Evidence({ st }: { st: Station }) {
   const photo = stationPhoto(st)
   return <>
+    <PriceEvidence items={st.price_evidence} />
     {st.connectors && st.connectors.length > 0 && (
       <section className="mt-3 space-y-2" aria-label="Connector inventory">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Connectors</h3>
@@ -57,10 +59,11 @@ function DeferredEvidence({ st, snapshot }: { st: Station; snapshot: string }) {
           </button>
         )}
       </div>
+      <PriceEvidence items={st.price_evidence} />
       <SourceProvenance st={st} />
     </>
   }
-  return <Evidence st={query.data} />
+  return <Evidence st={{ ...query.data, price_evidence: query.data.price_evidence ?? st.price_evidence }} />
 }
 
 /** Only mounted by an open disclosure. Directory detail never replaces the card/live row. */

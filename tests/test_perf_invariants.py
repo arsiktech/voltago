@@ -498,8 +498,8 @@ class AssembledPayloadReuseTests(unittest.TestCase):
             server.CACHE.clear()
             server.CACHE.update(original_cache)
 
-    def test_retired_electromaps_work_is_never_invoked_or_cached(self) -> None:
-        """Rights-retired Electromaps evidence is removed before the old live-refresh
+    def test_excluded_origin_never_triggers_legacy_electromaps_refresh(self) -> None:
+        """Excluded Consum evidence is removed before the old live-refresh
         seam and cannot mark an assembled payload as having performed provider work."""
         original_cache = deepcopy(server.CACHE)
         try:
@@ -507,9 +507,9 @@ class AssembledPayloadReuseTests(unittest.TestCase):
             server.CACHE.update({"ts": 0, "payload": None, "raw_count": 0, "error": None, "assembled": None})
             mapareve_payload = {"stations": [self._station()], "raw_count": 1, "fetched_at": server.now_iso()}
             em_lead = {
-                "id": "em-lead-1", "name": "Electromaps lead", "lat": 39.47, "lon": -0.37,
-                "reliability": "community-free", "status": "VERIFY", "source": "Electromaps web-map API",
-                "sources": [{"name": "Electromaps web-map API", "url": "https://electromaps.example/p/123"}],
+                "id": "em-lead-1", "name": "Excluded locator lead", "lat": 39.47, "lon": -0.37,
+                "reliability": "community-free", "status": "VERIFY", "source": "Consum store locator",
+                "sources": [{"name": "Consum store locator", "url": "https://www.consum.es/supermercados/123"}],
                 "raw": {"electromaps_id": "123"}, "last_seen": server.now_iso(),
             }
 

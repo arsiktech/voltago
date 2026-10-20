@@ -255,8 +255,8 @@ class WorldwidePriceEvidenceTests(unittest.TestCase):
 class SourceOriginPolicyTests(unittest.TestCase):
     def test_openchargemap_upstream_provider_attribution_cannot_hide_blocked_origins(self) -> None:
         providers = [
-            {"Title": "Electromaps"},
-            {"Title": "Independent mirror", "WebsiteURL": "https://chargemap.com/"},
+            {"Title": "Consum"},
+            {"Title": "Independent mirror", "WebsiteURL": "https://www.consum.es/"},
             {"Title": "Consum store locator", "WebsiteURL": "https://www.consum.es/"},
         ]
         for provider in providers:
@@ -280,8 +280,8 @@ class SourceOriginPolicyTests(unittest.TestCase):
 
     def test_osm_explicit_source_tags_cannot_launder_blocked_origins(self) -> None:
         for key, value in [
-            ("source", "Electromaps"),
-            ("source_url", "https://chargemap.com/example-station"),
+            ("source", "Consum"),
+            ("source_url", "https://www.consum.es/example-station"),
             ("source", "Consum store locator"),
         ]:
             element = osm_element()
@@ -291,11 +291,11 @@ class SourceOriginPolicyTests(unittest.TestCase):
 
     def test_operator_mentions_do_not_exclude_independent_allowed_evidence(self) -> None:
         poi = ocm_poi()
-        poi["OperatorInfo"] = {"Title": "Electromaps"}
+        poi["OperatorInfo"] = {"Title": "Consum"}
         poi["DataProvider"] = {"Title": "OpenChargeMap Contributors", "IsOpenDataLicensed": True, "License": "CC BY 4.0"}
         self.assertIsNotNone(global_ingestion.normalize_ocm(poi, artifact()))
         element = osm_element()
-        element["tags"]["operator"] = "Electromaps"
+        element["tags"]["operator"] = "Consum"
         self.assertIsNotNone(global_ingestion.normalize_osm(element, artifact()))
 
 
@@ -430,7 +430,7 @@ class CandidateStoreTests(unittest.TestCase):
 
     def test_store_rechecks_nested_exclusions_and_invalid_coordinates(self) -> None:
         blocked = global_ingestion.normalize_ocm(ocm_poi(), artifact())
-        blocked["sources"].append({"name": "Electromaps", "url": "https://www.electromaps.com/"})
+        blocked["sources"].append({"name": "Consum", "url": "https://www.consum.es/"})
         self.assertEqual(self.store.add(blocked), "excluded")
         invalid = global_ingestion.normalize_ocm(ocm_poi(), artifact())
         invalid["lat"] = float("nan")

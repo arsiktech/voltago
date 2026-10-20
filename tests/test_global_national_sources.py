@@ -76,9 +76,9 @@ class FranceIRVETests(unittest.TestCase):
         self.assertNotEqual(rows[0]["id"], rows[1]["id"])
 
     def test_an_excluded_source_cannot_enter_through_a_national_dataset(self) -> None:
-        self.assertEqual(list(national.parse_france_irve([french_row(source="Chargemap")], artifact())), [])
+        self.assertEqual(list(national.parse_france_irve([french_row(source="Consum")], artifact())), [])
         # The repository policy excludes evidence origins, not plain operators.
-        self.assertEqual(len(list(national.parse_france_irve([french_row(nom_operateur="Chargemap")], artifact()))), 1)
+        self.assertEqual(len(list(national.parse_france_irve([french_row(nom_operateur="Consum")], artifact()))), 1)
 
 
 GERMAN_ROW = {"Betreiber": "Example Stadtwerke", "Straße": "Hauptstraße", "Hausnummer": "8",

@@ -95,6 +95,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var priceLabel: String?
     var isFree: Bool?
     var isCheap: Bool?
+    /// Additional published/community/pass claims only. Never a verified station tariff.
+    var priceEvidence: [PriceEvidence]? = nil
 
     var teslaOk: Bool?
     var fast: Bool?
@@ -162,7 +164,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case id, name
         case operatorName = "operator"
         case owner, city, address, lat, lon
-        case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap
+        case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap, priceEvidence
         case teslaOk, fast, maxPowerKw, connectorLabels, connectors, connectorSummary
         case status, available, totalEvse
         case source, sourceUrl, sources, primarySource, reliability
@@ -172,6 +174,26 @@ struct Station: Decodable, Identifiable, Hashable {
         case freshnessMinutes, lastSeen, distanceKm, driveEtaMinEst, navigation, media, lead
         case sourceDetails, tariffDetails
         case community, cacheStale, responseTrust
+    }
+}
+
+/// Display-only rates from explicit source units. Never a primary tariff or estimate input.
+struct PriceEvidenceRate: Codable, Hashable {
+    var kind: String
+    var label: String?
+    var min: Double
+    var max: Double?
+    var from: Bool
+    var unit: String
+    var afterMinutes: Double?
+
+    var isValid: Bool {
+        guard min.isFinite, min >= 0,
+              max == nil || (max!.isFinite && max! >= min),
+              label == nil || ["normal", "fast", "ultrafast", "motorcycle", "all"].contains(label!),
+              afterMinutes == nil || (afterMinutes!.isFinite && afterMinutes! >= 0) else { return false }
+        return (kind == "energy" && ["kWh", "started_kWh"].contains(unit) && afterMinutes == nil)
+            || (kind == "idle" && unit == "minute" && label == nil && max == nil && !from)
     }
 }
 

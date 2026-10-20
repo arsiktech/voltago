@@ -116,7 +116,7 @@ class IntelligenceIndexTests(unittest.TestCase):
         self.assertEqual(index.ids(), {row["id"] for row in self.rows})
 
     def test_source_policy_applies_before_index_and_metadata_hash(self):
-        blocked = {"id": "blocked", "source": "Chargemap", "source_url": "https://chargemap.com/station"}
+        blocked = {"id": "blocked", "source": "Consum", "source_url": "https://www.consum.es/station"}
         index = self.build(self.rows + [blocked])
         self.assertEqual(len(index.records), 5)
         self.assertEqual(index.metadata()["source_policy_excluded_records"], 1)

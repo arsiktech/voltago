@@ -18,7 +18,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import server  # noqa: E402
 import ingest_sources as ingestion  # noqa: E402
-from source_policy import load_source_policy_exclusions, partition_records, source_family_is_excluded  # noqa: E402
+from source_policy import load_source_policy_exclusions, matching_exclusion_ids, partition_records, source_family_is_excluded  # noqa: E402
+
+
+EXCLUSION_IDS = {
+    "electromaps-reuse-rights", "chargemap-reuse-and-robots", "consum-locator-reuse-permission",
+}
 
 
 
@@ -65,29 +70,26 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             }],
         }
 
-    def test_primary_and_nested_electromaps_evidence_match_the_explicit_exclusion(self) -> None:
-        # Feníe is now a permitted, active primary source, so the blocked-mechanism
-        # coverage that used Feníe as a generic example is repointed to Electromaps
-        # (still rights-blocked). The independent-operator-mention allowance below
-        # still uses Feníe on purpose: it must remain allowed via OpenChargeMap.
+    def test_primary_and_nested_consum_evidence_match_the_explicit_exclusion(self) -> None:
+        # Consum remains excluded; independent operator mentions remain allowed.
         fixtures = [
-            {"id": "primary", "source": "Electromaps web-map API"},
+            {"id": "primary", "source": "Consum store locator"},
             {
                 "id": "nested",
                 "source": "OpenChargeMap public snapshot",
-                "sources": [{"name": "Electromaps directory", "url": "https://example.invalid/station"}],
+                "sources": [{"name": "Consum directory", "url": "https://example.invalid/station"}],
             },
             {
                 "id": "url",
                 "source": "Directory",
-                "source_url": "https://www.electromaps.com/es/punto-de-carga/1",
+                "source_url": "https://www.consum.es/es/punto-de-carga/1",
             },
             {
                 "id": "media-photo",
                 "source": "Directory",
                 "media": {"photos": [{
                     "url": "https://images.example.invalid/photo.jpg",
-                    "source_url": "https://map.electromaps.com/en/p/2",
+                    "source_url": "https://www.consum.es/en/p/2",
                 }]},
             },
             {
@@ -95,7 +97,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 "source": "Directory",
                 "connectors": [{
                     "label": "Type 2",
-                    "provenance": {"name": "Electromaps directory"},
+                    "provenance": {"name": "Consum directory"},
                 }],
             },
         ]
@@ -125,54 +127,54 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             }]},
         }))
 
-    def test_commercial_station_evidence_without_reuse_permission_matches_explicit_exclusions(self) -> None:
+    def test_remaining_exclusion_matches_all_structured_origin_surfaces(self) -> None:
         fixtures = [
-            {"id": "electromaps-primary", "source": "Electromaps web-map API"},
+            {"id": "primary", "source": "Consum store locator"},
             {
-                "id": "electromaps-photo",
+                "id": "nested-photo",
                 "source": "OpenChargeMap",
-                "media": {"photos": [{"source_url": "https://map.electromaps.com/en/p/42"}]},
+                "media": {"photos": [{"source_url": "https://www.consum.es/en/p/42"}]},
             },
-            {"id": "chargemap-primary", "source": "Chargemap public map API"},
-            {"id": "chargemap-bare", "source": "Chargemap"},
-            {"id": "chargemap-directory", "source": "Chargemap directory"},
+            {"id": "named-origin", "source": "Consum store locator"},
+            {"id": "bare-origin", "source": "Consum"},
+            {"id": "directory-origin", "source": "Consum directory"},
             {
-                "id": "chargemap-nested",
+                "id": "nested-url",
                 "source": "OpenStreetMap",
-                "sources": [{"name": "Independent", "url": "https://chargemap.com/example.html"}],
+                "sources": [{"name": "Independent", "url": "https://www.consum.es/example.html"}],
             },
-            {"id": "consum-primary", "source": "Consum store locator"},
-            {"id": "consum-bare", "source": "Consum"},
-            {"id": "consum-official", "source": "Consum official"},
+            {"id": "locator-origin", "source": "Consum store locator"},
+            {"id": "bare-consum", "source": "Consum"},
+            {"id": "official-origin", "source": "Consum official"},
             {
-                "id": "consum-nested",
+                "id": "nested-locator",
                 "source": "OpenChargeMap",
                 "sources": [{"name": "Consum store locator", "url": "https://www.consum.es/supermercados/test/"}],
             },
             {
-                "id": "electromaps-raw-source",
+                "id": "raw-source",
                 "source": "OpenStreetMap public tags",
-                "raw": {"operator": "Electromaps", "source": "https://www.electromaps.com"},
+                "raw": {"operator": "Consum", "source": "https://www.consum.es"},
             },
             {
-                "id": "chargemap-raw-source-url",
+                "id": "raw-source-url",
                 "source": "OpenStreetMap public tags",
-                "raw": {"source_url": "https://chargemap.com/stations/example.html"},
+                "raw": {"source_url": "https://www.consum.es/stations/example.html"},
             },
             {
-                "id": "electromaps-raw-deep-website",
+                "id": "raw-deep-website",
                 "source": "OpenStreetMap public tags",
-                "raw": {"website": "https://www.electromaps.com/puntos-de-recarga/42_station"},
+                "raw": {"website": "https://www.consum.es/puntos-de-recarga/42_station"},
             },
             {
-                "id": "chargemap-pricing-source",
+                "id": "pricing-source",
                 "source": "OpenStreetMap",
-                "pricing": [{"price": 0, "source": "Chargemap public map API"}],
+                "pricing": [{"price": 0, "source": "Consum store locator"}],
             },
             {
-                "id": "chargemap-pricing-url",
+                "id": "pricing-url",
                 "source": "OpenStreetMap",
-                "pricing": [{"price": 0, "source_url": "https://chargemap.com/station/x"}],
+                "pricing": [{"price": 0, "source_url": "https://www.consum.es/station/x"}],
             },
         ]
 
@@ -184,8 +186,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "id": "independent-operator-mention",
             "source": "OpenStreetMap public tags",
             "raw": {
-                "operator": "Electromaps",
-                "website": "https://www.electromaps.com/",
+                "operator": "Consum",
+                "website": "https://www.consum.es/",
             },
         }))
         self.assertTrue(server.source_policy_record_allowed({
@@ -194,16 +196,124 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         }))
 
         policy = load_source_policy_exclusions()
-        self.assertTrue(source_family_is_excluded("Chargemap", policy))
-        self.assertTrue(source_family_is_excluded("Chargemap directory", policy))
         self.assertTrue(source_family_is_excluded("Consum", policy))
+        self.assertTrue(source_family_is_excluded("Consum directory", policy))
         self.assertTrue(source_family_is_excluded("Consum official", policy))
         self.assertFalse(source_family_is_excluded("OpenChargeMap", policy))
 
         ids = {row["id"] for row in load_source_policy_exclusions()["exclusions"]}
-        self.assertIn("electromaps-reuse-rights", ids)
-        self.assertIn("chargemap-reuse-and-robots", ids)
-        self.assertIn("consum-locator-reuse-permission", ids)
+        self.assertEqual(ids, EXCLUSION_IDS)
+
+    def test_owner_collection_decisions_are_narrow_and_do_not_grant_provider_licences(self) -> None:
+        policy = load_source_policy_exclusions()
+        self.assertEqual({row["id"] for row in policy["exclusions"]}, EXCLUSION_IDS)
+        exclusions = {row["family"]: row for row in policy["exclusions"]}
+        for family, terms, host, kind in (
+            ("Electromaps", ["electromaps"], "electromaps.com", "electromaps_community"),
+            ("Chargemap", ["chargemap public map api"], "chargemap.com", "chargemap_pass"),
+        ):
+            exclusion = exclusions[family]
+            self.assertEqual(exclusion["status"], "station-evidence-blocked-price-annotations-permitted")
+            self.assertEqual(exclusion["source_family_terms"], terms)
+            self.assertEqual(exclusion["origin_hosts"], [host])
+            self.assertEqual(exclusion["permitted_price_evidence_kinds"], [kind])
+        self.assertNotIn("permitted_price_evidence_kinds", exclusions["Consum store locator"])
+        decisions = {row["family"]: row for row in policy["owner_collection_decisions"]}
+        self.assertEqual(set(decisions), {"Repsol", "Electromaps", "Chargemap"})
+        grants = {row["family"] for row in policy["granted_reuse"]}
+        for family, decision in decisions.items():
+            with self.subTest(family=family):
+                self.assertEqual(source_family_is_excluded(family, policy), family != "Repsol")
+                self.assertEqual(decision["status"], "active-additive-price-only-bounded")
+                self.assertEqual(decision["decision_type"], "owner-collection-policy-not-provider-licence")
+                self.assertEqual(decision["country_codes"], ["ES"])
+                self.assertEqual(decision["http_methods"], ["GET"])
+                self.assertFalse(decision["provider_reuse_licence_granted"])
+                self.assertIn("5.2.2", decision["release_review"])
+                self.assertNotIn(family, grants)
+        self.assertTrue(source_family_is_excluded("Consum store locator", policy))
+
+    def test_only_exact_corresponding_price_evidence_kinds_are_permitted(self) -> None:
+        policy = load_source_policy_exclusions()
+        claims = []
+        for family, kind, exclusion_id in (
+            ("Electromaps", "electromaps_community", "electromaps-reuse-rights"),
+            ("Chargemap", "chargemap_pass", "chargemap-reuse-and-robots"),
+        ):
+            claim = {"kind": kind, "source": family,
+                     "source_url": f"https://map.{family.lower()}.com/station/1"}
+            claims.append(claim)
+            row = {"id": "existing", "source": "DGT registry", "price_evidence": [claim]}
+            allowed, excluded = partition_records([row], policy)
+            self.assertEqual(allowed, [row])
+            self.assertEqual(excluded, [])
+            for wrong_kind in (None, "", kind.upper(), kind + "_future", "repsol_network_tariff",
+                               "chargemap_pass" if family == "Electromaps" else "electromaps_community", []):
+                with self.subTest(family=family, kind=wrong_kind):
+                    blocked = dict(row, price_evidence=[dict(claim, kind=wrong_kind)])
+                    self.assertEqual(matching_exclusion_ids(blocked, policy), [exclusion_id])
+            # A malformed container does not gain a typed-list exemption.
+            self.assertEqual(matching_exclusion_ids(dict(row, price_evidence=claim), policy), [exclusion_id])
+        self.assertEqual(matching_exclusion_ids({"source": "DGT registry", "price_evidence": claims}, policy), [])
+
+    def test_typed_price_annotation_never_exempts_other_station_evidence(self) -> None:
+        policy = load_source_policy_exclusions()
+        for exclusion in policy["exclusions"]:
+            family = exclusion["family"]
+            kind = (exclusion.get("permitted_price_evidence_kinds") or ["electromaps_community"])[0]
+            origin = {"kind": kind, "source": family,
+                      "source_url": "https://map." + exclusion["origin_hosts"][0] + "/station/1"}
+            surfaces = [
+                {"source": family}, {"source_type": family}, {"source_url": origin["source_url"]},
+                {"primary_source": {"kind": kind, "name": family, "url": origin["source_url"]}},
+                {"sources": [{"kind": kind, "name": family}]},
+                {"sources": [{"url": origin["source_url"]}]},
+                {"raw": {"source": family}}, {"raw": {"source_url": origin["source_url"]}},
+                {"raw": {"website": origin["source_url"]}},
+                {"pricing": [origin]}, {"photos": [origin]}, {"media": {"photos": [origin]}},
+                {"connectors": [{"label": "Type 2", "provenance": {"name": family}}]},
+            ]
+            surfaces.extend({key: origin} for key in (
+                "charge_claim", "parking_claim", "location_claim", "hardware_claim", "access_claim",
+            ))
+            for surface in surfaces:
+                with self.subTest(family=family, surface=surface):
+                    row = {"source": "OpenStreetMap", "price_evidence": [origin], **surface}
+                    self.assertEqual(matching_exclusion_ids(row, policy), [exclusion["id"]])
+
+    def test_new_price_evidence_cannot_hide_another_excluded_origin(self) -> None:
+        policy = load_source_policy_exclusions()
+        for family, kind in (("Electromaps", "electromaps_community"), ("Chargemap", "chargemap_pass")):
+            for other in policy["exclusions"]:
+                if other["family"] == family:
+                    continue
+                for provenance in (
+                    {"source": other["family"]},
+                    {"source_url": "https://www." + other["origin_hosts"][0] + "/station/1"},
+                    {"provenance": {"name": other["family"]}},
+                ):
+                    with self.subTest(family=family, other=other["family"], provenance=provenance):
+                        claim = {"kind": kind, "source": family,
+                                 "source_url": f"https://www.{family.lower()}.com/station/1",
+                                 **provenance}
+                        self.assertEqual(matching_exclusion_ids({
+                            "source": "DGT registry", "price_evidence": [claim],
+                        }, policy), [other["id"]])
+
+    def test_independent_names_operators_and_policy_words_are_not_origin_evidence(self) -> None:
+        policy = load_source_policy_exclusions()
+        for exclusion in policy["exclusions"]:
+            family = exclusion["family"]
+            with self.subTest(family=family):
+                row = {
+                    "source": "OpenStreetMap public tags", "name": family + " station",
+                    "operator": family, "owner": {"name": family},
+                    "raw": {"operator": family, "website": "https://www." + exclusion["origin_hosts"][0] + "/"},
+                    "scope": exclusion["scope"], "status": exclusion["status"],
+                    "connectors": [{"name": family + " Type 2", "label": family}],
+                    "media": {"photos": [{"caption": family, "url": "https://example.invalid/photo"}]},
+                }
+                self.assertEqual(matching_exclusion_ids(row, policy), [])
 
     def test_independent_mapareve_live_row_may_keep_provider_homepage_as_owner_metadata(self) -> None:
         row = self._live_station("mapareve-owner-home", "MapaREVE public live OCPI")
@@ -213,8 +323,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "url": "https://www.mapareve.es/",
         }]
         row["owner"] = {
-            "name": "ELECTROMAPS SL",
-            "website": "https://www.electromaps.com/",
+            "name": "CONSUM",
+            "website": "https://www.consum.es/",
         }
 
         self.assertTrue(server.source_policy_record_allowed(row))
@@ -235,7 +345,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             {
                 "id": "blocked-family-with-malformed-url",
                 "source": "Independent directory",
-                "sources": [{"name": "Electromaps directory", "url": "http://[bad"}],
+                "sources": [{"name": "Consum directory", "url": "http://[bad"}],
             },
         ]
 
@@ -259,8 +369,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "access_claim",
         ):
             for evidence in (
-                {"source": "Electromaps directory"},
-                {"url": "https://www.electromaps.com/es/punto-de-carga/42"},
+                {"source": "Consum directory"},
+                {"url": "https://www.consum.es/es/punto-de-carga/42"},
             ):
                 with self.subTest(claim=claim_key, evidence=evidence):
                     self.assertFalse(server.source_policy_record_allowed({
@@ -272,7 +382,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertFalse(server.source_policy_record_allowed({
             "id": "top-level-photo",
             "source": "Independent directory",
-            "photos": [{"source_url": "https://map.electromaps.com/en/p/43"}],
+            "photos": [{"source_url": "https://www.consum.es/en/p/43"}],
         }))
 
     def test_fenie_collector_is_active_offline_only_under_narrow_post_exception(self) -> None:
@@ -304,11 +414,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         granted = {row.get("id"): row for row in policy.get("granted_reuse", [])}
         self.assertIn("fenie-owner-attested-permission", granted)
         self.assertEqual(granted["fenie-owner-attested-permission"]["status"], "permitted")
-        # The three rights-blocked families must stay excluded, unchanged and enforced.
-        self.assertEqual(
-            exclusion_ids,
-            {"electromaps-reuse-rights", "chargemap-reuse-and-robots", "consum-locator-reuse-permission"},
-        )
+        # Station evidence remains excluded; typed annotations have separate allowances.
+        self.assertEqual(exclusion_ids, EXCLUSION_IDS)
         for blocked_row in (
             {"id": "em", "source": "Electromaps web-map API", "source_url": "https://www.electromaps.com/es/punto-de-carga/1"},
             {"id": "cm", "source": "Chargemap public map API", "source_url": "https://chargemap.com/x"},
@@ -354,24 +461,28 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertEqual(health["status"], "permitted-owner-attested-snapshot")
         self.assertFalse(health["has_payload"])  # offline snapshot: no runtime payload
 
-        for name, status in (
-            ("Electromaps", "link-only-rights-blocked"),
-            ("Chargemap", "removed-rights-blocked"),
-            ("Consum store locator", "link-only-rights-blocked"),
-        ):
+        for name in ("Repsol", "Electromaps", "Chargemap"):
             with self.subTest(name=name):
                 row = next(item for item in strategy["requested_apps"] if item["name"] == name)
-                self.assertEqual(row["status"], status)
-                self.assertEqual(row["records_now"], {
-                    "direct_station_records": 0,
-                    "nested_station_evidence_records": 0,
-                })
+                self.assertEqual(row["status"], "active-additive-price-only-bounded")
+                self.assertIsInstance(row["records_now"]["direct_station_records"], int)
+                self.assertIsInstance(row["records_now"]["additive_price_evidence"], int)
+                self.assertEqual(row["records_now"]["direct_station_records"], 0)
+                self.assertEqual(row["records_now"]["live_stations"], 0)
+                self.assertEqual(row["decision_type"], "owner-collection-policy-not-provider-licence")
+
+        consum = next(item for item in strategy["requested_apps"] if item["name"] == "Consum store locator")
+        self.assertEqual(consum["status"], "link-only-rights-blocked")
+        self.assertEqual(consum["records_now"], {
+            "direct_station_records": 0,
+            "nested_station_evidence_records": 0,
+        })
 
         electromaps_health = server.source_health_summary()["live_cache"]["electromaps"]
-        self.assertEqual(electromaps_health["status"], "link-only-rights-blocked")
+        self.assertEqual(electromaps_health["status"], "active-additive-price-only-bounded")
         self.assertEqual(electromaps_health["cached_details"], 0)
 
-    def test_public_source_catalog_matches_retired_source_policy(self) -> None:
+    def test_public_source_catalog_does_not_advertise_direct_directory_adapters(self) -> None:
         catalog = server.source_catalog_payload()
         moat = " ".join(catalog["moat_intelligence"])
         covered = " ".join(catalog["covered_via_primary"])
@@ -394,8 +505,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 "summary": {"total": 2, "network": 2},
                 "artifacts": [
                     {
-                        "url": "https://map.electromaps.com/mapi/v2/chargers",
-                        "cache_name": "electromaps.json",
+                        "url": "https://www.consum.es/supermercados/",
+                        "cache_name": "consum.json",
                         "cache": {"hit": False, "fallback": False, "stale": False},
                     },
                     {
@@ -406,11 +517,11 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 ],
             },
             "errors": [
-                {"source": "source_chargemap_mappy", "error": "RuntimeError"},
+                {"source": "source_consum", "error": "RuntimeError"},
                 {"source": "source_openchargemap", "error": "TimeoutError"},
             ],
             "license_notes": [
-                "Electromaps evidence active",
+                "Consum evidence active",
                 "OpenChargeMap attribution retained",
             ],
             "records": [
@@ -422,11 +533,11 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                     "raw": {"operator": "Fenie Energia"},
                     "sources": [{"name": "OpenChargeMap", "url": "https://openchargemap.io/site/poi/details/1"}],
                 },
-                {"id": "primary", "source": "Electromaps web-map API"},
+                {"id": "primary", "source": "Consum store locator"},
                 {
                     "id": "nested",
                     "source": "Directory",
-                    "connectors": [{"source_url": "https://map.electromaps.com/en/p/7"}],
+                    "connectors": [{"source_url": "https://www.consum.es/en/p/7"}],
                 },
             ],
         }
@@ -450,7 +561,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         })
         self.assertEqual(cleaned["fetch_evidence"]["artifacts"][0]["cache_name"], "ocm.json")
         self.assertEqual(cleaned["errors"], [{"source": "source_openchargemap", "error": "TimeoutError"}])
-        self.assertNotIn("Electromaps evidence active", cleaned["license_notes"])
+        self.assertNotIn("Consum evidence active", cleaned["license_notes"])
         self.assertIn("OpenChargeMap attribution retained", cleaned["license_notes"])
         self.assertIn("fenie", json.dumps(cleaned, ensure_ascii=False).lower())
         public_metadata = {
@@ -458,13 +569,12 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "errors": cleaned["errors"],
         }
         metadata_text = json.dumps(public_metadata, ensure_ascii=False).lower()
-        # Feníe is now permitted, so it is intentionally NOT in this blocked-leak list;
-        # these remain the still-blocked commercial sources whose evidence must be scrubbed.
+        # Excluded-source metadata must be removed as well as the station row.
         for prohibited in (
-            "map.electromaps.com",
-            "electromaps evidence active",
-            "source_chargemap_mappy",
-            "https://chargemap.com",
+            "www.consum.es",
+            "consum evidence active",
+            "source_consum",
+            "https://www.consum.es",
             "consum store locator",
         ):
             self.assertNotIn(prohibited, metadata_text)
@@ -488,7 +598,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "connectors": [{
                 "label": "Type 2",
                 "source_url": "https://map.openchargemap.io/?mode=details&id=23805",
-                "raw": {"Reference": "Electromaps", "ConnectionTypeID": 25},
+                "raw": {"Reference": "Consum", "ConnectionTypeID": 25},
             }],
         }
         payload = {
@@ -504,7 +614,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertEqual(report["excluded_records"], 0)
         self.assertEqual([record["id"] for record in cleaned["records"]], ["ocm-independent"])
         self.assertNotIn("Reference", cleaned["records"][0]["connectors"][0]["raw"])
-        self.assertEqual(row["connectors"][0]["raw"]["Reference"], "Electromaps")
+        self.assertEqual(row["connectors"][0]["raw"]["Reference"], "Consum")
 
     def test_intelligence_loader_drops_primary_and_nested_excluded_records(self) -> None:
         original_raw = deepcopy(server._INTEL_RAW)
@@ -519,14 +629,14 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                         "source": "OpenChargeMap",
                         "connectors": [{
                             "label": "Type 2",
-                            "raw": {"Reference": "Electromaps", "ConnectionTypeID": 25},
+                            "raw": {"Reference": "Consum", "ConnectionTypeID": 25},
                         }],
                     },
-                    {"id": "primary", "source": "Electromaps web-map API"},
+                    {"id": "primary", "source": "Consum store locator"},
                     {
                         "id": "nested",
                         "source": "Directory",
-                        "sources": [{"name": "Electromaps directory"}],
+                        "sources": [{"name": "Consum directory"}],
                     },
                 ],
             }), encoding="utf-8")
@@ -555,7 +665,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             }), encoding="utf-8")
             (data / "seed_leads.json").write_text(json.dumps([
                 {"id": "safe", "source": "manual research lead"},
-                {"id": "blocked", "source": "Electromaps web-map API"},
+                {"id": "blocked", "source": "Consum store locator"},
             ]), encoding="utf-8")
             try:
                 server._INTEL_RAW.clear()
@@ -586,8 +696,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         safe = self._live_station("safe-live", "MapaREVE")
         safe["name"] = "Fenie-operated station from MapaREVE"
         safe["owner"] = {"name": "FENÍE ENERGÍA"}
-        primary = self._live_station("primary", "Electromaps web-map API")
-        nested = self._live_station("nested", "Gaia", nested_source="Electromaps directory")
+        primary = self._live_station("primary", "Consum store locator")
+        nested = self._live_station("nested", "Gaia", nested_source="Consum directory")
         results = {
             "mapareve": {
                 "name": "mapareve",
@@ -635,13 +745,11 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 2)
         self.assertIn("source policy", payload["warning"].lower())
         provider_strategy = payload["meta"]["named_provider_strategy"]
-        self.assertIn("link only", provider_strategy["Electromaps"].lower())
-        self.assertNotIn("Chargemap", provider_strategy["Iberdrola/Acciona/GIC/Miio"])
-        self.assertNotIn("Electromaps", provider_strategy["Iberdrola/Acciona/GIC/Miio"])
+        self.assertNotIn("Consum", provider_strategy["Iberdrola/Acciona/GIC/Miio"])
 
     def test_stale_raw_cache_is_repartitioned_before_serving(self) -> None:
         safe = self._live_station("safe-stale", "MapaREVE")
-        blocked = self._live_station("blocked-stale", "Electromaps web-map API")
+        blocked = self._live_station("blocked-stale", "Consum store locator")
         mapareve_payload = {
             "stations": [safe],
             "raw_count": 1,
@@ -692,7 +800,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         safe = self._live_station("safe-assembled", "MapaREVE")
         safe["name"] = "Fenie-operated station independently observed by MapaREVE"
         safe["owner"] = {"name": "FENÍE ENERGÍA"}
-        blocked_station = self._live_station("blocked-assembled", "Electromaps web-map API")
+        blocked_station = self._live_station("blocked-assembled", "Consum store locator")
         safe_lead = {
             "id": "safe-lead",
             "name": "Independent directory lead",
@@ -710,7 +818,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             "source": "OpenChargeMap",
             "sources": [
                 {"name": "OpenChargeMap", "url": "https://openchargemap.io/site/poi/details/2"},
-                {"name": "Electromaps directory", "url": "https://example.invalid/secondary"},
+                {"name": "Consum directory", "url": "https://example.invalid/secondary"},
             ],
         })
         mapareve_payload = {

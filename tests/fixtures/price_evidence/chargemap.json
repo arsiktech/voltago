@@ -1,0 +1,22 @@
+{
+  "id": 315448,
+  "name": "Iberdrola  - VALENCIA - 171 SAN VICENTE MARTIR",
+  "street_name": "SAN VICENTE MARTIR",
+  "number": "171",
+  "gps_coordinates": {
+    "lon": -0.382481,
+    "lat": 39.459252
+  },
+  "country_code": "ES",
+  "evse_emi3_ids": [],
+  "network": {
+    "name": "Iberdrola "
+  },
+  "charging_connectors": [
+    {
+      "type": "COMBO_TYPE_2",
+      "power_max": 175
+    }
+  ],
+  "is_free": true
+}

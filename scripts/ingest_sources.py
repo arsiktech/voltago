@@ -39,6 +39,7 @@ try:
     )
     from .source_transport import SourcePolicyBlocked, policy_urlopen
     from .station_identity import identity_keys
+    from .price_evidence import enrich_price_evidence, price_evidence_counts
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_policy import (
         load_source_policy_exclusions,
@@ -49,6 +50,7 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     )
     from source_transport import SourcePolicyBlocked, policy_urlopen
     from station_identity import identity_keys
+    from price_evidence import enrich_price_evidence, price_evidence_counts
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -3703,6 +3705,14 @@ def tariff_has_conditions_or_cost(tariff: Dict[str, Any]) -> bool:
 
 def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> None:
     """Keep the ids of rows folded into this pin, so a refresh can show where they went."""
+    items = list(items)
+    claims = []
+    for item in items:
+        for claim in item.get("price_evidence") or []:
+            if isinstance(claim, dict) and claim not in claims:
+                claims.append(claim)
+    if claims:
+        base["price_evidence"] = claims
     merged_ids = set(base.get("merged_ids") or [])
     for item in items:
         merged_ids.update(item.get("merged_ids") or [])
@@ -4334,6 +4344,7 @@ def apply_source_policy_exclusions_to_payload(
     cleaned = dict(payload)
     allowed, excluded = partition_records(payload.get("records") or [], SOURCE_POLICY_EXCLUSIONS)
     cleaned["records"] = allowed
+    cleaned["price_evidence_counts"] = price_evidence_counts(allowed)
     cleaned["total_records"] = len(allowed)
     cleaned["recordset_sha256"] = recordset_sha256(allowed)
     cleaned["recordset_records"] = len(allowed)
@@ -5125,6 +5136,8 @@ def build_payload() -> Dict[str, Any]:
     merged = dedupe(records)
     merged, cross_merged = merge_cross_source_duplicates(merged)
     print(f"cross-source duplicate merge: -{cross_merged} rows (corroborating sources unioned)")
+    # Additive directories never enter either merge stage, donate pins or primary claims.
+    price_collection = enrich_price_evidence(merged, CACHE, registry_rows=records)
     unpriced = sum(1 for row in merged if row.get("price_min") is None)
     print(f"price-unknown chargers kept as leads: {unpriced}")
     payload = {
@@ -5133,13 +5146,15 @@ def build_payload() -> Dict[str, Any]:
         "raw_records": len(records),
         "cross_source_merged": cross_merged,
         "source_adapter_counts": source_adapter_counts,
+        "price_evidence_counts": price_evidence_counts(merged),
+        "price_evidence_collection": price_collection,
         "errors": errors,
         "fetch_evidence": fetch_evidence_payload(),
         "license_notes": [
             "OSM/Overpass data is ODbL; keep attribution and share-alike obligations in mind.",
             "Barcelona Endolla and Madrid official datasets are reused under CC BY 4.0; Zaragoza municipal facts follow its published reuse conditions. Preserve source/update attribution.",
             "Red MOVEM's €0.25/kWh regulation is attached only to unambiguous OSM locations at or below 22 kW; Moraleja Green is a single static Verify-first official-policy lead.",
-            "Rights-blocked commercial map/locator station ingestion is retired by structured source policy pending express reuse permission; retain only conventional homepage links, never copied station evidence.",
+            "Repsol, Electromaps and Chargemap additive Spain price evidence follows owner collection policy, not a provider reuse licence. Other source exclusions remain. Apple 5.2.2 review is separate.",
             "Provider apps/onsite signs override every cached intelligence record.",
         ],
         "records": merged,

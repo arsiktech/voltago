@@ -71,6 +71,32 @@ export interface Claim {
   summary?: string
 }
 
+export interface PriceEvidenceRate {
+  kind: 'energy' | 'idle'
+  label: 'normal' | 'fast' | 'ultrafast' | 'motorcycle' | 'all' | null
+  min: number
+  max: number | null
+  from: boolean
+  unit: 'kWh' | 'started_kWh' | 'minute'
+  after_minutes: number | null
+}
+
+/** Additional source claims only; never a verified station tariff or a planning input. */
+export interface PriceEvidence {
+  kind: 'repsol_network_tariff' | 'electromaps_community' | 'chargemap_pass'
+  source: string
+  label: string
+  text: string
+  source_url: string
+  source_updated_at: string | null
+  fetched_at: string
+  price_per_kwh: number | null
+  currency: 'EUR'
+  tariff_details?: Record<string, unknown>
+  rates?: PriceEvidenceRate[]
+  parking_price?: string
+}
+
 export interface ClaimConflict {
   level?: string
   summary?: string
@@ -239,6 +265,7 @@ export interface Station {
   confidence?: string | number
 
   charge_claim?: Claim
+  price_evidence?: PriceEvidence[]
   parking_claim?: Claim
   claim_conflict?: ClaimConflict
   parking?: ParkingProfile

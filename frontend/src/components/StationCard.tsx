@@ -20,6 +20,7 @@ import {
   cityLabel,
   corroboration,
   displayName,
+  hasVerifiedPrice,
   distanceText,
   durationText,
   googleMapsLink,
@@ -50,6 +51,7 @@ import {
 import { Badge } from './Badge'
 import { DecisionPill } from './DecisionPill'
 import { ConnectorChips } from './ConnectorChips'
+import { PriceEvidence } from './PriceEvidence'
 const StationDetails = lazy(() => import('./StationDetails'))
 
 /** Keep the card and its source/Maps actions usable if the optional chunk fails. */
@@ -422,6 +424,8 @@ function StationCardBase({
           </div>
         )}
       </div>
+
+      <PriceEvidence items={st.price_evidence?.filter(item => !(item.kind === 'repsol_network_tariff' && st.price_min != null && hasVerifiedPrice(st)))} />
 
       {/* Actions. aria-labels carry the station name so a screen-reader links list is not
           just "Open in Maps" x N (found by qa_screen_reader_contract). */}

@@ -74,7 +74,9 @@ def load_source_policy_exclusions(path: Optional[Path] = None) -> Dict[str, Any]
     return payload
 
 
-def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
+def _record_origin_values(
+    record: Dict[str, Any], *, permitted_price_evidence_kinds: Iterable[str] = ()
+) -> Dict[str, List[Any]]:
     """Return provenance fields only, never station/operator/instruction text."""
     families: List[Any] = [record.get("source"), record.get("source_type")]
     urls: List[Any] = [record.get("source_url")]
@@ -128,6 +130,18 @@ def _record_origin_values(record: Dict[str, Any]) -> Dict[str, List[Any]]:
     # Top-level pricing windows directly drive rendered price and tariff-window
     # claims, so any structured provenance they carry is source evidence too.
     collect_known_provenance(record.get("pricing") or [])
+    # Only this exclusion's exact typed annotations may omit its origin check.
+    # Other exclusions still inspect the entire annotation, including nested
+    # provenance. A kind on primary, pricing, hardware or media evidence has
+    # no effect. Malformed non-list price_evidence has no annotation exemption.
+    price_evidence = record.get("price_evidence") or []
+    if isinstance(price_evidence, list):
+        for claim in price_evidence:
+            if isinstance(claim, dict) and claim.get("kind") in permitted_price_evidence_kinds:
+                continue
+            collect_known_provenance(claim)
+    else:
+        collect_known_provenance(price_evidence)
     media = record.get("media")
     if isinstance(media, dict):
         collect_known_provenance(media.get("photos") or [])
@@ -174,9 +188,12 @@ def source_family_is_excluded(value: Any, policy: Dict[str, Any]) -> bool:
 def matching_exclusion_ids(value: Any, policy: Dict[str, Any]) -> List[str]:
     if not isinstance(value, dict):
         return []
-    origin_values = _record_origin_values(value)
     matches: List[str] = []
     for exclusion in policy.get("exclusions") or []:
+        origin_values = _record_origin_values(
+            value,
+            permitted_price_evidence_kinds=exclusion.get("permitted_price_evidence_kinds") or (),
+        )
         terms = [normalize_policy_text(term) for term in exclusion.get("source_family_terms") or []]
         family_match = any(
             _canonical_family_matches(origin, exclusion)
