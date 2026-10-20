@@ -58,6 +58,7 @@ from station_truth import (
 
 import agent_mcp
 import community as community_store
+from google_maps import attach_google_maps_navigation
 import vehicles as vehicle_store
 
 ROOT = Path(__file__).resolve().parent
@@ -940,7 +941,15 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
         # free/cheap option. They are never green: the price standard is not met or unknown.
         price = safe_float(item.get("price_min"))
         if price is None:
-            return {"level": "lead", "label": "Price lead", "reason": "No source publishes a tariff for this charger; check the price in the operator app before charging."}
+            tariff = item.get("tariff_details") or {}
+            hourly = safe_float(tariff.get("hour_eur"))
+            if hourly is not None and hourly >= 0:
+                reason = "No unconditional energy price is published. This source lists an hourly tariff; check its conditions before charging."
+            elif tariff.get("text") or tariff.get("components") or tariff.get("conditions") or tariff.get("minimum_eur") is not None:
+                reason = "The source publishes tariff conditions but no unconditional price per kWh; check its conditions before charging."
+            else:
+                reason = "No source publishes a tariff for this charger; check the price in the operator app before charging."
+            return {"level": "lead", "label": "Price lead", "reason": reason}
         return {"level": "lead", "label": "Paid", "reason": f"Charging costs €{price:.2f}/kWh, above the €{PRICE_MAX_DEFAULT:.2f}/kWh free/cheap standard; confirm the price in the operator app."}
     if access.get("level") in {"restricted", "unknown"}:
         return {"level": "verify", "label": "Verify first", "reason": access["note"]}
@@ -998,7 +1007,10 @@ def attach_connector_summary(item: Dict[str, Any]) -> Dict[str, Any]:
         if power_kw:
             power_values.append(power_kw)
 
-    snapshot_mode = (item.get("source_integration") or {}).get("mode") in {"community_snapshot", "community_tags", "official_snapshot"}
+    integration = item.get("source_integration") or {}
+    snapshot_mode = integration.get("mode") in {
+        "community_snapshot", "community_tags", "official_snapshot", "public_map_snapshot",
+    } or (item.get("lead") is True and integration.get("live_status_integrated") is False)
     if snapshot_mode and connectors:
         counts = [safe_float(connector.get("count")) for connector in connectors]
         complete = all(value is not None and value > 0 and value.is_integer() for value in counts)
@@ -1075,6 +1087,7 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["parking"] = normalize_parking_profile(item)
     item["access"] = access_profile(item)
     item["primary_source"] = primary_source_for(item)
+    attach_google_maps_navigation(item)
     item["verification"] = verification_profile(item, live=live)
     item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
@@ -3877,7 +3890,7 @@ SUMMARY_OVERVIEW_FIELDS = frozenset("""
     price_min price_max current_price_min price_currency price_native_unit price_label is_free is_cheap free_condition price_claim_type
     tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
     status available total_evse source source_url source_label primary_source source_count reliability confidence
-    claim_conflict parking access verification decision pricing price_window_status
+    claim_conflict parking access verification decision pricing price_window_status tariff_details
     freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
 """.split())
 SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution"})
@@ -5309,10 +5322,10 @@ def requested_source_strategy() -> Dict[str, Any]:
             {
                 "name": "Google Maps",
                 "status": "navigation-linkout",
-                "method": "Volta creates Google Maps navigation/search links from source-backed coordinates; Google Places content is not mixed into the non-Google map or used as tariff evidence.",
+                "method": "Volta links known Google Maps place identifiers and reviewed share links, with labeled name/address/coordinate searches for unmatched stations. Google Places content is not mixed into the non-Google map or used as tariff evidence.",
                 "records_now": {"navigation_links": "generated per station/card"},
                 "source_url": "https://www.google.com/maps",
-                "risk": "Google Maps is used for driver navigation only. Provider/source pages and onsite signs remain tariff/parking authority.",
+                "risk": "Google Maps opens externally for navigation, reviews and place details; ratings/reviews are not fetched into Volta. Provider/source pages and onsite signs remain tariff/parking authority.",
             },
             {
                 "name": "Electromaps",

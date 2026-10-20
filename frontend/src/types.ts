@@ -17,12 +17,48 @@ export interface Connector {
   status_label?: string
   status_icon?: string
   power_kw?: number | null
+  count?: number | null
   price?: string
   is_free?: boolean
   tariff_text?: string | null
   tesla_ok?: boolean | null
   fast?: boolean
   source_url?: string | null
+}
+
+export interface SourceDetails {
+  source_url?: string
+  source_name?: string
+  description?: string
+  opening_hours?: string
+  access?: string
+  contact?: {
+    name?: string
+    phone?: string
+    email?: string
+    website?: string
+  }
+  notes?: string[]
+  connectors?: Connector[]
+  connector_count?: number | null
+  max_power_kw?: number | null
+}
+
+export interface TariffComponent {
+  type: 'ENERGY' | 'TIME' | 'MINIMUM' | 'FLAT'
+  price?: number | null
+  unit?: 'kWh' | 'hour' | 'session'
+}
+
+export interface TariffDetails {
+  source_url?: string
+  text?: string
+  conditions?: string[]
+  components?: TariffComponent[]
+  energy_eur_per_kwh?: number | null
+  hour_eur?: number | null
+  minimum_eur?: number | null
+  unconditional_free?: boolean
 }
 
 export interface Claim {
@@ -222,6 +258,8 @@ export interface Station {
   lead?: boolean
   corroboration?: Corroboration
   media?: MediaProfile
+  source_details?: SourceDetails
+  tariff_details?: TariffDetails
   /** Per-row marker for a station retained from a failed live refresh. */
   cache_stale?: boolean
 }

@@ -72,6 +72,8 @@ blocker and move to a newer Xcode/iOS 27 runtime pair.
 The local `Volta.storekit` file lives under `VoltaTests/` only. The shared scheme points its
 Run and Test actions to that test fixture, while the production app target and Release archive
 contain no StoreKit configuration file.
+For `xcodebuild -project`, the scheme's `../../VoltaTests/Volta.storekit` references resolve
+from the project's embedded workspace, not from the scheme file's directory.
 
 ## Paywall implementation (default off)
 
@@ -173,6 +175,8 @@ Volta/            synchronized folder — new .swift files are picked up automat
                            lives in AppState, including clearFilters recovery
   SheetView.swift   persistent city-search field, visible discovery filters, recovery/status
                     panels and the full vertical list of ranked in-view stations
+  AIConnectionView.swift  quiet pinned Connect AI action and native MCP setup sheet;
+                          public server address, verified clipboard feedback and read-only scope
   StationViews.swift  row card, availability breakdown (N free · M in use · K out),
                       decision pill / tier / corroboration badges, detail screen with
                       full provenance (claims, connectors, public sources, license,
@@ -180,10 +184,18 @@ Volta/            synchronized folder — new .swift files are picked up automat
                       cards put availability and route facts on separate rows so neither
                       is squeezed into unreadable vertical text.
   StationActions.swift       shared map/detail action order: source check first unless
-                             explicit route readiness makes Maps the primary action
+                             explicit route readiness makes Maps the primary action;
+                             separate Google Maps listing/search action on every card/detail
   StationPresentation.swift  compact parking/access facts, separate from charging price;
                              full claim attribution remains in StationViews
 ```
+
+Each card and station detail offers **View Google Maps** when `navigation.google_listing`
+contains a Google place identifier or share link. Otherwise **Search Google Maps** uses
+`navigation.google_search`, or builds a charger/name/address search near the coordinates
+for older services. A search result needs a matching check; neither action adds charging
+evidence or bypasses the existing out-of-service directions confirmation. Google ratings
+and reviews remain on the linked Google Maps page rather than being copied into the app.
 
 `AppState.clearFilters()` restores the launch defaults for free-only, maximum
 price, connector types, minimum power and saved-only filtering. It preserves the

@@ -154,7 +154,9 @@ this file in the same change.
   tariff-window chip (clock, e.g. `Now Free 22:00–08:00`), `Sources disagree`,
   `Customers only`/`Restricted`, `Paid parking`/`Limited parking`.
 - Title: `h3` (station name); city/address `p` below.
-- Price: large `span` `Free` or `€0.NN` (+ `/kWh` unit span when paid).
+- Price: large `span` `Free` or `€0.NN`, with `/kWh` for energy rates or `/hour`
+  for published hourly rates. Minimum charges and tariff conditions appear beside
+  the headline. Hourly rates never become energy prices or unconditional Free.
 - Availability row: exactly one visible `[data-availability="live"]` or
   `[data-availability="not-live"]` per card.
   Read its individual facts; whole-card textContent joins adjacent layout blocks without
@@ -165,16 +167,39 @@ this file in the same change.
   station name/address; this inline fact replaces the former distance badge.
 - Connector chips: `.badge` rows `"<label> · <kW> kW"` + `+N more` when >6.
 - Actions: `a` `Open in Maps` (Google/Apple maps href), `a` `Source` (provider page), both
-  `target="_blank" rel="noopener noreferrer"`; `button` `Details` with `aria-expanded`.
-- Details (expanded): the public source photo when one exists (it is no longer on the
-  collapsed card), then `Why “<label>”:` decision reason; `Charging claim` / `Parking claim`
-  sections with external `view source` links; `Corroboration: N independent sources…`;
-  `Public sources (N)` link list.
+  `target="_blank" rel="noopener noreferrer"`; visible `Details` button with
+  `aria-label="Source details for <station title>"` and `aria-expanded`.
+- Each card also has a full-width secondary `a[data-google-maps]`: `listing` is
+  named `View <station> on Google Maps` and displays `View Google Maps`; `search`
+  is named `Find <station> on Google Maps` and displays `Search Google Maps`.
+  The former uses a known listing ID/URL; the latter uses name/address/location
+  to find a match and makes no coverage claim. Both have a 44px minimum target.
+  Map popup cards expose the same listing/search action, including directory and
+  cached cards, without upgrading their evidence or enabling directions there.
+- Details (expanded): source-bound deferred evidence; connector quantities, types,
+  rated power and source links; charger information and tariff conditions;
+  `Why “<label>”:` decision reason; `Charging claim` / `Parking claim` sections;
+  `Corroboration: N independent sources…`; `Public sources (N)` link list.
+  Source-page inventory remains separately attributed when another source supplies
+  the selected inventory. Missing quantities stay unspecified. `Source photos`
+  contains captions and user-initiated source-page links. Automatic image loading
+  still requires that exact image's `display_rights_approved=true`.
 - Empty state: `.card` with `No chargers match these filters` or `Nothing in view here` +
   decorative `.empty-state-visual` SVG + recovery buttons `Show all leads`, `Broaden price`,
   (`Clear search` when a query is set).
 
 ## Footer
+- `button.agent-connect`, named `Connect AI agent`, stays pinned beside Data honesty,
+  outside the result scroller. It opens the native modal `dialog` named
+  `Connect your AI agent`; no dialog opens automatically. `aria-haspopup`,
+  `aria-expanded` and `aria-controls` expose its state. The footer and setup
+  modal respect the mobile bottom safe area.
+- The setup modal contains a read-only input named `Server address` with
+  `https://voltago.app/mcp`, and a `Copy address` button. A successful copy changes
+  the button to `Copied` and announces the next step through `role="status"`;
+  a clipboard failure explains manual copying. `Close connection setup` or Escape
+  closes the modal and returns focus to the permanent prompt. Copying never
+  claims the agent is connected, and closing/reopening resets the copy feedback.
 - `button[aria-controls="data-honesty-panel"]` `Data honesty`, with `aria-expanded`. It is
   pinned below the result scroller, never after the last card: focusing an item at the end
   of the virtual list would scroll past every result.

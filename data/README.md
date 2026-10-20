@@ -11,6 +11,14 @@ the worldwide catalogue or establish charger evidence.
 publish open reuse terms. It keeps tests, the Docker image and local runs working
 offline. It is not the dataset served at [voltago.app](https://voltago.app).
 
+`google_maps_links.json` holds reviewed Google Maps listing handoffs, matched by
+canonical station ID or the station's exact public source URL. It survives charger
+data rebuilds and contains no copied Google ratings, reviews, or charging claims.
+Other rows can publish a `google_place_id`, `google_maps_url`, or
+`navigation.google_listing`; unmatched rows get a labeled Google Maps search.
+See [Google Maps integration](../docs/google-maps.md) for the client contract and
+the requirements for optional ratings and reviews.
+
 | Source | Records | Terms |
 | --- | ---: | --- |
 | OpenStreetMap public tags | 94 | ODbL (OpenStreetMap contributors) |
@@ -33,6 +41,35 @@ This queries public sources only, applies `source_policy_exclusions.json`, and w
 `data/free_intelligence.json`. Do not commit a full build: several sources have not
 granted bulk redistribution. See [DEPLOY.md](../DEPLOY.md) for the gated refresh that
 production uses.
+
+## Canarias station pages
+
+The Canarias te recarga adapter reads the public map and each identity-checked
+station page. It collects connector types, explicit socket quantities, rated
+power, energy/hourly tariffs, minimum charges, conditions and source image links.
+Directory facts never establish live occupancy. A missing quantity stays unknown;
+parking spaces are separate from sockets. If a connector specification prints
+`kWh` where a power rating belongs, the original unit and the interpretation as
+`kW` remain in the source evidence and the displayed information note.
+
+Page requests use HTTPS GET on the source origin only, four workers, a 350-page
+limit, 12 seconds per request, a 180-second collection budget and a 3 MB body cap.
+Cached pages retain their fetch dates; stale fallback is labeled. Mislinked pages
+are held when the station name, address or explicit coordinates do not agree.
+Image metadata does not grant display rights: clients keep source-page links and
+automatically load only individually approved images.
+
+To update only existing Canarias contributions in a served full catalogue:
+
+```bash
+python3 scripts/enrich_canarias.py --baseline /path/to/served/free_intelligence.json \
+  --out /path/to/candidate/free_intelligence.json --report /path/to/candidate/canarias-report.json
+```
+
+This keeps canonical IDs, aliases, coordinates and unrelated records. It does not
+promote data. Use the unchanged delta/canary gates and the existing
+`runtime_refresh.py --candidate` adoption path from [DEPLOY.md](../DEPLOY.md).
+Keep full candidates, page caches and detailed collection reports out of Git.
 
 ## Worldwide candidates
 

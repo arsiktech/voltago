@@ -19,13 +19,13 @@ WORKDIR /app
 # overnight/off-peak pricing-window boundaries by 1-2h -- the guard is a safety net,
 # this install is the real fix for correct Madrid-local pricing windows in production.
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
-COPY server.py agent_mcp.py community.py station_truth.py vehicles.py ./
+COPY server.py agent_mcp.py community.py station_truth.py google_maps.py vehicles.py ./
 COPY scripts/global_source_catalog.py ./scripts/global_source_catalog.py
 COPY scripts/source_policy.py ./scripts/source_policy.py
 COPY scripts/json_recordset.py ./scripts/json_recordset.py
 COPY scripts/intelligence_index.py ./scripts/intelligence_index.py
 COPY scripts/source_transport.py ./scripts/source_transport.py
-COPY data/free_intelligence.json data/seed_leads.json data/source_policy_exclusions.json ./data/
+COPY data/free_intelligence.json data/seed_leads.json data/source_policy_exclusions.json data/google_maps_links.json ./data/
 COPY --from=web /web/dist ./frontend/dist
 # Build-time import smoke: catches a syntax/import error in the image itself (not just
 # on the CI host) before it ships. main() only runs under __main__, so this does not

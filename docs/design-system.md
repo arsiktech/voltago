@@ -267,6 +267,7 @@ Extend these before creating new ones.
 | Action button | `bg-brand` / bordered utility buttons | `VoltaActionButtonStyle` in `StationActions.swift` | Ink primary, bordered secondary; peers share the row |
 | Wrapping row | `flex-wrap` | `FlowLayout` in `Theme.swift` | Badges and facts wrap at any width or text size |
 | Empty state | `VisualMoment.tsx` | `VisualMomentViews.swift` | Empty-state illustration |
+| AI agent connection | `AgentConnection.tsx`, pinned beside Data honesty | `AIConnectionView.swift`, pinned discovery action | Quiet neutral invitation; opens setup only on tap. Show a selectable server address and explicit copy feedback. Copying does not establish a connection. |
 | Owned EV | `VehiclePanel.tsx`, `VehicleEditor.tsx` | native vehicle garage | Opaque neutral drawer/sheet, car photo or labeled vehicle illustration, battery, energy, range, source age and planning target |
 
 Icons: `lucide-react` on web, SF Symbols on iOS, stroke 2–2.6. Do not add another

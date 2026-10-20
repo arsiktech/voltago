@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { motion, useReducedMotion } from 'framer-motion'
 import { ExternalLink, Plug, ShieldCheck, SquareParking, TriangleAlert } from 'lucide-react'
 import type { Station } from '../types'
-import { corroboration, publicWebUrl } from '../lib/format'
+import { connectorInventoryText, corroboration, publicWebUrl, sourcePageConnectors, sourcePhotoLinks, tariffNotes } from '../lib/format'
 import { fadeSlide } from '../lib/motion'
 
 function Ext({ href, children }: { href?: string | null; children: ReactNode }) {
@@ -13,7 +13,7 @@ function Ext({ href, children }: { href?: string | null; children: ReactNode }) 
       href={safeHref}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 font-medium text-brand-strong hover:underline"
+      className="inline-flex min-h-11 items-center gap-1 font-medium text-brand-strong hover:underline"
     >
       {children}
       <ExternalLink size={11} />
@@ -28,9 +28,11 @@ export function SourceProvenance({ st }: { st: Station }) {
   const conflict = st.claim_conflict
   const sources = st.sources || []
   const corr = corroboration(st)
-  const photos = st.media?.photos || []
-  const approvedPhoto = photos.find((photo) => photo.display_rights_approved === true)
-  const photoEvidence = approvedPhoto || photos[0]
+  const photoLinks = sourcePhotoLinks(st)
+  const details = st.source_details
+  const contact = details?.contact
+  const conditions = tariffNotes(st)
+  const pageConnectors = sourcePageConnectors(st)
 
   return (
     <motion.div
@@ -50,6 +52,54 @@ export function SourceProvenance({ st }: { st: Station }) {
           <TriangleAlert size={14} className="mt-0.5 flex-none" />
           <span>{conflict.summary}</span>
         </div>
+      )}
+
+      {details && (
+        <section className="space-y-1.5 text-sm text-fg-soft" aria-label="Charger information">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Charger information</h3>
+          {details.description && <p className="whitespace-pre-line">{details.description}</p>}
+          {details.opening_hours && <p><span className="font-medium">Opening hours:</span> {details.opening_hours}</p>}
+          {details.access && <p><span className="font-medium">Access:</span> {details.access}</p>}
+          {contact && (
+            <div className="space-y-1">
+              <p className="font-medium">Source contact</p>
+              {[contact.name, contact.phone, contact.email].filter(Boolean).map((value, index) => <p key={index}>{value}</p>)}
+              {publicWebUrl(contact.website) && <Ext href={contact.website}>Contact website</Ext>}
+            </div>
+          )}
+          {details.notes && details.notes.length > 0 && <ul className="list-disc space-y-1 pl-4">
+            {details.notes.map((note, index) => <li key={index}>{note}</li>)}
+          </ul>}
+          {publicWebUrl(details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><Ext href={details.source_url}>View information source</Ext></div>}
+        </section>
+      )}
+
+      {pageConnectors.length > 0 && (
+        <section className="space-y-1.5 text-sm text-fg-soft" aria-label="Source-page connectors">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Source-page connectors</h3>
+          {details?.source_name && <p className="text-xs text-muted">{details.source_name}</p>}
+          {details?.connector_count != null && Number.isInteger(details.connector_count) && details.connector_count > 0 && (
+            <p className="text-xs text-muted">Published sockets: {details.connector_count}</p>
+          )}
+          <ul className="space-y-1">
+            {pageConnectors.map((connector, index) => <li key={index}>
+              {publicWebUrl(connector.source_url)
+                ? <Ext href={connector.source_url}>{connectorInventoryText(connector)}</Ext>
+                : connectorInventoryText(connector)}
+            </li>)}
+          </ul>
+        </section>
+      )}
+
+      {st.tariff_details && (st.tariff_details.text || conditions.length > 0) && (
+        <section className="space-y-1.5 text-sm text-fg-soft" aria-label="Charging tariff">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Charging tariff</h3>
+          {st.tariff_details.text && <p className="whitespace-pre-line">{st.tariff_details.text}</p>}
+          {conditions.length > 0 && <ul className="list-disc space-y-1 pl-4">
+            {conditions.map((condition) => <li key={condition}>{condition}</li>)}
+          </ul>}
+          {publicWebUrl(st.tariff_details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><Ext href={st.tariff_details.source_url}>View tariff source</Ext></div>}
+        </section>
       )}
 
       {charge && (
@@ -87,21 +137,14 @@ export function SourceProvenance({ st }: { st: Station }) {
 
       {st.insight && <p className="text-xs leading-relaxed text-muted">{st.insight}</p>}
 
-      {approvedPhoto && (
-        <div className="text-xs text-muted">
-          Source photo: <Ext href={approvedPhoto.source_url || approvedPhoto.url}>{approvedPhoto.source || 'public source'}</Ext>
-          {st.media?.note ? <span> · {st.media.note}</span> : null}
-        </div>
-      )}
-      {!approvedPhoto && photoEvidence && (
-        <div className="text-xs text-muted">
-          Photo withheld pending display-rights approval
-          {photoEvidence.source_url ? (
-            <>
-              {' '}· <Ext href={photoEvidence.source_url}>view source record</Ext>
-            </>
-          ) : null}
-        </div>
+      {photoLinks.length > 0 && (
+        <section className="space-y-1 text-xs text-muted" aria-label="Source photos">
+          <h3 className="font-semibold uppercase tracking-wide">Source photos</h3>
+          {photoLinks.map((photo, index) => <div key={`${photo.href}:${index}`}>
+            {photo.caption && <p>{photo.caption}</p>}
+            <div className="inline-flex min-h-11 items-center"><Ext href={photo.href}>View photo at {photo.source}</Ext></div>
+          </div>)}
+        </section>
       )}
 
       {corr.count >= 2 && (

@@ -136,6 +136,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var driveEtaMinEst: Int?
     var navigation: [String: String]?
     var media: MediaProfile?
+    var sourceDetails: SourceDetails? = nil
+    var tariffDetails: TariffDetails? = nil
     var lead: Bool?
     /// Community evidence (plan 013) the server attaches to rows with driver check-ins/photos.
     /// It never affects live/Go-now trust — display + a fail-closed downgrade only.
@@ -149,6 +151,13 @@ struct Station: Decodable, Identifiable, Hashable {
     var coordinate: CLLocationCoordinate2D { .init(latitude: lat, longitude: lon) }
     var isLead: Bool { lead ?? false }
 
+    /// A directory's hardware inventory remains separate when the selected source differs.
+    var sourcePageConnectors: [Connector] {
+        let sourceConnectors = sourceDetails?.connectors ?? []
+        return sourceConnectors.map(\.inventoryText).sorted() == (connectors ?? []).map(\.inventoryText).sorted()
+            ? [] : sourceConnectors
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name
         case operatorName = "operator"
@@ -161,6 +170,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case priceWindowStatus, pricing, chargeClaim, parkingClaim, claimConflict
         case sourceReportedUnavailable
         case freshnessMinutes, lastSeen, distanceKm, driveEtaMinEst, navigation, media, lead
+        case sourceDetails, tariffDetails
         case community, cacheStale, responseTrust
     }
 }
@@ -279,6 +289,81 @@ enum PublicWebURL {
     }
 }
 
+/// Google Maps handoffs have a narrower boundary than general evidence links. A listing
+/// needs a Google place identifier (or a Google share code); a name/coordinate search alone
+/// must remain a search, even when a malformed service response labels it as a listing.
+enum GoogleMapsURL {
+    private static func validatedComponents(_ value: String?) -> URLComponents? {
+        guard let url = PublicWebURL.validated(value),
+              url.scheme?.lowercased() == "https",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.port == nil || components.port == 443,
+              let host = components.host?.lowercased(),
+              components.percentEncodedHost?.lowercased() == host
+        else { return nil }
+
+        let path = components.path
+        switch host {
+        case "google.com", "www.google.com", "google.es", "www.google.es":
+            guard path == "/maps" || path.hasPrefix("/maps/") else { return nil }
+        case "maps.google.com", "maps.google.es":
+            guard path.isEmpty || path == "/" || path == "/maps" || path.hasPrefix("/maps/")
+            else { return nil }
+        case "maps.app.goo.gl":
+            guard path.range(of: #"^/[A-Za-z0-9_-]+/?$"#, options: .regularExpression) != nil
+            else { return nil }
+        case "goo.gl":
+            guard path.range(of: #"^/maps/[A-Za-z0-9_-]+/?$"#, options: .regularExpression) != nil
+            else { return nil }
+        default:
+            return nil
+        }
+        return components
+    }
+
+    static func listing(_ value: String?) -> URL? {
+        guard let components = validatedComponents(value) else { return nil }
+        let path = components.path
+        guard path != "/maps/dir", !path.hasPrefix("/maps/dir/") else { return nil }
+        if components.host?.lowercased() == "maps.app.goo.gl" || components.host?.lowercased() == "goo.gl" {
+            return components.url
+        }
+
+        let items = components.queryItems ?? []
+        let hasPlaceID = items.contains { item in
+            let value = item.value ?? ""
+            let placeID = item.name == "query_place_id" ? value
+                : item.name == "q" && value.hasPrefix("place_id:") ? String(value.dropFirst(9)) : ""
+            return placeID.range(of: #"^[A-Za-z0-9_-]{3,255}$"#, options: .regularExpression) != nil
+        }
+        let hasCID = items.contains {
+            $0.name == "cid" && ($0.value ?? "").range(of: #"^[1-9][0-9]{0,19}$"#, options: .regularExpression) != nil
+        }
+        let hasFeatureID = items.contains {
+            $0.name == "ftid" && ($0.value ?? "").range(
+                of: #"^0x[0-9a-fA-F]+:0x[0-9a-fA-F]+$"#, options: .regularExpression
+            ) != nil
+        }
+        let hasPlaceData = path.hasPrefix("/maps/place/") && components.percentEncodedPath.range(
+            of: #"!(?:1s|16s)[^!/?#]+"#, options: .regularExpression
+        ) != nil
+        return hasPlaceID || hasCID || hasFeatureID || hasPlaceData ? components.url : nil
+    }
+
+    static func search(_ value: String?) -> URL? {
+        guard let components = validatedComponents(value) else { return nil }
+        let path = components.path
+        guard path == "/maps" || path == "/maps/" || path == "/maps/search"
+                || path == "/maps/search/" || path.isEmpty || path == "/",
+              components.queryItems?.contains(where: {
+                  ($0.name == "query" || $0.name == "q")
+                      && !($0.value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              }) == true
+        else { return nil }
+        return components.url
+    }
+}
+
 struct Connector: Decodable, Hashable {
     var connectorId: String?
     var label: String?
@@ -287,6 +372,75 @@ struct Connector: Decodable, Hashable {
     var powerKw: Double?
     var isFree: Bool?
     var fast: Bool?
+    var count: Int? = nil
+    var sourceUrl: String? = nil
+
+    var inventoryLabel: String {
+        let name = [label, type].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? String(localized: "Unknown connector")
+        guard let count, count > 0 else { return name }
+        return "\(count) × \(name)"
+    }
+
+    var powerText: String? {
+        guard let powerKw, powerKw.isFinite, powerKw > 0 else { return nil }
+        return String(format: "%g kW", powerKw)
+    }
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+
+    var inventoryText: String {
+        guard let powerText else { return inventoryLabel }
+        return "\(inventoryLabel) · \(powerText)"
+    }
+}
+
+struct SourceDetails: Decodable, Hashable {
+    var sourceUrl: String?
+    var sourceName: String?
+    var description: String?
+    var openingHours: String?
+    var access: String?
+    var contact: SourceContact?
+    var notes: [String]?
+    var connectors: [Connector]?
+    var connectorCount: Int?
+    var maxPowerKw: Double?
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+}
+
+struct SourceContact: Decodable, Hashable {
+    var name: String?
+    var phone: String?
+    var email: String?
+    var website: String?
+
+    var safeWebsiteURL: URL? { PublicWebURL.validated(website) }
+}
+
+struct TariffDetails: Decodable, Hashable {
+    var sourceUrl: String?
+    var text: String?
+    var conditions: [String]?
+    var components: [TariffComponent]?
+    var energyEurPerKwh: Double?
+    var hourEur: Double?
+    var minimumEur: Double?
+    var unconditionalFree: Bool?
+
+    var safeSourceURL: URL? { PublicWebURL.validated(sourceUrl) }
+}
+
+struct TariffComponent: Decodable, Hashable {
+    var type: String?
+    var price: Double?
+    var unit: String?
+}
+
+private func validTariffAmount(_ value: Double?) -> Double? {
+    guard let value, value.isFinite, value >= 0 else { return nil }
+    return value
 }
 
 struct ConnectorSummary: Decodable, Hashable {
@@ -383,6 +537,11 @@ struct StationPhoto: Decodable, Hashable {
 }
 
 extension StationPhoto {
+    /// An explicit handoff can show the source without automatically loading its image.
+    var safeSourceURL: URL? {
+        PublicWebURL.validated(sourceUrl) ?? PublicWebURL.validated(url) ?? PublicWebURL.validated(thumbnailUrl)
+    }
+
     /// Automatic media loading shares the same public-web boundary as explicit source and
     /// navigation handoffs. Prefer the full image only when it is safe, then try its thumbnail.
     var safeURL: URL? {
@@ -671,7 +830,8 @@ extension Station {
 
     var priceText: String {
         if isFree == true || priceMin == 0 { return String(localized: "Free") }
-        if let p = priceMin { return String(format: "€%.2f", p) }
+        if let p = validTariffAmount(priceMin) { return String(format: "€%.2f", p) }
+        if let hourly = validTariffAmount(tariffDetails?.hourEur) { return String(format: "€%.2f", hourly) }
         return "—"
     }
 
@@ -685,7 +845,29 @@ extension Station {
     }
 
     var priceUnit: String? {
-        (isFree == true || priceMin == 0) ? nil : (priceMin != nil ? "/kWh" : nil)
+        if isFree == true || priceMin == 0 { return nil }
+        if validTariffAmount(priceMin) != nil { return "/kWh" }
+        return validTariffAmount(tariffDetails?.hourEur) != nil ? String(localized: "/hour") : nil
+    }
+
+    var tariffNotes: [String] {
+        guard let tariff = tariffDetails else { return [] }
+        var notes: [String] = []
+        let minimum = tariff.minimumEur ?? tariff.components?.first { $0.type == "MINIMUM" }?.price
+        if let minimum = validTariffAmount(minimum) {
+            notes.append(String(localized: "Minimum charge €\(String(format: "%.2f", minimum))"))
+        }
+        if (validTariffAmount(priceMin) != nil || isFree == true), let hourly = validTariffAmount(tariff.hourEur) {
+            notes.append(String(localized: "Charging time €\(String(format: "%.2f", hourly))/hour"))
+        }
+        for component in tariff.components ?? [] {
+            if component.type == "FLAT", let price = validTariffAmount(component.price) {
+                notes.append(String(localized: "Session fee €\(String(format: "%.2f", price))"))
+            }
+        }
+        notes += (tariff.conditions ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        var seen = Set<String>()
+        return notes.filter { seen.insert($0).inserted }
     }
 
     /// Locale-INVARIANT tier classification (live / official / directory / community). Internal
@@ -837,6 +1019,42 @@ extension Station {
         if let u = PublicWebURL.validated(navigation?["google"]) { return u }
         if let u = PublicWebURL.validated(navigation?["apple"]) { return u }
         return PublicWebURL.validated("https://maps.apple.com/?ll=\(lat),\(lon)")
+    }
+
+    var googleMapsListingURL: URL? {
+        GoogleMapsURL.listing(navigation?["google_listing"])
+    }
+
+    /// Older services may not send Google links yet. Keep their cards useful with an
+    /// explicitly labeled name/address search, with coordinates only as nearby context.
+    var googleMapsActionURL: URL? {
+        if let url = googleMapsListingURL { return url }
+        if let url = GoogleMapsURL.search(navigation?["google_search"]) { return url }
+        let place = [name, address, city].compactMap { value -> String? in
+            let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return text.isEmpty ? nil : text
+        }.joined(separator: ", ")
+        var query = "EV charging station"
+        if !place.isEmpty { query += " \(place)" }
+        if lat.isFinite, lon.isFinite, (-90...90).contains(lat), (-180...180).contains(lon) {
+            query += " near \(lat),\(lon)"
+        }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.google.com"
+        components.path = "/maps/search/"
+        components.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: query)]
+        return components.url
+    }
+
+    var googleMapsActionLabel: String {
+        googleMapsListingURL != nil ? String(localized: "View Google Maps") : String(localized: "Search Google Maps")
+    }
+
+    var googleMapsActionHint: String {
+        googleMapsListingURL != nil
+            ? String(localized: "Opens this charger's Google Maps listing for reviews and place details")
+            : String(localized: "Searches Google Maps; confirm the result matches this charger")
     }
 
     var sourceURL: URL? {

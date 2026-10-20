@@ -3,7 +3,7 @@ import SwiftUI
 /// One action hierarchy for every station surface. Only explicit route readiness earns the
 /// primary Maps action; otherwise the public source is primary and directions stay
 /// available as the secondary. Peer actions share the row's width and height, and stack
-/// at accessibility text sizes.
+/// at accessibility text sizes. Google Maps place details stay a separate secondary action.
 struct StationActions: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.openURL) private var openURL
@@ -12,17 +12,20 @@ struct StationActions: View {
     let station: Station
 
     var body: some View {
-        // Out of service: full-width stacked actions, so "Find nearby chargers" never
-        // truncates (it is longer than the side-by-side width in every language).
-        if dynamicTypeSize.isAccessibilitySize || station.isReportedOutOfService {
-            VStack(spacing: 10) { orderedActions(icons: true) }
-        } else {
-            // Labels stay on one line: narrow phones drop the icons before anything wraps.
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) { orderedActions(icons: true) }
-                HStack(spacing: 10) { orderedActions(icons: false) }
+        VStack(spacing: 10) {
+            // Out of service: full-width stacked actions, so "Find nearby chargers" never
+            // truncates (it is longer than the side-by-side width in every language).
+            if dynamicTypeSize.isAccessibilitySize || station.isReportedOutOfService {
                 VStack(spacing: 10) { orderedActions(icons: true) }
+            } else {
+                // Labels stay on one line: narrow phones drop the icons before anything wraps.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { orderedActions(icons: true) }
+                    HStack(spacing: 10) { orderedActions(icons: false) }
+                    VStack(spacing: 10) { orderedActions(icons: true) }
+                }
             }
+            StationGoogleMapsAction(station: station)
         }
     }
 
@@ -98,6 +101,27 @@ struct StationActions: View {
             } message: {
                 Text("You may not be able to charge there. Navigate anyway?")
             }
+        }
+    }
+}
+
+/// Place information is available independently of directions and live charging evidence.
+/// Reused by list cards and the station detail without nesting interactive controls.
+struct StationGoogleMapsAction: View {
+    @Environment(\.openURL) private var openURL
+    let station: Station
+
+    var body: some View {
+        if let url = station.googleMapsActionURL {
+            Button { openURL(url) } label: {
+                Label(station.googleMapsActionLabel, systemImage: "map")
+                    .labelStyle(.titleAndIcon)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .buttonStyle(VoltaActionButtonStyle(prominent: false))
+            .accessibilityHint(Text(station.googleMapsActionHint))
+            .accessibilityIdentifier("stationGoogleMapsAction")
         }
     }
 }

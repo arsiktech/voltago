@@ -3,6 +3,7 @@ import os
 import plistlib
 import re
 import unittest
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 
@@ -499,11 +500,20 @@ class IOSReleaseContractTests(unittest.TestCase):
 
     def test_storekit_configuration_is_test_only(self):
         self.assertFalse((APP / "Volta.storekit").exists())
-        self.assertTrue((IOS / "VoltaTests" / "Volta.storekit").exists())
-        self.assertNotIn("../../../Volta/Volta.storekit", self.scheme)
-        self.assertEqual(
-            self.scheme.count("../../../VoltaTests/Volta.storekit"), 2
-        )
+        fixture = IOS / "VoltaTests" / "Volta.storekit"
+        self.assertTrue(fixture.is_file())
+        # With `xcodebuild -project`, scheme paths resolve from the project's
+        # embedded workspace, not from xcshareddata/xcschemes.
+        workspace = PROJECT / "project.xcworkspace"
+        scheme = ET.fromstring(self.scheme)
+        for action in ("TestAction", "LaunchAction"):
+            with self.subTest(action=action):
+                references = scheme.findall(
+                    f"{action}/StoreKitConfigurationFileReference"
+                )
+                self.assertEqual(len(references), 1)
+                resolved = workspace / references[0].attrib["identifier"]
+                self.assertEqual(resolved.resolve(), fixture.resolve())
 
     def test_launch_background_is_adaptive_and_icon_composer_source_is_complete(self):
         colors = json.loads(

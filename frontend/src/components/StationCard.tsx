@@ -22,6 +22,7 @@ import {
   displayName,
   distanceText,
   durationText,
+  googleMapsLink,
   isRouteReady,
   isParkingRisk,
   mapsUrl,
@@ -33,6 +34,7 @@ import {
   sourceTier,
   stationAgeText,
   tariffWindow,
+  tariffNotes,
 } from '../lib/format'
 import {
   countSwap,
@@ -220,6 +222,7 @@ function StationCardBase({
   const windowInfo = tariffWindow(st)
   const conflict = st.claim_conflict?.summary
   const routeReady = isRouteReady(st)
+  const googleMaps = googleMapsLink(st)
   const price = priceText(st)
   const unit = priceUnit(st)
   const actionClass =
@@ -329,6 +332,7 @@ function StationCardBase({
               </AnimatePresence>
             </span>
             {unit && <span className="block text-[11px] leading-snug text-muted">{unit}</span>}
+            {tariffNotes(st).map(note => <span key={note} className="mt-1 block text-[11px] leading-snug text-muted">{note}</span>)}
           </div>
         </div>
 
@@ -454,6 +458,22 @@ function StationCardBase({
           </motion.span>
         </motion.button>
       </motion.div>
+
+      <motion.a
+        href={googleMaps.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-google-maps={googleMaps.listing ? 'listing' : 'search'}
+        aria-label={`${googleMaps.listing ? 'View' : 'Find'} ${stationTitle(st)} on Google Maps`}
+        title={googleMaps.listing
+          ? 'Opens the linked Google Maps listing, including Google reviews and place details.'
+          : 'Search Google Maps for this charger. Confirm the matching listing; Google coverage may vary.'}
+        whileTap={reduceMotion ? undefined : { scale: 0.96 }}
+        transition={pressSpring}
+        className={`relative z-10 mt-2 w-full ${secondaryActionClass}`}
+      >
+        <ExternalLink size={14} /> {googleMaps.listing ? 'View Google Maps' : 'Search Google Maps'}
+      </motion.a>
 
       <AnimatePresence initial={false}>
         {open && (

@@ -1,4 +1,4 @@
-import type { Bbox, ChargersResponse, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
+import type { Bbox, ChargersResponse, Connector, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
 import { containsCoordinate } from './geo'
 
 /** Title-case a station name with Spanish locale, preserving small connectors. */
@@ -25,14 +25,58 @@ export function displayName(name = ''): string {
 export function priceText(st: Station): string {
   if (st.is_free) return 'Free'
   const value = st.price_min
-  if (value == null) return '—'
   if (value === 0) return 'Free'
-  return `€${value.toFixed(2)}`
+  if (knownAmount(value)) return `€${value.toFixed(2)}`
+  const hourly = st.tariff_details?.hour_eur
+  return knownAmount(hourly) ? `€${hourly.toFixed(2)}` : '—'
 }
 
 export function priceUnit(st: Station): string {
   if (st.is_free || st.price_min === 0) return ''
-  return '/kWh'
+  if (knownAmount(st.price_min)) return '/kWh'
+  return knownAmount(st.tariff_details?.hour_eur) ? '/hour' : ''
+}
+
+function knownAmount(value?: number | null): value is number {
+  return value != null && Number.isFinite(value) && value >= 0
+}
+
+/** Conditions accompany a price; they never become an unconditional free/kWh claim. */
+export function tariffNotes(st: Station): string[] {
+  const tariff = st.tariff_details
+  if (!tariff) return []
+  const notes: string[] = []
+  const minimum = tariff.minimum_eur ?? tariff.components?.find((c) => c.type === 'MINIMUM')?.price
+  if (knownAmount(minimum)) notes.push(`Minimum charge €${minimum.toFixed(2)}`)
+  if ((knownAmount(st.price_min) || st.is_free) && knownAmount(tariff.hour_eur)) {
+    notes.push(`Charging time €${tariff.hour_eur.toFixed(2)}/hour`)
+  }
+  for (const component of tariff.components || []) {
+    if (component.type === 'FLAT' && knownAmount(component.price)) {
+      notes.push(`Session fee €${component.price.toFixed(2)}`)
+    }
+  }
+  notes.push(...(tariff.conditions || []).filter((note) => typeof note === 'string' && note.trim()).map((note) => note.trim()))
+  return [...new Set(notes)]
+}
+
+/** A connector row may represent several sockets; a missing count stays unspecified. */
+export function connectorInventoryText(connector: Connector): string {
+  const label = connector.label?.trim() || connector.type?.trim() || 'Unknown connector'
+  const count = connector.count
+  const quantity = count != null && Number.isInteger(count) && count > 0 ? `${count} × ` : ''
+  const kw = sanePowerKw(connector.power_kw)
+  const power = kw == null ? '' : `${Number(kw.toFixed(2))} kW`
+  return `${quantity}${label}${power ? ` · ${power}` : ''}`
+}
+
+/** Retain a directory's different inventory without replacing the selected source's facts. */
+export function sourcePageConnectors(st: Station): Connector[] {
+  const sourceConnectors = st.source_details?.connectors || []
+  const facts = (connectors: Connector[]) => connectors.map(connectorInventoryText).sort()
+  return JSON.stringify(facts(sourceConnectors)) === JSON.stringify(facts(st.connectors || []))
+    ? []
+    : sourceConnectors
 }
 
 /** A numeric/free price is displayable as a map price only with explicit evidence. */
@@ -114,6 +158,55 @@ export function mapsUrl(st: Station): string {
   return `https://www.google.com/maps/search/?api=1&query=${st.lat},${st.lon}`
 }
 
+/** A place listing is different from the coordinate/directions handoff above. */
+function googleMapsWebUrl(value?: string | null): URL | null {
+  const safe = publicWebUrl(value)
+  if (!safe) return null
+  const url = new URL(safe)
+  if (url.protocol !== 'https:' || (url.port && url.port !== '443')) return null
+  if (['maps.app.goo.gl', 'goo.gl'].includes(url.hostname)) return url
+  if (!['google.com', 'www.google.com', 'maps.google.com', 'google.es', 'www.google.es', 'maps.google.es'].includes(url.hostname)) return null
+  return url.pathname === '/maps' || url.pathname.startsWith('/maps/') ||
+    (url.hostname.startsWith('maps.google.') && url.pathname === '/') ? url : null
+}
+
+function googleListingUrl(value?: string | null): string | null {
+  const url = googleMapsWebUrl(value)
+  if (!url) return null
+  if (url.hostname === 'maps.app.goo.gl') return /^\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) ? url.href : null
+  if (url.hostname === 'goo.gl') return /^\/maps\/[A-Za-z0-9_-]+\/?$/.test(url.pathname) ? url.href : null
+  if (url.pathname.startsWith('/maps/dir')) return null
+  const idPattern = /^[A-Za-z0-9_-]{3,255}$/
+  const q = url.searchParams.get('q') || ''
+  return idPattern.test(url.searchParams.get('query_place_id') || '') ||
+    (q.startsWith('place_id:') && idPattern.test(q.slice(9))) ||
+    /^[1-9][0-9]{0,19}$/.test(url.searchParams.get('cid') || '') ||
+    /^0x[\da-f]+:0x[\da-f]+$/i.test(url.searchParams.get('ftid') || '') ||
+    (url.pathname.startsWith('/maps/place/') && /!1[6]?s[^!/?]+/.test(url.pathname)) ? url.href : null
+}
+
+export function googleMapsLink(st: Station): { href: string; listing: boolean } {
+  for (const candidate of [st.navigation?.google_listing, st.navigation?.google, st.source_url, st.primary_source?.url]) {
+    const listing = googleListingUrl(candidate)
+    if (listing) return { href: listing, listing: true }
+  }
+  const search = googleMapsWebUrl(st.navigation?.google_search)
+  if (search && ['google.com', 'www.google.com', 'maps.google.com', 'google.es', 'www.google.es', 'maps.google.es'].includes(search.hostname) &&
+      /^\/maps\/search\/?$/.test(search.pathname) && search.searchParams.get('api') === '1' && search.searchParams.get('query')?.trim()) {
+    return { href: search.href, listing: false }
+  }
+  const parts = ['EV charging station']
+  for (const value of [st.name, st.address, st.city]) {
+    const clean = value?.replace(/\s+/g, ' ').trim().slice(0, 300)
+    if (clean && !parts.some((part) => part.toLowerCase() === clean.toLowerCase())) parts.push(clean)
+  }
+  if (Number.isFinite(st.lat) && Number.isFinite(st.lon) && Math.abs(st.lat) <= 90 && Math.abs(st.lon) <= 180) {
+    parts.push(`near ${st.lat.toFixed(6)},${st.lon.toFixed(6)}`)
+  }
+  const params = new URLSearchParams({ api: '1', query: parts.join(' ') })
+  return { href: `https://www.google.com/maps/search/?${params}`, listing: false }
+}
+
 export interface RemoteStartAction {
   href: string
   label: string
@@ -137,6 +230,20 @@ export function stationPhoto(st: Station) {
     }
   }
   return null
+}
+
+/** Explicit source links need no automatic image load or display-rights assumption. */
+export function sourcePhotoLinks(st: Station): { href: string; source: string; caption: string }[] {
+  const links: { href: string; source: string; caption: string }[] = []
+  const seen = new Set<string>()
+  for (const photo of st.media?.photos || []) {
+    const href = publicWebUrl(photo.source_url) || publicWebUrl(photo.url) || publicWebUrl(photo.thumbnail_url)
+    const caption = photo.caption?.trim() || ''
+    if (!href || seen.has(`${href}:${caption}`)) continue
+    seen.add(`${href}:${caption}`)
+    links.push({ href, source: photo.source?.trim() || 'public source', caption })
+  }
+  return links
 }
 
 /**
