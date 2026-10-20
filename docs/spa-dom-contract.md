@@ -129,6 +129,16 @@ this file in the same change.
   requests, cached-query revisits, unknown prices, honest stale rows, reset and both openers.
 
 ## Status row / banners
+Endolla and Spirii status rows reuse the live decision and availability contracts below.
+Their public-source disclosure credits Ajuntament de Barcelona with a CC BY 4.0 link,
+or Spirii and the operator. It shows `Retrieved`, `Feed published` when the provider
+supplies a publication time, and `Source updated` separately. A port's old last-change
+timestamp is not a heartbeat. Failed or stale status cannot display live occupancy.
+Spirii tariffs are not ingested or displayed by this integration.
+`node scripts/qa_public_live_status.js <local-base-url>` exercises both source
+disclosures and fresh-to-stale behavior on desktop and touch-emulated mobile
+using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
+
 - Live status: `span.live-dot` + text `Live · updated …` / `Refreshing…`; count badge
   `.badge` with `"N live · M leads"`.
 - CoverageBanner: `div[role="status"]` titled `Limited live coverage` or `Showing cached data`

@@ -284,7 +284,7 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
     decision = row.get("decision") or {}
     is_lead = bool(row.get("lead"))
     live_verified = verification.get("live_verified") is True and not is_lead and not row.get("cache_stale")
-    status_age = backend.age_minutes(row.get("last_seen")) if live_verified else None
+    status_age = backend.age_minutes(backend.freshness_timestamp(row)) if live_verified else None
     live_status_stale = bool(status_age is not None and status_age > LIVE_STATUS_STALE_MINUTES)
     charge_claim = row.get("charge_claim") or {}
     summary = row.get("connector_summary") or {}
@@ -309,11 +309,15 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
         if not isinstance(source, dict) or not source.get("name"):
             continue
         item = {"name": source.get("name"), "url": source.get("url")}
+        item.update({key: source.get(key) for key in (
+            "license", "license_url", "attribution", "transformation",
+            "source_fetched_at", "source_published_at", "source_last_updated",
+        )})
         if detail:
             item.update({
                 "evidence": source.get("evidence"),
                 "license": source.get("license"),
-                "last_updated": source.get("source_last_updated") or source.get("source_fetched_at"),
+                "last_updated": source.get("source_last_updated"),
             })
         sources.append({k: v for k, v in item.items() if v})
     if not detail:

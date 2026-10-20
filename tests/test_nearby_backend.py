@@ -47,6 +47,14 @@ def empty_live_payload() -> dict:
     return {"stations": [], "raw_count": 0, "cache": {}, "errors": []}
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class NearbyBackendTests(unittest.TestCase):
     def setUp(self) -> None:
         self.original_cache = deepcopy(server.CACHE)
@@ -258,7 +266,7 @@ class NearbyBackendTests(unittest.TestCase):
                 force=True,
             )
 
-        self.assertEqual(set(results), {"mapareve", "gaia"})
+        self.assertEqual(set(results), {"mapareve", "gaia", "public_live"})
         self.assertTrue(all(result["error"] is None for result in results.values()))
         self.assertEqual(results["gaia"]["payload"], empty_live_payload())
         self.assertEqual(results["mapareve"]["payload"]["stations"], [])

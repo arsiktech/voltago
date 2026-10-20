@@ -467,6 +467,7 @@ struct SourceRef: Decodable, Hashable {
     var attribution: String? = nil
     var transformation: String? = nil
     var sourceFetchedAt: String? = nil
+    var sourcePublishedAt: String? = nil
     var sourceLastUpdated: String? = nil
 }
 

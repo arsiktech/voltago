@@ -1,0 +1,180 @@
+{
+  "gelfs_version": "0.96",
+  "locations": [
+    {
+      "id": "3713",
+      "network_brand_name": "Endolla Barcelona",
+      "network_name": "Barcelona de Serveis Municipals S.A.",
+      "coordinates": {
+        "latitude": 41.419664,
+        "longitude": 2.118465
+      },
+      "address": {
+        "address_string": "Camí de Vallvidrera al Tibidabo 32",
+        "locality": "Barcelona",
+        "admin_area": "BCN",
+        "postal_code": "08001",
+        "country_code": "ES",
+        "language_code": "CA"
+      },
+      "opening_hours": [
+        {
+          "weekday_begin": 1,
+          "weekday_end": 7,
+          "hour_begin": "00:00",
+          "hour_end": "24:00"
+        }
+      ],
+      "access_restriction": "PUBLIC",
+      "stations": [
+        {
+          "id": "11258",
+          "label": "CCL1_TIBIDABO1",
+          "coordinates": {
+            "latitude": 41.419664,
+            "longitude": 2.118465
+          },
+          "ports": [
+            {
+              "id": "1",
+              "connector_type": "WALL_OUTLET",
+              "power_kw": 3.6,
+              "charging_mechanism": "SOCKET",
+              "port_status": [
+                {
+                  "status": "OUT_OF_ORDER"
+                }
+              ],
+              "last_updated": "2026-10-03T20:23:22+02:00",
+              "authentications": [
+                {
+                  "authentication_id": "A1",
+                  "payment_required": true
+                }
+              ],
+              "notes": "",
+              "reservable": false
+            },
+            {
+              "id": "2",
+              "connector_type": "WALL_OUTLET",
+              "power_kw": 3.6,
+              "charging_mechanism": "SOCKET",
+              "port_status": [
+                {
+                  "status": "OUT_OF_ORDER"
+                }
+              ],
+              "last_updated": "2026-10-03T20:23:22+02:00",
+              "authentications": [
+                {
+                  "authentication_id": "A1",
+                  "payment_required": true
+                }
+              ],
+              "notes": "",
+              "reservable": false
+            }
+          ],
+          "notes": "Aparcament Ap. - Tibidabo"
+        }
+      ],
+      "onstreet_location": false,
+      "language_code": "CA",
+      "last_updated": "2025-01-24T13:21:18+01:00"
+    },
+    {
+      "id": "3715",
+      "network_brand_name": "Endolla Barcelona",
+      "network_name": "Barcelona de Serveis Municipals S.A.",
+      "coordinates": {
+        "latitude": 41.372802,
+        "longitude": 2.154058
+      },
+      "address": {
+        "address_string": "Av. Reina Maria Cristina, 16",
+        "locality": "Barcelona",
+        "admin_area": "BCN",
+        "postal_code": "08004",
+        "country_code": "ES",
+        "language_code": "CA"
+      },
+      "opening_hours": [
+        {
+          "weekday_begin": 1,
+          "weekday_end": 7,
+          "hour_begin": "00:00",
+          "hour_end": "24:00"
+        }
+      ],
+      "access_restriction": "PUBLIC",
+      "stations": [
+        {
+          "id": "12976",
+          "label": "RiusTaulet 84",
+          "coordinates": {
+            "latitude": 41.372802,
+            "longitude": 2.154058
+          },
+          "ports": [
+            {
+              "id": "1",
+              "connector_type": "WALL_OUTLET",
+              "power_kw": 7.2,
+              "charging_mechanism": "SOCKET",
+              "port_status": [
+                {
+                  "status": "IN_USE"
+                }
+              ],
+              "last_updated": "2026-10-14T15:16:02+02:00",
+              "authentications": [
+                {
+                  "authentication_id": "A1",
+                  "payment_required": true
+                }
+              ],
+              "notes": "",
+              "reservable": false
+            }
+          ],
+          "notes": "Aparcament Ap. BSM - Rius i Taulet"
+        },
+        {
+          "id": "12977",
+          "label": "RiusTaulet 86",
+          "coordinates": {
+            "latitude": 41.372802,
+            "longitude": 2.154058
+          },
+          "ports": [
+            {
+              "id": "1",
+              "connector_type": "WALL_OUTLET",
+              "power_kw": 7.2,
+              "charging_mechanism": "SOCKET",
+              "port_status": [
+                {
+                  "status": "IN_USE"
+                }
+              ],
+              "last_updated": "2026-10-15T12:59:24+02:00",
+              "authentications": [
+                {
+                  "authentication_id": "A1",
+                  "payment_required": true
+                }
+              ],
+              "notes": "",
+              "reservable": false
+            }
+          ],
+          "notes": "Aparcament Ap. BSM - Rius i Taulet"
+        }
+      ],
+      "onstreet_location": false,
+      "language_code": "CA",
+      "last_updated": "2025-02-19T15:03:54+01:00"
+    }
+  ]
+}

@@ -41,6 +41,14 @@ EMPTY_SOURCE = {"stations": [], "raw_count": 0, "cache": {}, "errors": []}
 EMPTY_ELECTROMAPS = {"stations": [], "checked_ids": set(), "promoted_ids": set(), "dead_ids": set()}
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class _FakeUrlResponse:
     """Minimal stand-in for the `with urllib.request.urlopen(...) as resp:` contract."""
 

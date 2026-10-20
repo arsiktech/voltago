@@ -103,6 +103,7 @@ export interface SourceRef {
   attribution?: string
   transformation?: string
   source_fetched_at?: string
+  source_published_at?: string
   source_last_updated?: string
   kind?: string
   quality?: string

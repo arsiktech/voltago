@@ -560,7 +560,7 @@ export function availability(st: Station): AvailabilityInfo {
   const busy = cs?.busy ?? null
   const out = cs?.out_of_service ?? null
   const unknown = cs?.unknown ?? null
-  const live = !st.lead
+  const live = !st.lead && st.cache_stale !== true && st.verification?.live_verified !== false
   const base = { live, available, busy, out, unknown, total, maxKw }
 
   if (!live) return { ...base, tone: 'muted', label: 'Not live' }

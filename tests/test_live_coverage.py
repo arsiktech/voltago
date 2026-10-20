@@ -60,6 +60,14 @@ def gaia_station(station_id: str = "gaia-live") -> dict:
     }
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class LiveCoverageTests(unittest.TestCase):
     def test_sparse_live_with_many_leads_is_degraded(self) -> None:
         profile = server.live_coverage_profile(
