@@ -215,6 +215,47 @@ Discovery screenshots use the DEBUG-only `-VoltaUITestDiscoveryAppearance light|
 argument and assert the effective SwiftUI appearance before capture. Each test also
 sets its text-size baseline explicitly. Release contains no appearance override.
 
+## Your EV and connected vehicle readings
+
+The discovery sheet opens **Your EV**, a native garage with a car selector, battery level,
+remaining range, usable pack capacity, estimated available kWh, charging state, and a
+50–100% planning target. Owner-selected photos use the system Photos picker, are downsampled
+and re-encoded without EXIF metadata, protected on disk, and excluded from iCloud backup.
+The default car image is labeled an illustration. Manual entries and missing charging
+specifications can be entered without a provider connection; they stay local and are always
+labeled **not live**. Provider readings cannot be edited.
+
+Real connections require the same configured Smartcar service as the web app. The phone
+opens an ephemeral `ASWebAuthenticationSession` at `/api/vehicles/native/start`, carrying a
+SHA-256 challenge for a random in-memory verifier. After provider approval, the service
+returns a 60-second, single-use ticket to the fixed `voltagovehicle://connection/callback`.
+Only the matching verifier can redeem it at `/api/vehicles/native/exchange`. No OEM access
+token, refresh token or Volta session cookie appears in the callback URL. The resulting
+Volta cookie is kept in Keychain, scoped to the exact service origin, and sent through an
+ephemeral URLSession that blocks redirects and bypasses caches. It is cleared on disconnect,
+an expired/disconnected session, or an unauthorized response. Safari cookies are never
+assumed to be URLSession cookies. Simulation data is explicitly labeled simulation.
+
+Connected readings refresh no more than once per minute while the app is active. Freshness
+comes from the vehicle's per-field observation deadlines, including on a stationary screen;
+a new charging-state reading cannot revive an old battery reading. A missing or stale
+usable capacity cannot be combined with a newer battery percentage. Current telemetry is
+not persisted to the phone. The service endpoint and manufacturer coverage determine whether
+real connection is available; there are no bundled provider credentials.
+
+Station details add a planning estimate from the selected car and target. Minimum time uses
+the actual matching connector's power capped by the vehicle's AC/DC limit; NACS needs an
+explicit AC/DC port classification. Charging cost uses a verified current EUR/kWh tariff,
+assumes 10% charging loss, and excludes parking, time and session fees. Missing or stale
+inputs remain unknown. Vehicle context never changes station route-readiness or source
+warnings. `VoltaTests/VehiclePlanningTests` covers freshness, units, incompatible/unknown
+plugs, charging limits, targets and the native callback boundary.
+
+The implementation was checked with the Python iOS design/release source contracts in the
+development environment. That environment has no Xcode, Swift compiler or Simulator, so
+native compilation, device rendering, Photos interaction, Keychain interaction and a real
+provider approval still require validation on macOS with the configured service.
+
 ## Localization
 
 `Volta/Localizable.xcstrings` is a String Catalog covering en (source) / es / ru, using

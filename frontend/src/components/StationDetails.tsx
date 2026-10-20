@@ -4,6 +4,7 @@ import { stationDetailsQueryOptions, TransportError } from '../lib/api'
 import { connectorInventoryText, publicWebUrl, stationPhoto } from '../lib/format'
 import { stationTitle } from '../lib/provider'
 import { SourceProvenance } from './SourceProvenance'
+import { VehicleEstimate } from './VehicleEstimate'
 
 function Evidence({ st }: { st: Station }) {
   const photo = stationPhoto(st)
@@ -64,7 +65,7 @@ function DeferredEvidence({ st, snapshot }: { st: Station; snapshot: string }) {
 
 /** Only mounted by an open disclosure. Directory detail never replaces the card/live row. */
 export default function StationDetails({ st }: { st: Station }) {
-  return st.detail_snapshot
+  return <><VehicleEstimate st={st} />{st.detail_snapshot
     ? <DeferredEvidence key={`${st.id}:${st.detail_snapshot}`} st={st} snapshot={st.detail_snapshot} />
-    : <Evidence st={st} />
+    : <Evidence st={st} />}</>
 }

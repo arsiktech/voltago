@@ -128,6 +128,8 @@ class IOSReleaseContractTests(unittest.TestCase):
             for item in manifest["NSPrivacyCollectedDataTypes"]
         }
         expected_linking = {
+            # Owner-authorized vehicle identity, battery and charging telemetry.
+            "NSPrivacyCollectedDataTypeOtherDataTypes": True,
             "NSPrivacyCollectedDataTypePreciseLocation": True,
             "NSPrivacyCollectedDataTypeSearchHistory": False,
             "NSPrivacyCollectedDataTypeDeviceID": True,

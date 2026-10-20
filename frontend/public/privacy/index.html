@@ -13,13 +13,15 @@
   <nav aria-label="Legal pages"><a class="brand" href="/">Volta Go</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Beta terms</a><a href="/support">Support</a></nav>
   <article>
     <h1>Privacy</h1>
-    <p class="meta">Effective 16 July 2026 · TestFlight beta</p>
-    <p class="notice">Volta Go is an independent beta charging decision aid. It has no user accounts, advertising SDKs, or cross-app tracking.</p>
+    <p class="meta">Effective 19 October 2026 · TestFlight beta</p>
+    <p class="notice">Volta Go is an independent beta charging decision aid. No Volta Go account is required. It has no advertising SDKs or cross-app tracking.</p>
 
     <h2>Information the app handles</h2>
     <ul>
       <li><strong>Location:</strong> only when you grant permission, to find chargers near you and calculate distance. You can use city search instead.</li>
       <li><strong>Search and map area:</strong> a city query or visible map bounds are sent to the Volta Go service so it can return nearby results.</li>
+      <li><strong>Your EV:</strong> if you choose to connect a supported vehicle, Smartcar and your car brand authorize read-only access to vehicle identity, battery, range, capacity and charging information where supported. Volta Go uses these readings to help plan charging stops. Your car-brand password is entered with the provider, never in Volta Go. This feature sends no driving, unlocking or charging commands.</li>
+      <li><strong>Manual readings and car photos:</strong> details and photos you enter remain in your browser or the iPhone app's local storage. Choosing a car photo does not upload it to the Volta Go service.</li>
       <li><strong>Network metadata:</strong> the service may receive your IP address and basic request metadata for delivery, reliability, abuse prevention, and rate limiting. Charger searches are logged without their query string, so precise coordinates and city search text are excluded from those access-log lines.</li>
       <li><strong>Support messages:</strong> if you email us, we receive the address, content, and attachments you choose to send.</li>
     </ul>
@@ -31,6 +33,7 @@
     <p>Information is used only to provide nearby charger results, secure and operate the beta, diagnose failures, and answer support. We do not sell personal information. Data can be handled by the infrastructure providers needed to deliver the service and email. The app keeps no account profile or location history database. Live request state is cached in memory and disappears when the service restarts; infrastructure access logs and support email remain only under the relevant host or mailbox retention controls and for as long as reasonably needed for security, troubleshooting, or the support conversation.</p>
 
     <h2>Your choices</h2>
+    <p>Connecting a vehicle is optional. You can use manual readings or search for chargers without adding a car. Vehicle credentials and telemetry are held in bounded server memory, expire after the connection session, and disappear when the service restarts. The web uses an HttpOnly session cookie; the iPhone app stores its connection credential in the device Keychain. Disconnect removes that connection's server-side credentials. To revoke the provider's underlying access grant, use your Smartcar or car-brand account settings. Removing a manual EV removes its saved readings and photo; browser storage controls can clear local web data.</p>
     <p>You can deny or revoke location permission in iOS Settings, use city search, stop using the beta, or delete the app. To ask about access, correction, or deletion of information you sent directly, email <span class="contact-email" aria-label="arsik2121 at icloud dot com"><span>arsik2121</span><span class="email-at" aria-hidden="true"></span><span>icloud.com</span></span>. We will respond subject to applicable law and the technical limits described above.</p>
 
     <h2>Changes and contact</h2>

@@ -50,11 +50,18 @@ enum DiscoveryDebugLaunch {
 /// locked. With the literal feature flag off, this view is created immediately as before.
 private struct VoltaContentRoot: View {
     @StateObject private var state = AppState()
+    @StateObject private var garage = VehicleGarage()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         RootView()
             .environmentObject(state)
+            .environmentObject(garage)
             .task { state.start() }
+            .task(id: state.api.baseURL.absoluteString + String(describing: scenePhase)) {
+                guard scenePhase == .active else { return }
+                await garage.run(baseURL: state.api.baseURL)
+            }
     }
 }
 

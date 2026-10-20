@@ -28,6 +28,7 @@ enum LegalDocument: String, Identifiable, CaseIterable {
                 (String(localized: "Maps and charger photos"), String(localized: "MapKit loads map content from Apple. Charger details may show optional photos from the attributed third-party source named in the app.")),
                 (String(localized: "Subscriptions and payments"), String(localized: "StoreKit and the App Store handle Volta Plus subscriptions, payments, renewals, restoration, and refunds. Volta does not receive payment details.")),
                 (String(localized: "On-device preferences"), String(localized: "Volta stores normal app preferences on this device. The app contains no advertising or third-party analytics SDK.")),
+                (String(localized: "Connected vehicle data"), String(localized: "Connecting a car is optional. With your permission, Smartcar sends the vehicle identity, battery, range and charging readings to the configured Volta service. OEM access tokens stay on that service; the iPhone stores its Volta session securely in Keychain. Disconnect in Your EV to remove that service session. Selected car photos, manual entries and charging targets stay on this iPhone.")),
                 (String(localized: "Contact and control"), String(localized: "Questions about privacy, access, or deletion can be sent through Volta Support. You can stop location sharing in iOS Settings and remove on-device preferences by deleting the app.")),
             ]
         }

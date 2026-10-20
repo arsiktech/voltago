@@ -205,6 +205,8 @@ export interface Station {
 
   price_min?: number | null
   price_max?: number | null
+  price_currency?: string | null
+  price_native_unit?: string | null
   current_price_min?: number | null
   price_label?: string
   is_free?: boolean

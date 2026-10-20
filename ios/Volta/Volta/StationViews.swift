@@ -391,6 +391,8 @@ struct StationDetailView: View {
                 .listRowSeparator(.hidden)
             }
 
+            VehicleStationEstimateView(station: station)
+
             if let connectors = station.connectors, !connectors.isEmpty {
                 Section("Connectors") {
                     if !station.canShowLiveAvailability {

@@ -266,11 +266,33 @@ Extend these before creating new ones.
 | Icon button | `.icon-btn` (44px) | `VoltaPressButtonStyle` | Accessible name required |
 | Action button | `bg-brand` / bordered utility buttons | `VoltaActionButtonStyle` in `StationActions.swift` | Ink primary, bordered secondary; peers share the row |
 | Wrapping row | `flex-wrap` | `FlowLayout` in `Theme.swift` | Badges and facts wrap at any width or text size |
-| Empty state | `VisualMoment.tsx` | `VisualMomentViews.swift` | The only illustration allowed |
+| Empty state | `VisualMoment.tsx` | `VisualMomentViews.swift` | Empty-state illustration |
 | AI agent connection | `AgentConnection.tsx`, pinned beside Data honesty | `AIConnectionView.swift`, pinned discovery action | Quiet neutral invitation; opens setup only on tap. Show a selectable server address and explicit copy feedback. Copying does not establish a connection. |
+| Owned EV | `VehiclePanel.tsx`, `VehicleEditor.tsx` | native vehicle garage | Opaque neutral drawer/sheet, car photo or labeled vehicle illustration, battery, energy, range, source age and planning target |
 
 Icons: `lucide-react` on web, SF Symbols on iOS, stroke 2–2.6. Do not add another
 icon set or use emoji.
+
+### Owned vehicles
+
+Vehicle imagery is functional: use the owner's chosen photo, or a clearly labeled
+vehicle illustration. A generic render never claims to depict the connected trim.
+Battery bars, charge targets and connection controls use neutral ink; green remains
+exclusive to station evidence. Display manual, example, simulated, fresh provider and
+stale provider readings distinctly. Source observation time, rather than fetch time,
+determines whether telemetry is current. Unknown vehicle facts stay unknown.
+
+The web drawer keeps actions pinned and its readings independently scrollable;
+Escape closes it and returns focus to Your EV. It is nonmodal so station discovery
+remains usable. Native uses a sheet and Dynamic Type. Both expose the owner's target
+as a planning control only: it never sends a charging command to the vehicle.
+
+Station details may show energy to that target, a theoretical minimum time using a
+matching connector and the car's known power limit, and estimated euro charging cost
+from a verified current per-kWh tariff. Cost assumes 10% charging losses and excludes
+parking and session fees. Unknown compatibility or limits stay explicit; stale car
+readings cannot produce a current time or cost estimate. Vehicle estimates never
+upgrade station availability, evidence or route readiness.
 
 ## 11. Map
 
