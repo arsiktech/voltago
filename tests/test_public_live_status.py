@@ -281,6 +281,34 @@ class IdentityTests(unittest.TestCase):
         self.assertFalse(server.public_live_identity(first, second))
         self.assertEqual(len(server.merge_public_live_stations([], [first, second], [])), 2)
 
+    def _reve_twin(self, owner='Endolla Barcelona', offset=0.0):
+        reve = deepcopy(self.canonical)
+        reve.update(id='5e6e96b7-reve-uuid', name='Avinguda del Paral·lel, 55', raw=None, lead=False,
+                    reliability='official-live', cache_stale=False, last_seen=server.now_iso(),
+                    price_min=0.42, is_cheap=False, owner={'name': owner}, operator=None,
+                    lat=self.row['lat'] + offset, source='MapaREVE public live OCPI')
+        reve['connectors'] = [{'label': 'CCS2', 'power_kw': 50.0, 'status': 'CHARGING'}]
+        reve['sources'] = [{'name': 'MapaREVE public live OCPI', 'url': 'https://www.mapareve.es/'}]
+        return reve
+
+    def test_same_network_site_from_mapareve_is_corroborated_not_duplicated(self):
+        reve = self._reve_twin()
+        result = server.merge_public_live_stations([reve], [self.row], [])
+        self.assertEqual(len(result), 1)
+        merged = result[0]
+        self.assertEqual(merged['id'], '5e6e96b7-reve-uuid')
+        # MapaREVE's own hardware and tariff stay; Endolla only adds attribution.
+        self.assertEqual(merged['price_min'], 0.42)
+        self.assertEqual([c['label'] for c in merged['connectors']], ['CCS2'])
+        self.assertTrue(any(s.get('license') == 'CC BY 4.0' for s in merged['sources']))
+        self.assertEqual(merged['source_count'], len(merged['sources']))
+
+    def test_network_alias_needs_the_same_spot_and_brand(self):
+        self.assertFalse(server.public_live_network_alias(self.row, self._reve_twin(offset=0.001)))  # ~110 m
+        self.assertFalse(server.public_live_network_alias(self.row, self._reve_twin(owner='Iberdrola')))
+        result = server.merge_public_live_stations([self._reve_twin(owner='Iberdrola')], [self.row], [])
+        self.assertEqual(len(result), 2)
+
     def test_ambiguous_canonical_identity_is_held(self):
         other = dict(self.canonical, id='second-id')
         self.assertEqual(server.merge_public_live_stations([], [self.row], [self.canonical, other]), [])

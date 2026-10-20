@@ -2127,10 +2127,36 @@ def _public_evse_ids(row: Dict[str, Any]) -> set:
     return result
 
 
+# Other providers publish the same physical network under a brand name: MapaREVE lists
+# Endolla sites as "Endolla Barcelona" while the city feed names the operator BSM.
+# Rows carrying the feed's own operator name are Endolla's records and get the full overlay.
+PUBLIC_LIVE_NETWORK_ALIASES = {"endolla": ("endolla",)}
+PUBLIC_LIVE_ALIAS_MAX_KM = 0.03
+
+
+def _operator_key(row: Dict[str, Any]) -> str:
+    return re.sub(r"[^a-z0-9]", "", str((row.get("owner") or {}).get("name") or row.get("operator") or "").casefold())
+
+
+def public_live_network_alias(row: Dict[str, Any], candidate: Dict[str, Any]) -> bool:
+    """True when another provider's row is the same network site at the same spot."""
+    aliases = PUBLIC_LIVE_NETWORK_ALIASES.get(row.get("live_feed") or "")
+    if not aliases or candidate.get("live_feed") or _public_site_key(candidate) is not None:
+        return False
+    coords = [safe_float(r.get(key)) for r in (row, candidate) for key in ("lat", "lon")]
+    if any(v is None for v in coords) or haversine_km(*coords) > PUBLIC_LIVE_ALIAS_MAX_KM:
+        return False
+    operator = _operator_key(candidate)
+    return (bool(operator) and operator != _operator_key(row)
+            and any(alias in operator for alias in aliases))
+
+
 def public_live_identity(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     coords = [safe_float(row.get(key)) for row in (a, b) for key in ("lat", "lon")]
     if any(v is None for v in coords) or haversine_km(*coords) > 0.12:
         return False
+    if public_live_network_alias(a, b) or public_live_network_alias(b, a):
+        return True
     if a.get("live_feed") and a.get("live_feed") == b.get("live_feed"):
         # Distinct site identities in one feed never merge through proximity.
         return bool(a.get("live_site_id") and a.get("live_site_id") == b.get("live_site_id"))
@@ -2183,6 +2209,19 @@ def merge_public_live_stations(stations: List[Dict[str, Any]], incoming: List[Di
             continue
         position = matches[0]
         previous = candidates[position]
+        if public_live_network_alias(row, previous):
+            # Another provider already publishes this site, usually only part of its
+            # hardware with its own tariff. Corroborate it rather than adding a second pin
+            # or moving that tariff onto ports it does not cover.
+            corroborated = deepcopy(previous)
+            corroborated["sources"] = source_rows_union(previous, row)
+            corroborated["source_count"] = len(corroborated["sources"])
+            if previous in merged:
+                merged[merged.index(previous)] = corroborated
+            else:
+                merged.append(corroborated)
+            candidates[position] = corroborated
+            continue
         previous_age = age_minutes(previous.get("last_seen"))
         previous_status = previous.get("live_status")
         previous_fresh = (not previous.get("lead") and not previous.get("cache_stale")
