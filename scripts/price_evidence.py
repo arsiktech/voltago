@@ -294,10 +294,10 @@ def network(value):
         'repsol': ('repsol', 'repsol soluciones energeticas sa'),
         'iberdrola': ('iberdrola', 'iberdrola clientes sau', 'iberdrola clientes sa'),
         'iberdrola bp pulse': ('iberdrola bp pulse', 'charging together'),
-        'endesa x way': ('endesa', 'endesa x way', 'endesa movilidad electrica slu'),
+        'endesa x way': ('endesa', 'endesa x way', 'endesa x way sl', 'endesa movilidad electrica slu'),
     }
     for key, names in aliases.items():
-        if value in names:
+        if value.replace(' ', '') in {norm(name).replace(' ', '') for name in names}:
             return key
     return value
 
@@ -547,7 +547,8 @@ class Collector:
                     collisions.add(key)
                 candidates[key] = candidate, list_stale
         self.stats[source]['listed'] = len(candidates)
-        # Details target existing rows only. Unknown primary prices first, then ID.
+        # Spend the small detail budget on corroboratable network candidates
+        # before anonymous nearby names; actual identity still needs detail checks.
         ranked = []
         for key, (candidate, stale) in candidates.items():
             if key in collisions:
@@ -556,8 +557,11 @@ class Collector:
             near = nearby(candidate)
             if not near:
                 continue
-            ranked.append((all(r.get('price_min') is not None for r in near), key, candidate, stale))
-        for _, key, candidate, list_stale in sorted(ranked, key=lambda item: item[:2]):
+            candidate_network = directory_network(candidate)
+            network_hint = bool(candidate_network and any(
+                row_network(row) == candidate_network and distance(row, candidate) <= 40 for row in near))
+            ranked.append((not network_hint, all(r.get('price_min') is not None for r in near), key, candidate, stale))
+        for _, _, key, candidate, list_stale in sorted(ranked, key=lambda item: item[:3]):
             if source == 'electromaps':
                 url = EM_BASE + '/' + key
                 detail, fetched_at, stale = self.cached(source + '_detail_' + key, url, source, 'detail', lambda body: sanitize_electromaps(json.loads(body)))

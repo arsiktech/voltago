@@ -140,8 +140,9 @@ country-scale cluster-only responses. They do not cover every station or town.
 Every bbox has south < north and west < east. A separate Spain geography guard
 includes all mainland and island regions for registry tariff annotations.
 Foreign points are removed before list-cache persistence.
-Detail candidates must be within 250 m of an existing row. Candidates near an
-unknown primary price come first, followed by provider ID in lexical order.
+Detail candidates must be within 250 m of an existing row. Candidates near a
+corroboratable network come first, then an unknown primary price and provider ID
+in lexical order. This is request prioritization only; it cannot relax any join guard.
 The same inputs and budgets produce the same priority. Chargemap clusters are
 counted as no station evidence; this bounded pass does not recursively expand them.
 

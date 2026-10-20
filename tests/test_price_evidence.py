@@ -174,6 +174,10 @@ class ParserTests(unittest.TestCase):
 
 
 class IdentityTests(unittest.TestCase):
+    def test_registry_legal_suffix_punctuation_does_not_hide_a_known_network(self):
+        self.assertEqual(p.network('IBERDROLA CLIENTES S.A.U'), 'iberdrola')
+        self.assertEqual(p.network('ENDESA X WAY, S.L.'), 'endesa x way')
+        self.assertNotEqual(p.network('IBERDROLA BP PULSE'), p.network('IBERDROLA CLIENTES S.A.U'))
     def setUp(self):
         self.row = station()
         self.candidate = p.sanitize_electromaps(load('electromaps.json'))
@@ -266,6 +270,22 @@ class IdentityTests(unittest.TestCase):
 
 
 class CollectionTests(unittest.TestCase):
+    def test_detail_budget_prioritizes_a_corroboratable_network_over_anonymous_names(self):
+        source = load('electromaps.json')
+        requests = []
+        def opener(request, *, timeout):
+            requests.append(request.full_url)
+            if request.full_url.startswith(p.EM_BASE + '?'):
+                return Response([dict(source, id=1, name='Anonymous car park'), dict(source, id=9)])
+            if request.full_url.startswith(p.EM_BASE + '/'):
+                return Response(dict(source, id=int(request.full_url.rsplit('/', 1)[-1])))
+            return Response({})
+        rows = [station(operator='IBERDROLA CLIENTES S.A.U')]
+        with tempfile.TemporaryDirectory() as directory:
+            p.Collector(directory, now=NOW, opener=opener, pause=0, detail_budget=1).enrich(rows)
+        self.assertIn(p.EM_BASE + '/9', requests)
+        self.assertNotIn(p.EM_BASE + '/1', requests)
+        self.assertEqual(rows[0]['price_evidence'][0]['source_url'], p.EM_BASE + '/9')
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.cache = Path(self.tmp.name)
