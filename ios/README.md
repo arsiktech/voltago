@@ -47,6 +47,17 @@ Debug builds share the Mac's loopback, so their default base URL
 `xcrun simctl privacy <sim> grant location tech.arsik.volta`) and set a simulated
 location (`xcrun simctl location <sim> set 39.4699,-0.3763`) to see the live near-me mode.
 
+Nearby discovery loads the bounded stored catalogue in parallel with live providers.
+Catalogue rows stay marked “Not live”; a late catalogue response cannot replace a completed
+live response. A recent Core Location fix (at most 15 seconds old, accuracy within 500 m)
+can recenter immediately; other requests use 100 m desired accuracy for neighbourhood lookup.
+Identical pending lookups are coalesced; when MapKit fits a larger visible region, both queries
+refresh to include its edges. `NearbyLoadingUITests` taps the real location control with live
+responses held for 30 s, checks that known nearby rows appear first, and checks that identical
+pending live queries do not restart.
+Run it serially on the Simulator whose location was set above so Xcode does not create an
+unconfigured parallel Simulator clone.
+
 The editable localhost/LAN/Tailscale presets are development tools compiled only into
 **Debug**. `Info-Debug.plist` permits local networking without a broad arbitrary-loads
 exception. Release has no local-network purpose string or ATS exception and ignores the

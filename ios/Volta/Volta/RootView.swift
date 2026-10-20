@@ -171,8 +171,12 @@ struct MapLayer: View {
         .onMapCameraChange(frequency: .onEnd) { ctx in
             let areaChanged = state.visibleRegion.bbox != ctx.region.bbox
             state.visibleRegion = ctx.region
-            if state.mode == .live { state.fetchLive(reason: "pan") }
-            else if areaChanged { Task { await state.loadOverview() } }
+            // MapKit can expand a requested region to fit the screen. Refresh those actual
+            // bounds too, so chargers near the fitted edges are included.
+            if areaChanged {
+                if state.mode == .live { state.loadNearby(reason: "pan") }
+                else { Task { await state.loadOverview() } }
+            }
         }
         // Sparing: pin and cluster taps are the only map haptic; pan, zoom and locate stay silent.
         .sensoryFeedback(.selection, trigger: mapTapFeedback)
@@ -221,6 +225,7 @@ struct MapLayer: View {
         withAnimation(reduceMotion ? nil : VoltaMotion.spatial) {
             state.camera = .region(region)
         }
+        if state.mode == .live { state.loadNearby(reason: "cluster") }
     }
 
     private func stationAccessibilityValue(_ station: Station) -> String {

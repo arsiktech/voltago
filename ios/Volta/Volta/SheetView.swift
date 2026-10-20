@@ -433,10 +433,12 @@ struct SheetView: View {
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: 10) {
-            if state.mode == .overview, state.overviewState == .loading {
+            if state.locating || (state.mode == .overview ? state.overviewState == .loading : state.liveState == .loading) {
                 ForEach(0..<3, id: \.self) { _ in StationCardSkeleton() }
                     .accessibilityHidden(true)
-                Text("Loading known chargers…")
+                Text(state.locating ? String(localized: "Finding my location")
+                     : state.mode == .live ? String(localized: "Updating live status…")
+                     : String(localized: "Loading known chargers…"))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             } else {
