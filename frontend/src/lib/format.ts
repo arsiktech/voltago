@@ -759,11 +759,11 @@ export function statusTrustSummary(args: {
       badge: `${liveReady} live · cached fallback`,
     }
   }
-  if (stale) return { label: 'Cached evidence · not live', badge: 'Not live' }
+  if (stale) return { label: 'Cached chargers · not live', badge: 'Not live' }
   // In nearby mode the instant intelligence layer remains visible while live data loads and
   // after a live-source failure. Its cards are useful backups, but they have no live authority.
   if (sourceBackedOnly) {
-    return { label: 'Source-backed leads · not live', badge: `${leadCount} leads · not live` }
+    return { label: 'Saved chargers · not live', badge: `${leadCount} leads · not live` }
   }
   if (isFetching) {
     return {
@@ -771,7 +771,7 @@ export function statusTrustSummary(args: {
       badge: overview ? `${leadCount} leads · not live` : `${liveReady} live · ${leadCount} leads`,
     }
   }
-  if (overview) return { label: 'Source-backed leads · not live', badge: `${leadCount} leads · not live` }
+  if (overview) return { label: 'Saved chargers · not live', badge: `${leadCount} leads · not live` }
   return {
     label: updated ? `Live · updated ${updated}` : 'Live',
     badge: `${liveReady} live · ${leadCount} leads`,

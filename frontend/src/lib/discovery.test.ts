@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import app from '../App.tsx?raw'
 import mapView from '../components/MapView.tsx?raw'
+import presentation from './stationPresentation.ts?raw'
 
 // Structural regression for the App scheduler; not a browser timing proof.
 it('does not gate the latest viewport debounce on an older network request', () => {
@@ -14,8 +15,9 @@ it('keeps a selected map result in the accessible panel and hides unverified map
   expect(app).toContain('const panelRows')
   expect(app).toContain('[selectedRow, ...listRows]')
   expect(app).not.toContain('aria-hidden={Boolean(selectedId)}')
-  expect(mapView).toContain('if (!hasVerifiedPrice(st)) return null')
-  expect(mapView).toContain("Cached evidence — not live. Refresh or check source before driving.")
+  expect(presentation).toContain('if (!hasVerifiedPrice(st)) return null')
+  expect(mapView).toContain('const preview = mapPinPreview(s)')
+  expect(mapView).toContain("Cached, not live. Check source before driving.")
 })
 import { discoveryRows } from './discovery'
 import type { Station } from '../types'

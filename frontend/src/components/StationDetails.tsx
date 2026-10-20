@@ -6,6 +6,7 @@ import { stationTitle } from '../lib/provider'
 import { SourceProvenance } from './SourceProvenance'
 import { VehicleEstimate } from './VehicleEstimate'
 import { PriceEvidence } from './PriceEvidence'
+import { StationConditions } from './StationConditions'
 
 function Evidence({ st }: { st: Station }) {
   const photo = stationPhoto(st)
@@ -19,6 +20,7 @@ function Evidence({ st }: { st: Station }) {
             const source = publicWebUrl(connector.source_url)
             return <li key={`${connector.connector_id || 'connector'}:${index}`}>
               <span>{connectorInventoryText(connector)}</span>
+              {connector.connector_id && <span className="block text-xs text-muted">Port {connector.connector_id}</span>}
               {source && <a href={source} target="_blank" rel="noopener noreferrer"
                 className="ml-2 inline-flex min-h-11 items-center font-medium text-brand-strong underline">View connector source</a>}
             </li>
@@ -68,7 +70,7 @@ function DeferredEvidence({ st, snapshot }: { st: Station; snapshot: string }) {
 
 /** Only mounted by an open disclosure. Directory detail never replaces the card/live row. */
 export default function StationDetails({ st }: { st: Station }) {
-  return <><VehicleEstimate st={st} />{st.detail_snapshot
+  return <><StationConditions st={st} /><VehicleEstimate st={st} />{st.detail_snapshot
     ? <DeferredEvidence key={`${st.id}:${st.detail_snapshot}`} st={st} snapshot={st.detail_snapshot} />
     : <Evidence st={st} />}</>
 }

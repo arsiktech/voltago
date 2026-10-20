@@ -193,8 +193,8 @@ async function main() {
     failures.push(`app gap: Details disclosure accessible name is generic (not station-specific) on ${genericNaming.details.length}/${cards.length} sampled cards — old contract required a station-specific source-summary label`);
   }
 
-  // --- First card: parking fact readable collapsed; proof/source facts readable expanded ---
-  if (!/^Parking:\s*\S+/i.test(dom.firstParkingFact || "")) {
+  // --- Parking and full proof/source facts are readable in Details ---
+  if (!/Parking:\s*\S+/i.test(expandedText)) {
     failures.push("first card text is missing a readable parking fact");
   }
   if (detailsExpanded === false) {

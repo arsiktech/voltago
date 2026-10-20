@@ -410,6 +410,7 @@ export default function App() {
   }
 
   const onPlaceSelect = (r: GeocodeResult) => {
+    setFullList(true)
     claimSearchArea()
     geo.cancel()
     const coords = { lat: r.lat, lon: r.lon }
@@ -531,6 +532,10 @@ export default function App() {
     : coverage?.mode === 'degraded'
       ? 'Limited live coverage'
       : 'Best options now'
+  const regionCenter = viewport?.center ?? origin?.coords ?? REGIONS[0]
+  const inSpain = REGIONS.some(item => containsCoordinate(item.bbox, regionCenter)) ||
+    containsCoordinate({ south: 35.0, west: -6.0, north: 36.1, east: -2.0 }, regionCenter)
+  const regionShortcuts = inSpain ? REGIONS : [{ ...REGIONS[0], label: 'Spain' }]
   const scopeLabel = resultScopeLabel(filters)
   const firstRouteReady = routeReadyRows[0]
   const areaMotionKey = overview ? 'overview' : committedBbox ? bboxKey(committedBbox) : 'nearby'
@@ -554,8 +559,8 @@ export default function App() {
     ? {
         icon: 'offline',
         tone: 'danger',
-        title: 'Source-backed only',
-        message: 'Open Source before Maps; no live availability is claimed right now.',
+        title: 'Live data unavailable',
+        message: 'Saved chargers are not live. Check the source before driving.',
         actionLabel: 'Try live again',
         onAction: () => query.refetch(),
       }
@@ -564,7 +569,7 @@ export default function App() {
           icon: 'loading',
           tone: 'warn',
           title: 'Live check running',
-          message: 'Use these rows as backups until a Live / Go now card appears.',
+          message: 'Saved chargers are not live while we check.',
         }
       : overview
         ? {
@@ -587,7 +592,7 @@ export default function App() {
                 icon: 'verify',
                 tone: 'warn',
                 title: 'No confirmed live bay nearby',
-                message: 'Nearest source-checked backups are below. Verify the provider before driving.',
+                message: 'Check the provider before driving.',
               }
             : null
 
@@ -631,8 +636,8 @@ export default function App() {
         </p>
         <p className="mt-1 text-xs text-muted">
           {overview
-            ? 'Loosen a filter to see more source-backed options.'
-            : 'Show source-backed backups or search a wider area around this point.'}
+            ? 'Change a filter to see more chargers.'
+            : 'Include saved chargers or search a wider area.'}
         </p>
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           {!overview && origin && (
@@ -746,14 +751,14 @@ export default function App() {
         </div>
       </header>
       <nav className="region-nav glass" aria-label="Explore a region">
-        {REGIONS.map((item) => (
+        {regionShortcuts.map((item) => (
           <button type="button" key={item.label}
             aria-pressed={overview && region === item.label}
             onClick={() => {
               claimSearchArea()
               geo.cancel()
               lastAutoAreaKey.current = null
-              setRegion(item.label)
+              setRegion(item.label === 'Spain' ? 'Mainland' : item.label)
               setOverview(true)
               setOrigin(null)
               setSelectedId(null)
@@ -920,7 +925,7 @@ export default function App() {
             <CoverageBanner coverage={coverage} cache={effectiveData?.cache} />
             {effectiveData?.meta?.truncated && (
               <p role="status" className="text-xs leading-relaxed text-muted">
-                Showing part of this area’s charger inventory. Zoom in or search a city to see more.
+                Partial results. Zoom in for more.
               </p>
             )}
             {flowHint && (overview && geo.status === 'idle' ? (

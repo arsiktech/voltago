@@ -116,8 +116,8 @@ function collect(page) {
           availabilityRows: availabilityRows.length,
           availabilityVisible,
           notLive: availabilityVisible && availability?.getAttribute("data-availability") === "not-live" && availabilityFacts.includes("Not live"),
-          tierBadge: badges.find((b) => /^(Live|Official|Directory|Community)$/.test(b)) || "",
-          parkingRiskBadge: badges.some((b) => /^(Paid parking|Limited parking)$/i.test(b)),
+          tierBadge: art?.querySelector("[data-source-tier]")?.getAttribute("data-source-tier") || "",
+          parkingRiskBadge: /Paid parking|Limited parking/i.test(art?.querySelector("[data-card-caution]")?.getAttribute("aria-label") || ""),
           freeCount: freeMatch ? Number(freeMatch[1]) : null,
           liveSignal: availabilityVisible && availability?.getAttribute("data-availability") === "live" && availabilityFacts.some((fact) => /^(?:\d+ free|\d+ in use|\d+ out|Live · status unknown)$/.test(fact)),
           mapsHref: maps ? maps.href : "",
@@ -262,7 +262,7 @@ async function main() {
       const section = document.querySelector("section");
       const dot = section && section.querySelector(".live-dot");
       const status = dot && dot.parentElement ? dot.parentElement.textContent || "" : "";
-      return /Source-backed leads · not live/.test(status) && !/Refreshing/.test(status);
+      return /Saved chargers · not live/.test(status) && !/Refreshing/.test(status);
     },
     null,
     { timeout: 30000 },
@@ -472,7 +472,7 @@ async function main() {
   expect(liveFetch.status() === 200, `live: /api/chargers with lat/lon returned ${liveFetch.status()}`);
   const livePayload = await liveFetch.json().catch(() => null);
   // Healthy path: "Live · updated" status. Honest degraded path: the live response had no
-  // fresh live authority, so the settled status must be "Cached evidence · not live" with
+  // fresh live authority, so the settled status must be "Cached chargers · not live" with
   // live-source cards rendered and no claimed live count — never a stuck "Refreshing…".
   const degradedNoAuthority =
     livePayload?.cache?.fresh_live_authority === false &&

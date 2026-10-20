@@ -153,7 +153,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           <span className="text-fg-soft">
             <span className="font-semibold">Corroboration: {corr.count} independent sources</span>{' '}
             agree on price &amp; location{corr.families.length ? ` (${corr.families.join(', ')})` : ''}.
-            This raises confidence the station exists — it doesn&apos;t make it live.
+            This does not verify live availability.
           </span>
         </div>
       )}

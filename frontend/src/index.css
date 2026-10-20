@@ -301,12 +301,12 @@
     border: 1px solid transparent;
   }
   .pill-check {
-    color: var(--check);
+    color: color-mix(in oklab, var(--check) 84%, var(--fg));
     background: color-mix(in oklab, var(--check) 16%, transparent);
     border: 1px solid color-mix(in oklab, var(--check) 40%, transparent);
   }
   .pill-verify {
-    color: var(--verify);
+    color: color-mix(in oklab, var(--verify) 84%, var(--fg));
     background: color-mix(in oklab, var(--verify) 16%, transparent);
     border: 1px solid color-mix(in oklab, var(--verify) 40%, transparent);
   }
@@ -316,7 +316,7 @@
     border: 1px solid color-mix(in oklab, var(--muted) 36%, transparent);
   }
   .pill-avoid {
-    color: var(--danger);
+    color: color-mix(in oklab, var(--danger) 84%, var(--fg));
     background: color-mix(in oklab, var(--danger) 14%, transparent);
     border: 1px solid color-mix(in oklab, var(--danger) 38%, transparent);
   }
@@ -340,12 +340,12 @@
     border-color: color-mix(in oklab, var(--brand) 34%, transparent);
   }
   .badge-warn {
-    color: var(--check);
+    color: color-mix(in oklab, var(--check) 84%, var(--fg));
     background: color-mix(in oklab, var(--check) 14%, transparent);
     border-color: color-mix(in oklab, var(--check) 36%, transparent);
   }
   .badge-danger {
-    color: var(--danger);
+    color: color-mix(in oklab, var(--danger) 84%, var(--fg));
     background: color-mix(in oklab, var(--danger) 14%, transparent);
     border-color: color-mix(in oklab, var(--danger) 36%, transparent);
   }
@@ -614,12 +614,12 @@
   .discovery-search { padding: 20px 20px 16px; }
 }
 @media (max-width: 767px) {
-  :root { --header-height: 60px; --page-gutter: 16px; }
+  :root { --header-height: 60px; --page-gutter: 16px; --mobile-sheet-top: min(58dvh, calc(100dvh - 300px)); }
   .app-header { gap: 12px; }
   .brand-lockup { font-size: 21px; }
   .brand-lockup img { width: 30px; height: 30px; }
-  .discovery-map { top: var(--header-height); bottom: 58dvh; left: 0; right: 0; border: 0; border-radius: 0; }
-  .discovery-panel { top: 42dvh; bottom: 0; left: 0; right: 0; width: auto;
+  .discovery-map { top: var(--header-height); bottom: calc(100dvh - var(--mobile-sheet-top)); left: 0; right: 0; border: 0; border-radius: 0; }
+  .discovery-panel { top: var(--mobile-sheet-top); bottom: 0; left: 0; right: 0; width: auto;
     border-radius: 24px 24px 0 0; border-bottom: 0; box-shadow: 0 -8px 28px -22px var(--fg); }
   .discovery-title, .discovery-intro { display: none; }
   .discovery-search { padding: 0 16px 12px; }

@@ -26,12 +26,12 @@ export function CoverageBanner({
       ? 'Live results may be incomplete'
       : 'Limited live coverage'
   const message = cache?.offline
-    ? 'Offline — showing cached chargers. Nothing is live.'
+    ? 'Offline. Nothing is live.'
     : stale
       ? 'Availability may have changed. Verify the source before driving.'
       : partial
-        ? coverage?.warning || 'The live source reached its page limit. Refresh or narrow the map before routing.'
-    : 'Live coverage is limited here. Check each station’s source before driving.'
+        ? coverage?.warning || 'Zoom in or refresh before driving.'
+    : 'Check the source before driving.'
 
   return (
     <motion.div

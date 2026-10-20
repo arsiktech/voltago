@@ -59,7 +59,12 @@ both platforms. Do not invent new levels or reuse these colors for other meaning
   full-strength label, so the eye finds the usable charger first.
 - Map pins and clusters are green only when they contain a route-ready station;
   otherwise neutral or `verify`. A low price alone never turns anything green.
-- One decision pill per station. Do not stack extra badges that repeat it.
+- One decision pill per station. Collapsed web cards show at most one additional caution:
+  the most important issue plus a count of the rest. Never hide access restrictions,
+  source disagreements or outages without that indicator. Its accessible name lists
+  all cautions. Full conditions stay in Details, even if deferred evidence fails.
+- Keep source tier and observation age as plain text. Source counts, tariff schedules
+  and additional directory/network prices belong in Details, not another badge row.
 - Charging and parking are separate facts with their own labels and provenance.
 - Unknown is shown as unknown. An unknown price never satisfies a price filter and is
   never rendered as zero or free.
@@ -97,6 +102,8 @@ in step with the tokens below.
   the web uses, because system prominent buttons keep white labels: white is 5.2:1 on
   it and its edge is 3.7:1 against the dark canvas.
 - `--faint` is for decoration and disabled states only, never for information.
+- Tinted decision and caution text blends its evidence color with 16% foreground ink
+  so the small labels retain at least 4.5:1 contrast against their tinted fill.
 - Check every new surface in both themes.
 
 ## 4. Typography
@@ -133,7 +140,9 @@ in step with the tokens below.
   the space to results, not fixed chrome. The marketing headline shows only before the
   driver has chosen a place.
 - **Mobile sheet (web):** a List/Map button in the pinned results heading switches
-  between split and list layouts; dragging the grabber does the same, and a finger
+  between split and list layouts. The initial sheet starts at 58dvh, capped to leave
+  300px for search and controls, so Spain fills more of the visible map. Choosing a city
+  raises the list. Dragging the grabber does the same, and a finger
   scroll down the results raises the sheet, as a native sheet would.
 - **iOS layout:** one full-screen map and one persistent native sheet, like Apple Maps.
   Detents: collapsed (exactly the search row), medium and large; accessibility text sizes
@@ -259,7 +268,7 @@ Extend these before creating new ones.
 | --- | --- | --- | --- |
 | Decision pill | `DecisionPill.tsx`, `.pill-*` | decision views in `StationViews.swift` | Icon + label, one per station; Go now solid |
 | Badge | `Badge.tsx` (`default`, `brand`, `warn`, `danger`) | inline capsule labels | Facts, not decisions |
-| Station card | `StationCard.tsx` | `StationCard` in `StationViews.swift` | Name and price; decision, source and restrictions in one row; availability; route, parking and age facts; connectors; actions. The source photo lives in Details |
+| Station card | `StationCard.tsx` | `StationCard` in `StationViews.swift` | Name, charging price, decision, one caution, availability, power and distance. Web groups identical connector types and power with published quantities; full ports, parking, conditions, provenance and photos stay in Details |
 | Provenance | `SourceProvenance.tsx` | detail trust rows | Plain source + freshness; combined for VoiceOver |
 | Filters | `FilterRail.tsx`, `.filter-chip` | `DiscoveryFilters.swift` | Free shortcut, price slider (0–100 cents, then No limit), native modal/sheet, reset |
 | Coverage and guidance | `CoverageBanner.tsx`, `FlowHint.tsx` | sheet banners | Bounded copy with a one-tap action, no transport diagnostics; coverage is one compact line ("Title. Message") |
@@ -301,7 +310,10 @@ upgrade station availability, evidence or route readiness.
   stand out.
 - Pins and clusters: neutral or `verify` by default; `go` only when route-ready. The
   selected station ring is ink, not green. Prices on the map require explicit price
-  verification.
+  verification. Pin labels show only a price and optional short power hint.
+  Never truncate connector or operator prose into a pin.
+- Region shortcuts appear near Spain. Outside that area, offer one `Spain` shortcut
+  back to mainland discovery without changing catalogue geography.
 - Location permission is never requested automatically.
 - If tiles or WebGL fail, the list, search and region shortcuts keep working.
 
@@ -313,6 +325,10 @@ upgrade station availability, evidence or route readiness.
   `decision.label` wins.
 - Prices as `€0.35/kWh` via the helpers in `format.ts`; always label whether a figure
   is charging or parking.
+- Label card tariffs `Charging price`, not `Charging`. Unknown prices say `Unknown`.
+- Use short non-live copy, such as `Saved chargers · not live`. Keep stale and non-live
+  boundaries explicit rather than repeating an explanation on every list.
+- English UI copy uses no em dashes.
 - Never claim availability, live status, or a price without evidence.
 - iOS strings live in `Localizable.xcstrings` (English, Spanish, Russian); new static
   strings go there (a contract test checks this).

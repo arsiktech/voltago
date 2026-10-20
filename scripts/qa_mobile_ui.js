@@ -56,7 +56,6 @@ const collect = () => {
     .map(txt)
     .find((t) => /^(?:\d+\s*live\s*·\s*\d+\s*leads|\d+\s*leads\s*·\s*not live)$/i.test(t)) || "";
   const honesty = txt(document.querySelector('button[aria-controls="data-honesty-panel"]'));
-  const tiers = ["Live", "Official", "Directory", "Community"];
 
   const cards = [...document.querySelectorAll("[data-station]")].map((wrap) => {
     const card = wrap.querySelector("article.card");
@@ -68,21 +67,21 @@ const collect = () => {
     const source = links.find((a) => /^Start\/check/.test(txt(a)));
     const details = [...card.querySelectorAll("button")].find((b) => /Details/.test(b.textContent));
     const text = card.innerText.replace(/\s+/g, " ");
-    const price = txt([...card.querySelectorAll("span")].find((el) => /^(Free|€\d+\.\d{2}|—)$/.test(txt(el))));
+    const price = txt([...card.querySelectorAll("span")].find((el) => /^(Free|€\d+\.\d{2}|Unknown)$/.test(txt(el))));
     return {
       id: wrap.getAttribute("data-station"),
       name: txt(card.querySelector("h3")),
       pillLabel: txt(pill),
       pillCls: pill ? pill.className : "",
       pillReason: pill ? pill.getAttribute("title") || "" : "",
-      tier: badges.find((b) => tiers.includes(b)) || "",
+      tier: card.querySelector("[data-source-tier]")?.getAttribute("data-source-tier") || "",
       badges: badges.slice(0, 8),
       notLive: badges.includes("Not live") || /\bNot live\b/.test(text),
-      risk: badges.some((b) => b === "Paid parking" || b === "Limited parking"),
+      risk: /Paid parking|Limited parking/.test(card.querySelector("[data-card-caution]")?.getAttribute("aria-label") || ""),
       price,
-      priceOk: /^(Free|€\d+\.\d{2}|—)$/.test(price),
+      priceOk: /^(Free|€\d+\.\d{2}|Unknown)$/.test(price),
       locateFact: /Locate to see ETA/.test(text),
-      parkingFact: !!card.querySelector('[data-route-fact="parking"]'),
+      cautionCount: card.querySelectorAll("[data-card-caution]").length,
       liveClaim: !!card.querySelector('[data-availability="live"]'),
       mapsHref: maps ? maps.getAttribute("href") || "" : "",
       mapsBlank: !!maps && maps.getAttribute("target") === "_blank" && /noopener/.test(maps.getAttribute("rel") || ""),
@@ -140,8 +139,8 @@ function cardFailures(cards, label, failures) {
   // lead/avoid are legitimate backend decision levels (D-084) — "Price lead" store-locator
   // rows and off-cap rows render muted/danger pills instead of crashing.
   bad((c) => c.pillLabel && !/pill-(go|check|verify|lead|avoid)/.test(c.pillCls), "decision pill missing a known tone class");
-  bad((c) => !c.tier, "card missing source-tier badge (Live/Official/Directory/Community)");
-  bad((c) => !c.priceOk, "card price is not Free/€N.NN/—");
+  bad((c) => !c.tier, "card missing source-tier text (Live/Official/Directory/Community)");
+  bad((c) => !c.priceOk, "card price is not Free/€N.NN/Unknown");
   bad((c) => !c.notLive, "overview lead card not marked Not live");
   bad((c) => c.liveClaim, "lead card claims live connector counts");
   bad((c) => !c.mapsHref, "card missing Open in Maps action");
@@ -150,7 +149,7 @@ function cardFailures(cards, label, failures) {
   bad((c) => c.sourceHref && !c.sourceBlank, "Source link not target=_blank rel=noopener");
   bad((c) => !c.detailsBtn, "card missing Details disclosure button");
   bad((c) => !c.locateFact, "card missing locate-mode route fact (Locate to see ETA before geolocation)");
-  bad((c) => !c.parkingFact, "card missing parking route fact");
+  bad((c) => c.cautionCount > 1, "collapsed card has more than one caution indicator");
 }
 
 async function main() {
@@ -308,7 +307,7 @@ async function main() {
   if (!restoredSplit.panel || Math.abs(restoredSplit.panel.top - result.panel.top) > 1) failures.push("returning to map/list did not restore the split geometry");
   if (!result.panel) failures.push("panel <section> did not render");
   else {
-    if (result.panel.top < 340 || result.panel.top > 370) failures.push(`panel is not the usable bottom sheet (top=${result.panel.top}, expected ~42dvh of 844)`);
+    if (result.panel.top < 480 || result.panel.top > 500) failures.push(`panel is not the usable bottom sheet (top=${result.panel.top}, expected ~58dvh of 844)`);
     if (result.panel.width < 388) failures.push("panel does not span the mobile width");
     if (result.panel.bottom < 830) failures.push("panel does not reach the bottom of the viewport");
     if (!result.searchVisible) failures.push("mobile discovery panel is missing its visible search control");

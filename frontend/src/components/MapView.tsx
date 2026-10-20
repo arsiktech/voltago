@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { stationTitle, providerIdentity, providerHandoff, boundedLabel } from '../lib/provider'
+import { stationTitle, providerHandoff, boundedLabel } from '../lib/provider'
+import { mapPinPreview } from '../lib/stationPresentation'
 import { guardBasemapShieldFilters } from '../lib/basemap'
 import * as maplibregl from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
@@ -40,45 +41,6 @@ const prefersReducedMotion = (): boolean =>
 
 /* ---------- Price pins painted onto the map ---------- */
 
-/** Legal-form tails ("S.L.", "S.A.U") eat the pill's pixel budget without telling a
- * driver anything, and they were what pushed the hardware facts past the ellipsis. */
-const shortOperator = (name: string, max = 14): string => {
-  const trimmed = name
-    .replace(/[,.]?\s*\b(?:s\.?l\.?u?|s\.?a\.?u?|sociedad\s+\w+|limited|ltd)\b\.?$/i, '')
-    .replace(/[,.]\s*$/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  const chars = Array.from(trimmed)
-  return chars.length > max ? chars.slice(0, max).join('') + '…' : trimmed
-}
-
-// A compact, honest price for the map bubble: "Free", "€0.25", or null when unknown
-// (leads without a verified price stay a plain dot — we never invent a number).
-function pinPreview(st: Station): { price: string; detail: string } | null {
-  // An exact OSM/directory point can still be shown as a Not-live location, but its
-  // price is not a map claim until the price contract is explicitly verified.
-  if (!hasVerifiedPrice(st)) return null
-  const price =
-    st.is_free || st.price_min === 0 ? 'Free' : st.price_min != null ? `€${st.price_min.toFixed(2)}` : null
-  const maxKw = sanePowerKw(st.connector_summary?.max_power_kw ?? st.max_power_kw ?? null)
-  const plugs = (st.connector_labels && st.connector_labels.length
-    ? st.connector_labels
-    : (st.connectors || []).map((c) => c.label || c.type).filter(Boolean)
-  ).slice(0, 2)
-  const total = st.connector_summary?.total ?? st.total_evse ?? st.connector_count ?? (st.connectors?.length || null)
-  const operator = providerIdentity(st)?.name
-  const detail = [
-    operator ? shortOperator(operator) : '',
-    plugs.length ? plugs.join('/') : '',
-    maxKw != null ? powerText(maxKw) : '',
-    total != null ? `${total}×` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ')
-  if (!price && !detail) return null
-  return { price: price || '—', detail: boundedLabel(detail, text => text.length, 64) }
-}
-
 function priceIconId(label: string, level: string, theme: 'light' | 'dark', priv: boolean, detail = ''): string {
   return `price:${theme}:${level}:${priv ? 'p' : 'o'}:${label}:${detail}`
 }
@@ -93,9 +55,9 @@ function priceSort(st: Station, label: string): number {
 const PILL_DPR = 2
 const PILL_MARGIN = 6 // canvas breathing room for the drop shadow + tail tip
 const PILL_FONT =
-  '700 12.5px "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  '700 12.5px "Manrope Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
 const PILL_SUB_FONT =
-  '650 10px "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+  '650 11px "Manrope Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
 
 function roundRectPath(
   ctx: CanvasRenderingContext2D,
@@ -271,7 +233,7 @@ function makeClusterImage(
   // Count.
   ctx.fillStyle = fg
   ctx.font =
-    '700 13.5px "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
+    '700 13.5px "Manrope Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(text, cx, cy + 0.5)
@@ -282,7 +244,7 @@ function makeClusterImage(
 /** Add any price-pill images referenced by the current stations that aren't registered yet. */
 function ensurePriceIcons(map: maplibregl.Map, stations: Station[], theme: 'light' | 'dark'): void {
   for (const s of stations) {
-    const preview = pinPreview(s)
+    const preview = mapPinPreview(s)
     if (!preview) continue
     const priv = isPrivateAccess(s)
     const id = priceIconId(preview.price, decisionLevel(s), theme, priv, preview.detail)
@@ -335,7 +297,7 @@ function toGeoJSON(stations: Station[], theme: 'light' | 'dark'): FeatureCollect
       .filter((s) => typeof s.lat === 'number' && typeof s.lon === 'number')
       .map((s) => {
         const level = decisionLevel(s)
-        const preview = pinPreview(s)
+        const preview = mapPinPreview(s)
         const free = hasVerifiedPrice(s) && (s.is_free || s.price_min === 0) ? 1 : 0
         const properties: Record<string, unknown> = {
           id: s.id,
@@ -440,9 +402,9 @@ function popupHTML(st: Station): string {
     `</div>` +
     `<p style="font-size:11px;line-height:1.4;color:var(--muted);margin:0 0 10px">${
       stale
-        ? 'Cached evidence — not live. Refresh or check source before driving.'
+        ? 'Cached, not live. Check source before driving.'
         : st.lead
-        ? 'Source-backed lead. Confirm price and access before driving.'
+        ? 'Not live. Confirm price and access before driving.'
         : 'Live public data. Provider app and onsite signs still win.'
     }</p>` +
     (actionMarkup ? `<div${notLive ? ` data-google-maps="${googleMaps.listing ? 'listing' : 'search'}"` : ''} style="display:flex;gap:6px">${actionMarkup}</div>` : '') +

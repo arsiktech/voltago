@@ -49,7 +49,6 @@ function station(overrides: Partial<Station> = {}): Station {
 }
 
 const renderers = [
-  ['card', (st: Station) => renderToStaticMarkup(<StationCard st={st} animateIn={false} />)],
   ['details', (st: Station) => renderToStaticMarkup(<StationDetails st={st} />)],
 ] as const
 
@@ -76,16 +75,15 @@ describe.each(renderers)('additional price evidence on %s', (_name, render) => {
     }
   })
 
-  it('hides the redundant Repsol guide only on verified-price cards, keeping it in details', () => {
+  it('keeps every additional source in details, separate from the verified tariff', () => {
     const markup = render(station({
       price_min: 0.37, verification: { price_verified: true },
       charge_claim: { summary: 'Official station tariff €0.37/kWh', source: 'Operator' },
       price_evidence: evidence,
     }))
-    labels.forEach((label, index) => expect(markup.includes(label)).toBe(_name !== 'card' || index !== 0))
-    expect(markup.match(/data-price-evidence=/g)).toHaveLength(_name === 'card' ? 2 : 3)
-    if (_name === 'card') expect(markup).toContain('€0.37')
-    else expect(markup).toContain('Official station tariff €0.37/kWh')
+    labels.forEach(label => expect(markup).toContain(label))
+    expect(markup.match(/data-price-evidence=/g)).toHaveLength(3)
+    expect(markup).toContain('Official station tariff €0.37/kWh')
     expect(markup).not.toContain('Operator direct price')
     expect(markup).not.toContain('Free and live')
   })
@@ -105,7 +103,7 @@ describe.each(renderers)('additional price evidence on %s', (_name, render) => {
     })
     expect(isRouteReady(live)).toBe(true)
     const markup = render(live)
-    labels.forEach((label, index) => expect(markup.includes(label)).toBe(_name !== 'card' || index !== 0))
+    labels.forEach(label => expect(markup).toContain(label))
     expect(markup).toContain('Go now')
     expect(priceText(live)).toBe('€0.37')
   })
@@ -130,10 +128,11 @@ describe('price evidence boundaries', () => {
     }
   })
 
-  it('keeps Repsol on unpriced and unverified cards, including a stray verification flag', () => {
+  it('moves additional tariffs into Details on every collapsed card, keeping unknown primary prices explicit', () => {
     for (const st of [station(), station({ price_min: 0.37 }), station({ verification: { price_verified: true } })]) {
       const markup = renderToStaticMarkup(<StationCard st={{ ...st, price_evidence: evidence }} animateIn={false} />)
-      expect(markup).toContain(labels[0])
+      expect(markup).not.toContain('data-price-evidence')
+      expect(markup).toContain(st.price_min == null ? 'Unknown' : '€0.37')
     }
   })
 
@@ -173,7 +172,7 @@ describe('price evidence boundaries', () => {
     const payload = JSON.parse(JSON.stringify({ ...station(), price_evidence: [
       ...evidence, { ...evidence[0], kind: 'future_price', label: 'Verified tariff', future_field: true },
     ], future_station_field: true })) as Station
-    const markup = renderToStaticMarkup(<StationCard st={payload} animateIn={false} />)
+    const markup = renderToStaticMarkup(<StationDetails st={payload} />)
     expect(markup.match(/data-price-evidence=/g)).toHaveLength(3)
     expect(markup).not.toContain('Verified tariff')
   })

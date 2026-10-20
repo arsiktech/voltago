@@ -55,6 +55,7 @@ import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import agent_mcp
@@ -451,11 +452,20 @@ class RuntimeTests(unittest.TestCase):
     def test_mcp_projection_uses_same_runtime_rows_and_transition_semantics(self):
         _, result = server.live_response(self.params)
         row = result['stations'][0]
-        view = agent_mcp.charger_view(row, server, detail=True)
+        # This fixture was observed at NOW, not at the wall clock when CI runs.
+        observed_at = NOW
+        assert observed_at is not None
+        with patch('server.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime.fromtimestamp(observed_at, timezone.utc)
+            view = agent_mcp.charger_view(row, server, detail=True)
         self.assertEqual(view['id'], row['id'])
         self.assertEqual(view['hardware']['connectors'][0]['status'], row['connectors'][0]['status'])
         self.assertEqual(view['evidence']['live_verified'], row['verification']['live_verified'])
         self.assertFalse(view['evidence']['live_status_stale'])
+        with patch('server.datetime', wraps=datetime) as clock:
+            clock.now.return_value = datetime.fromtimestamp(observed_at + 4 * 3600, timezone.utc)
+            stale = agent_mcp.charger_view(row, server, detail=True)
+        self.assertTrue(stale['evidence']['live_status_stale'])
 
     def test_health_and_strategy_expose_licences_and_cache_health_without_fetch(self):
         health = server.source_health_summary()
