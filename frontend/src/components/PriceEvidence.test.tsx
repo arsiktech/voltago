@@ -76,7 +76,7 @@ describe.each(renderers)('additional price evidence on %s', (_name, render) => {
     }
   })
 
-  it('shows every claim alongside the existing verified official charging claim', () => {
+  it('hides the redundant Repsol guide only on verified-price cards, keeping it in details', () => {
     const markup = render(station({
       price_min: 0.37, verification: { price_verified: true },
       charge_claim: { summary: 'Official station tariff €0.37/kWh', source: 'Operator' },
@@ -96,7 +96,7 @@ describe.each(renderers)('additional price evidence on %s', (_name, render) => {
     expect(render(station({ price_min: 0.37, price_evidence: [] }))).toBe(old)
   })
 
-  it('keeps every claim visible beside a verified live tariff without changing its decision', () => {
+  it('keeps directory claims beside a live tariff without changing its decision', () => {
     const live = station({
       price_min: 0.37, price_evidence: evidence, available: 1,
       verification: { price_verified: true, live_verified: true, level: 'live' },
@@ -142,6 +142,7 @@ describe('price evidence boundaries', () => {
     const vehicle = exampleVehicle(new Date(now).toISOString())
     const onlyEvidence = station({ price_evidence: evidence.map(item => ({
       ...item, price_per_kwh: 0, tariff_details: { energy_eur_per_kwh: 0, unconditional_free: true },
+      rates: item.rates?.map(rate => ({ ...rate, min: 0, max: null })),
     })) })
     expect(priceText(onlyEvidence)).toBe('—')
     expect(priceUnit(onlyEvidence)).toBe('')

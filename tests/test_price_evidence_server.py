@@ -29,6 +29,8 @@ def evidence(kind="electromaps_community", price=0.0):
         "source_updated_at": "2025-08-16T19:12:42+0000" if kind == "electromaps_community" else None,
         "fetched_at": "2026-10-20T10:00:00Z", "price_per_kwh": price, "currency": "EUR",
         "tariff_details": {"parking_price": "0€, están en la acera"},
+        "rates": [{"kind": "energy", "label": None, "min": price, "max": None,
+                   "from": False, "unit": "kWh", "after_minutes": None}],
     }
 
 

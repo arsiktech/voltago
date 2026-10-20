@@ -142,7 +142,16 @@ final class PriceEvidenceTests: XCTestCase {
          "verification":{"price_verified":true},
          "connectors":[{"type":"Type 2","power_kw":22}]}
         """)
-        station.priceEvidence = try allEvidence()
+        station.priceEvidence = try allEvidence().map { item in
+            var item = item
+            item.rates = item.rates?.map { rate in
+                var rate = rate
+                rate.min = 0
+                rate.max = nil
+                return rate
+            }
+            return item
+        }
         XCTAssertEqual(station.priceEvidencePresentations.count, 3)
         XCTAssertNil(station.priceMin)
         XCTAssertNil(station.isFree)
