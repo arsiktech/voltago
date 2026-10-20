@@ -127,12 +127,77 @@ def plain_text(document):
     return re.sub(r'\s+', ' ', ''.join(parser.parts)).strip()
 
 
+def rate(kind, label, minimum, unit, *, maximum=None, is_from=False, after_minutes=None) -> dict:
+    return dict(kind=kind, label=label, min=minimum, max=maximum, **{'from': is_from},
+                unit=unit, after_minutes=after_minutes)
+
+
+_AMOUNT = r'\d+(?:[,.]\d{1,6})?'
+_QUOTE = rf'(?P<from>desde\s+|from\s+)?(?P<min>{_AMOUNT})(?:\s*[-–]\s*(?P<max>{_AMOUNT}))?\s*(?:€|EUR)\s*(?:/|por\s+|per\s+)kWh'
+
+
+def parse_rates(kind, text):
+    """Recognize complete, explicit-unit quotes, never infer a billing unit.
+
+    Unknown conditions or extra charges withhold the compact summary as a whole.
+    The original text remains available as provenance and through the source link.
+    """
+    if kind == KINDS[0]:
+        rates = []
+        remaining = text
+        for label, word in (('normal', 'normal'), ('fast', r'r[aá]pida'), ('ultrafast', r'ultrarr[aá]pida')):
+            matches = list(re.finditer(rf'Recarga de coches {word}:\s*{_QUOTE}(?!\w)', text, re.I))
+            if len(matches) != 1:
+                return []
+            m = matches[0]
+            if m['max'] or (label == 'fast' and not m['from']):
+                return []
+            minimum = number(m['min'])
+            if minimum is None:
+                return []
+            rates.append(rate('energy', label, minimum, 'kWh', is_from=bool(m['from'])))
+            remaining = remaining.replace(m[0], '', 1)
+        # Only the heading, optional motorcycle quote and published caveat may
+        # remain. Extra conditions or fees need the full source, not a summary.
+        known = (rf'(?:Los precios de los puntos de recarga de Repsol son:\s*)?'
+                 rf'(?:Motos:\s*{_AMOUNT}\s*€/kWh\s*)?'
+                 r'Ten en cuenta que puede haber puntos de recarga tanto de Repsol como de otros operadores con tarifas distintas\.')
+        return rates if re.fullmatch(known, re.sub(r'\s+', ' ', remaining).strip(), re.I) else []
+    if kind == KINDS[1]:
+        m = re.fullmatch(_QUOTE, text.strip(), re.I)
+        if not m:
+            return []
+        low, high = number(m['min']), number(m['max'])
+        if low is None or (m['max'] and high is None) or (high is not None and (low > high or m['from'])):
+            return []
+        return [rate('energy', None, low, 'kWh', maximum=high, is_from=bool(m['from']))]
+    if kind == KINDS[2]:
+        # The public Pass page groups a tariff under Todos los conectores. Only
+        # this understood schedule can be shortened without hiding conditions.
+        idle = (rf'\s+Penalidad por ocupar el sitio con su auto conectado una vez la recarga terminada,\s*'
+                rf'(?P<idle>{_AMOUNT})\s*€\s*(?:por\s+|/)minuto'
+                r'(?:\s+a partir de\s+(?P<grace>\d+)\s+minutos sin carga)?'
+                r'(?:\s+Para evitar sanciones de ocupación en esta estación, mueva su coche tan pronto como se complete la carga\.)?')
+        m = re.fullmatch(rf'Todos los conectores\s+{_QUOTE}(?P<started>\s+comenzado)?(?:{idle})?', text.strip(), re.I)
+        if not m or m['max']:
+            return []
+        minimum, idle_fee = number(m['min']), number(m['idle'])
+        if minimum is None or (m['idle'] and idle_fee is None):
+            return []
+        rates = [rate('energy', 'all', minimum, 'started_kWh' if m['started'] else 'kWh', is_from=bool(m['from']))]
+        if m['idle']:
+            rates.append(rate('idle', None, idle_fee, 'minute',
+                              after_minutes=int(m['grace']) if m['grace'] else None))
+        return rates
+    return []
+
+
 def evidence(kind, source, label, text, url, fetched_at, *, updated_at=None, price=None, details=None):
     if not stamp(fetched_at) or not text:
         return None
     return dict(kind=kind, source=source, label=label, text=text, source_url=url,
                 source_updated_at=updated_at, fetched_at=fetched_at, price_per_kwh=price,
-                currency='EUR', **({'tariff_details': details} if details else {}))
+                currency='EUR', rates=parse_rates(kind, text), **({'tariff_details': details} if details else {}))
 
 
 def parse_repsol_tariff(document, fetched_at):
@@ -512,6 +577,8 @@ class Collector:
         if not claim:
             return
         claim = dict(claim)
+        # Reparse legacy sanitized cache without fetching again or resetting dates.
+        claim['rates'] = parse_rates(claim['kind'], claim['text'])
         if stale:
             claim['cache_stale'] = True
         claims = row.setdefault('price_evidence', [])

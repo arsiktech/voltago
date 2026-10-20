@@ -177,6 +177,26 @@ struct Station: Decodable, Identifiable, Hashable {
     }
 }
 
+/// Display-only rates from explicit source units. Never a primary tariff or estimate input.
+struct PriceEvidenceRate: Codable, Hashable {
+    var kind: String
+    var label: String?
+    var min: Double
+    var max: Double?
+    var from: Bool
+    var unit: String
+    var afterMinutes: Double?
+
+    var isValid: Bool {
+        guard min.isFinite, min >= 0,
+              max == nil || (max!.isFinite && max! >= min),
+              label == nil || ["normal", "fast", "ultrafast", "motorcycle", "all"].contains(label!),
+              afterMinutes == nil || (afterMinutes!.isFinite && afterMinutes! >= 0) else { return false }
+        return (kind == "energy" && ["kWh", "started_kWh"].contains(unit) && afterMinutes == nil)
+            || (kind == "idle" && unit == "minute" && label == nil && max == nil && !from)
+    }
+}
+
 struct StationOwner: Decodable, Hashable {
     var name: String?
     var website: String?

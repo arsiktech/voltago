@@ -125,6 +125,20 @@ PRICE_EVIDENCE_LOCALIZATION_KEYS = {
     "Checked: %@",
     "Date unknown",
     "Parking: %@",
+    "See source for prices",
+    "%@–%@",
+    "idle %@/min",
+    "idle %@/min after %@ min",
+    "from %@",
+    "From %@",
+    "Normal %@",
+    "Fast %@",
+    "Ultra-fast %@",
+    "Motorcycle %@",
+    "%@ per started kWh",
+    "%@ per kWh",
+    "View price source",
+    "View price source: %@",
 }
 
 
@@ -405,6 +419,12 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertIn("ForEach(items) { item in", evidence)
         self.assertIn("Text(verbatim: item.label)", evidence)
         self.assertIn("Text(verbatim: item.text)", evidence)
+        self.assertIn("text = Self.rateText(evidence.rates)", evidence)
+        self.assertNotIn("text = evidence.text", evidence)
+        self.assertIn('String(localized: "See source for prices")', evidence)
+        self.assertIn("station.cardPriceEvidencePresentations", evidence)
+        self.assertIn('priceMin != nil && hasVerifiedPrice', evidence)
+        self.assertIn('struct PriceEvidenceRate: Codable, Hashable', self.models)
         self.assertIn(".fixedSize(horizontal: false, vertical: true)", evidence)
         self.assertIn(".accessibilityElement(children: .combine)", evidence)
         self.assertNotIn("Theme.go", evidence)

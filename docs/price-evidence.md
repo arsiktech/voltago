@@ -40,6 +40,7 @@ The optional `station.price_evidence` list contains these fields:
 | `fetched_at` | Timestamp of the actual successful retrieval; cache reuse does not reset it |
 | `price_per_kwh` | Nullable numeric EUR metadata; never a filter or primary price |
 | `currency` | `EUR` |
+| `rates` | Display-only explicit-unit rate list; empty when the complete schedule cannot be safely summarized |
 | `parking_price` | Optional separate parking text from Electromaps, displayed by both clients; never primary parking evidence |
 | `tariff_details` | Optional metadata for started units, idle trigger/grace, numeric fees and separate `parking_price` text |
 
@@ -79,6 +80,28 @@ location/address, operator or network agreement, compatible connectors and a 40 
 maximum distance guard. Missing connectors, wrong operators, nearby mismatches,
 ambiguous candidates and same-family distinct identities withhold the annotation.
 The collector does not alter the existing dedupe or merge rules to force a join.
+
+## Compact rate presentation
+
+Each rate has `kind` (`energy` or `idle`), `label` (`normal`, `fast`, `ultrafast`,
+`motorcycle`, `all` or null), numeric `min`, nullable `max`, boolean `from`, `unit`
+(`kWh`, `started_kWh` or `minute`) and nullable `after_minutes`. Units must be explicit
+in the original quote. A community range retains both endpoints and null
+`price_per_kwh`; conditional text, missing units, extra charges and ambiguous schedules
+produce `rates: []`, never a guessed rate. Qualitative speed names do not establish kW.
+
+Both clients render these display-only rates as compact lines. For example,
+`Normal €0.36 · Fast from €0.48 · Ultra-fast €0.56 per kWh` or
+`€0.599 per started kWh · idle €0.111/min after 15 min`. Sub-cent precision, ranges,
+from qualifiers and known idle grace periods survive presentation. The existing source
+labels, source calendar dates, separate parking text and source links remain. Raw `text`
+stays in the payload for provenance, never on the card. Missing or unparseable rates
+show `See source for prices`. Legacy sanitized Pass cache is reparsed without another
+request or a changed fetch date.
+
+When an existing annotation coexists with a verified primary price, the Repsol network
+guide is hidden on the card but remains in details. Community and Pass annotations
+remain distinct. This is display selection only, not a primary price or honesty change.
 
 ## Sources
 

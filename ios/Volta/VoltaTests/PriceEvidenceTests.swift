@@ -13,15 +13,21 @@ final class PriceEvidenceTests: XCTestCase {
            "source_url":"https://www.repsol.es/particulares/vehiculos/movilidad-electrica/",
            "source_updated_at":"2020-01-01T00:00:00Z","fetched_at":"2026-10-20T10:20:00Z",
            "price_per_kwh":0,"currency":"EUR","parking_price":"€2/hour",
-           "tariff_details":{"future_component":{"fee":3}}},
+           "tariff_details":{"future_component":{"fee":3}},
+           "rates":[{"kind":"energy","label":"normal","min":0.36,"max":null,"from":false,"unit":"kWh","after_minutes":null},
+                    {"kind":"energy","label":"fast","min":0.48,"max":null,"from":true,"unit":"kWh","after_minutes":null},
+                    {"kind":"energy","label":"ultrafast","min":0.56,"max":null,"from":false,"unit":"kWh","after_minutes":null}]},
           {"kind":"electromaps_community","source":"Electromaps","label":"Live free",
            "text":"€0.25/kWh; €1 session fee","source_url":"https://www.electromaps.com/en/charging-stations/example",
            "source_updated_at":"2024-03-02T23:30:00-05:00","fetched_at":"2026-10-20T10:20:00Z",
-           "price_per_kwh":0,"currency":"EUR"},
+           "price_per_kwh":0,"currency":"EUR",
+           "rates":[{"kind":"energy","label":null,"min":0.35,"max":0.54,"from":false,"unit":"kWh","after_minutes":null}]},
           {"kind":"chargemap_pass","source":"Chargemap","label":"Operator direct tariff",
            "text":"€0.59 per started kWh; idle €0.15/min after 10 min grace",
            "source_url":"https://chargemap.com/en-gb/example","source_updated_at":"2021-02-03",
-           "fetched_at":"2026-10-19T23:45:00-05:00","price_per_kwh":0,"currency":"EUR"}
+           "fetched_at":"2026-10-19T23:45:00-05:00","price_per_kwh":0,"currency":"EUR",
+           "rates":[{"kind":"energy","label":"all","min":0.599,"max":null,"from":false,"unit":"started_kWh","after_minutes":null},
+                    {"kind":"idle","label":null,"min":0.111,"max":null,"from":false,"unit":"minute","after_minutes":15}]}
          ]}
         """)
         return try XCTUnwrap(station.priceEvidence)
@@ -38,10 +44,25 @@ final class PriceEvidenceTests: XCTestCase {
         XCTAssertEqual(items.map(\.checkedText), ["Checked: 2026-10-20", nil, "Checked: 2026-10-19"])
         XCTAssertEqual(evidence[1].sourceUpdatedAt, "2024-03-02T23:30:00-05:00")
         XCTAssertEqual(evidence[1].fetchedAt, "2026-10-20T10:20:00Z")
-        XCTAssertEqual(items.map(\.text), evidence.map(\.text), "Keep all raw qualifiers, fees and grace periods")
+        XCTAssertEqual(items.map(\.text), [
+            "Normal €0.36 · Fast from €0.48 · Ultra-fast €0.56 per kWh",
+            "€0.35–0.54 per kWh",
+            "€0.599 per started kWh · idle €0.111/min after 15 min"
+        ])
+        for index in items.indices { XCTAssertNotEqual(items[index].text, evidence[index].text) }
         XCTAssertEqual(items[0].parkingText, "Parking: €2/hour")
         XCTAssertFalse(items[0].text.contains("€2/hour"), "Parking is a separate fact")
         XCTAssertEqual(Set(items.map(\.id)).count, 3)
+    }
+
+    func testMissingEmptyOrInvalidRatesUseShortFallbackNeverRawTextOrMetadata() throws {
+        var evidence = try allEvidence()[0]
+        for rates in [nil, [], [PriceEvidenceRate(kind: "energy", min: -0.1, from: false, unit: "kWh")]] as [[PriceEvidenceRate]?] {
+            evidence.rates = rates
+            XCTAssertEqual(PriceEvidencePresentation(evidence)?.text, "See source for prices")
+        }
+        evidence.rates = [PriceEvidenceRate(kind: "energy", min: 0.54, from: true, unit: "kWh")]
+        XCTAssertEqual(PriceEvidencePresentation(evidence)?.text, "From €0.54 per kWh")
     }
 
     func testMissingNullAndEmptyEvidenceKeepOlderStationResponsesCompatible() throws {
@@ -150,6 +171,19 @@ final class PriceEvidenceTests: XCTestCase {
         XCTAssertNil(estimate.energyCostEUR, "A price-verification flag cannot turn numeric evidence into an estimate")
     }
 
+    func testUnverifiedPriceAndStrayVerificationFlagDoNotHideTheRepsolGuide() throws {
+        var station = try TestDecode.station("""
+        {"id":"unverified","name":"N","lat":28,"lon":-16,"price_min":0.37}
+        """)
+        station.priceEvidence = try allEvidence()
+        XCTAssertEqual(station.cardPriceEvidencePresentations.count, 3)
+        station.priceMin = nil
+        station.verification = try TestDecode.station("""
+        {"id":"flag","name":"N","lat":28,"lon":-16,"verification":{"price_verified":true}}
+        """).verification
+        XCTAssertEqual(station.cardPriceEvidencePresentations.count, 3)
+    }
+
     func testAllClaimsRemainAlongsideAnUnchangedVerifiedLivePrice() throws {
         var station = try TestDecode.station("""
         {"id":"official","name":"N","lat":28,"lon":-16,"lead":false,
@@ -162,7 +196,9 @@ final class PriceEvidenceTests: XCTestCase {
         let decision = station.decisionKind
         let routeReady = station.isRouteReady
         station.priceEvidence = try allEvidence()
-        XCTAssertEqual(station.priceEvidencePresentations.count, 3)
+        XCTAssertEqual(station.priceEvidencePresentations.count, 3, "Details retain the Repsol guide")
+        XCTAssertEqual(station.cardPriceEvidencePresentations.count, 2)
+        XCTAssertFalse(station.cardPriceEvidencePresentations.contains { $0.label.hasPrefix("Repsol") })
         XCTAssertEqual(station.priceText, primaryPrice)
         XCTAssertEqual(station.priceText, "€0.59")
         XCTAssertEqual(station.priceMin, 0.59)

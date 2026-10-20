@@ -22,6 +22,11 @@ export function displayName(name = ''): string {
   return clean
 }
 
+/** Euro prefix and decimal point match station prices; retain sub-cent source precision. */
+export function evidenceEuro(value: number): string {
+  return `€${value.toLocaleString('en-IE', { minimumFractionDigits: 2, maximumFractionDigits: 6, useGrouping: false })}`
+}
+
 export function priceText(st: Station): string {
   if (st.is_free) return 'Free'
   const value = st.price_min

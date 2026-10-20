@@ -20,6 +20,7 @@ import {
   cityLabel,
   corroboration,
   displayName,
+  hasVerifiedPrice,
   distanceText,
   durationText,
   googleMapsLink,
@@ -424,7 +425,7 @@ function StationCardBase({
         )}
       </div>
 
-      <PriceEvidence items={st.price_evidence} />
+      <PriceEvidence items={st.price_evidence?.filter(item => !(item.kind === 'repsol_network_tariff' && st.price_min != null && hasVerifiedPrice(st)))} />
 
       {/* Actions. aria-labels carry the station name so a screen-reader links list is not
           just "Open in Maps" x N (found by qa_screen_reader_contract). */}

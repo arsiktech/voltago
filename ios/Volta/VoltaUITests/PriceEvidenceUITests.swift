@@ -14,17 +14,17 @@ final class PriceEvidenceUITests: XCTestCase {
         (
             "repsol",
             "Repsol published tariff · station may differ",
-            "from €0.39/kWh; idle fee €0.10/min after 30 min grace."
+            "Normal €0.36 · Fast from €0.48 · Ultra-fast €0.56 per kWh"
         ),
         (
             "electromaps",
             "Electromaps community price · 2025-08-16",
-            "from €0.25/kWh; €1 session fee; idle fee €0.08/min after 20 min grace."
+            "€0.35–0.54 per kWh"
         ),
         (
             "chargemap",
             "Price with Chargemap Pass",
-            "€0.59 per started kWh; idle fee €0.15/min after 10 min grace."
+            "€0.599 per started kWh · idle €0.111/min after 15 min"
         ),
     ]
 
@@ -82,9 +82,11 @@ final class PriceEvidenceUITests: XCTestCase {
         XCTAssertTrue(row.label.contains("Not live"), "Source prices must not grant live authority")
         XCTAssertTrue(row.label.contains("Price lead"))
         XCTAssertFalse(row.label.contains("Go now"))
+        XCTAssertFalse(row.label.contains("Recarga de coches"))
+        XCTAssertFalse(row.label.contains("Todos los conectores"))
         for item in Self.evidence {
             XCTAssertTrue(row.label.contains(item.label), "Card lost the source label: \(item.label)")
-            XCTAssertTrue(row.label.contains(item.text), "Card changed the source terms: \(item.text)")
+            XCTAssertTrue(row.label.contains(item.text), "Card lost compact rates: \(item.text)")
         }
         XCTAssertEqual(row.label.components(separatedBy: Self.checkedText).count - 1, 2,
                        "Only the published tariff and Pass price show the download date as Checked")
@@ -231,7 +233,10 @@ final class PriceEvidenceUITests: XCTestCase {
             "price_evidence": [
               {
                 "kind": "repsol_network_tariff", "source": "Repsol",
-                "label": "\(evidence[0].label)", "text": "\(evidence[0].text)",
+                "label": "\(evidence[0].label)", "text": "Recarga de coches normal: 0,36 €/kWh Recarga de coches rápida: desde 0,48 €/kWh Recarga de coches ultrarrápida: 0,56 €/kWh",
+                "rates": [{"kind":"energy","label":"normal","min":0.36,"max":null,"from":false,"unit":"kWh","after_minutes":null},
+                          {"kind":"energy","label":"fast","min":0.48,"max":null,"from":true,"unit":"kWh","after_minutes":null},
+                          {"kind":"energy","label":"ultrafast","min":0.56,"max":null,"from":false,"unit":"kWh","after_minutes":null}],
                 "source_url": "https://example.com/uitest/repsol-tariff",
                 "source_updated_at": "2020-01-01T00:00:00Z",
                 "fetched_at": "2026-10-20T10:20:00Z",
@@ -239,7 +244,8 @@ final class PriceEvidenceUITests: XCTestCase {
               },
               {
                 "kind": "electromaps_community", "source": "Electromaps",
-                "label": "\(evidence[1].label)", "text": "\(evidence[1].text)",
+                "label": "\(evidence[1].label)", "text": "0.35-0.54€/KWH",
+                "rates": [{"kind":"energy","label":null,"min":0.35,"max":0.54,"from":false,"unit":"kWh","after_minutes":null}],
                 "source_url": "https://example.com/uitest/electromaps-community",
                 "source_updated_at": "2025-08-16T23:30:00-05:00",
                 "fetched_at": "2026-10-20T10:20:00Z",
@@ -247,7 +253,9 @@ final class PriceEvidenceUITests: XCTestCase {
               },
               {
                 "kind": "chargemap_pass", "source": "Chargemap",
-                "label": "\(evidence[2].label)", "text": "\(evidence[2].text)",
+                "label": "\(evidence[2].label)", "text": "Todos los conectores 0,599 € por kWh comenzado. Penalidad 0,111 € por minuto a partir de 15 minutos sin carga",
+                "rates": [{"kind":"energy","label":"all","min":0.599,"max":null,"from":false,"unit":"started_kWh","after_minutes":null},
+                          {"kind":"idle","label":null,"min":0.111,"max":null,"from":false,"unit":"minute","after_minutes":15}],
                 "source_url": "https://example.com/uitest/chargemap-pass",
                 "source_updated_at": "2021-02-03T00:00:00Z",
                 "fetched_at": "2026-10-20T10:20:00Z",

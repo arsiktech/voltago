@@ -88,6 +88,57 @@ def fixture_stations():
 
 
 class ParserTests(unittest.TestCase):
+    def test_structured_repsol_rates_preserve_qualitative_labels_and_from(self):
+        claim = p.parse_repsol_tariff(load('repsol.html'), FETCHED)
+        self.assertEqual(claim['rates'][0], {'kind': 'energy', 'label': 'normal', 'min': 0.36, 'max': None,
+                                           'from': False, 'unit': 'kWh', 'after_minutes': None})
+        self.assertEqual(claim['rates'], [
+            p.rate('energy', 'normal', 0.36, 'kWh'),
+            p.rate('energy', 'fast', 0.48, 'kWh', is_from=True),
+            p.rate('energy', 'ultrafast', 0.56, 'kWh'),
+        ])
+        self.assertEqual(p.parse_rates(p.KINDS[0], 'normal 0.36 fast from 0.48 ultrafast 0.56'), [])
+        conditional = load('repsol.html').replace('Ten en cuenta', 'Además 1 € por sesión. Ten en cuenta')
+        self.assertEqual(p.parse_repsol_tariff(conditional, FETCHED)['rates'], [])
+
+    def test_structured_community_range_requires_an_unambiguous_explicit_unit(self):
+        detail = p.sanitize_electromaps(load('electromaps.json'))
+        for text, expected in [
+            ('0.35-0.54€/KWH', [p.rate('energy', None, 0.35, 'kWh', maximum=0.54)]),
+            ('0,35 € por kWh', [p.rate('energy', None, 0.35, 'kWh')]),
+            ('desde 0,35 €/kWh', [p.rate('energy', None, 0.35, 'kWh', is_from=True)]),
+            ('0.35-0.54€', []), ('0.35-0.54€/hora', []), ('0.35€/kW', []),
+            ('0.54-0.35€/kWh', []), ('0.35€/kWh nocturno; 0.54€ de día', []),
+            ('0.35 o 0.54€/kWh', []), ('Gratis', []), ('0.35 € por kWh comenzado', []),
+            ('-0.35 €/kWh', []), ('0.35 €/kWh + 1 € por sesión', []),
+        ]:
+            with self.subTest(text=text):
+                claim = p.parse_electromaps_price(dict(detail, charge_price=text), FETCHED)
+                self.assertEqual(claim['text'], text)
+                self.assertEqual(claim['rates'], expected)
+
+    def test_structured_pass_rates_preserve_started_units_idle_and_grace(self):
+        self.assertEqual(p.parse_chargemap_price(load('chargemap.html'), FETCHED, '1')['rates'], [
+            p.rate('energy', 'all', 0.799, 'started_kWh'),
+            p.rate('idle', None, 0.111, 'minute', after_minutes=15),
+        ])
+        for text, expected in [
+            ('Todos los conectores 0,54 € por kWh', [p.rate('energy', 'all', 0.54, 'kWh')]),
+            ('Todos los conectores desde 0,54 € por kWh', [p.rate('energy', 'all', 0.54, 'kWh', is_from=True)]),
+            ('Todos los conectores 0,54 € por hora', []),
+            ('Todos los conectores 0,54 € por kWh o por hora', []),
+            ('Todos los conectores 0,54 € por kWh si es de noche', []),
+            ('Todos los conectores 0,54 € por kWh 1 € por sesión', []),
+            ('Todos los conectores 0,54 € por kWh 0,60 € por kWh', []),
+        ]:
+            with self.subTest(text=text):
+                claim = p.parse_chargemap_price(text, FETCHED, '1')
+                self.assertEqual(claim['rates'], expected)
+                self.assertEqual(claim['text'], text)
+        self.assertEqual(p.parse_rates(p.KINDS[2], '0.54 €, check app for units'), [])
+        missing_grace = load('chargemap.html').replace('a partir de 15 minutos sin carga', '')
+        self.assertEqual(p.parse_chargemap_price(missing_grace, FETCHED, '1')['rates'][1]['after_minutes'], None)
+
     def test_chargemap_public_street_and_number_survive_identity_projection(self):
         candidate = p.sanitize_chargemap(load('chargemap.json'))
         self.assertEqual(candidate['address'], 'SAN VICENTE MARTIR 171')
@@ -341,6 +392,18 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(rows[0]['price_evidence'][0]['fetched_at'], FETCHED)
         self.network.calls.clear(); self.collect(now=NOW + 7*86400)
         self.assertEqual(sum('/757380' in req.full_url or '/prices/315448?' in req.full_url for req in self.network.calls), 2)
+    def test_legacy_cached_pass_claim_is_reparsed_without_refreshing_its_date(self):
+        self.collect()
+        path = self.cache / 'price_evidence_v1/chargemap_detail_315448.json'
+        cached = json.loads(path.read_text())
+        cached['data'].pop('rates', None)
+        path.write_text(json.dumps(cached))
+        rows, _, _ = self.collect(now=NOW + 86400)
+        claim = rows[1]['price_evidence'][0]
+        self.assertEqual(claim['fetched_at'], FETCHED)
+        self.assertEqual(claim['rates'][0]['unit'], 'started_kWh')
+        self.assertEqual(claim['rates'][1]['after_minutes'], 15)
+
     def test_outage_uses_stale_cache_original_dates_but_withholds_repsol(self):
         self.collect()
         rows, report, _ = self.collect(now=NOW+8*86400, opener=FixtureNetwork(outage=True))

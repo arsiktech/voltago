@@ -14,6 +14,7 @@ struct PriceEvidence: Codable, Hashable, Identifiable {
     var pricePerKwh: Double?
     var currency: String?
     var parkingPrice: String?
+    var rates: [PriceEvidenceRate]? = nil
 
     struct Identity: Hashable {
         let sourceUrl: String
@@ -59,14 +60,64 @@ struct PriceEvidencePresentation: Identifiable {
             return nil
         }
         id = evidence.id
-        // Keep qualifiers, started-kWh billing and idle-fee grace periods verbatim.
-        text = evidence.text
+        text = Self.rateText(evidence.rates)
         sourceURL = evidence.safeSourceURL
         if let parking = evidence.parkingPrice, !parking.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             parkingText = String(localized: "Parking: \(parking)")
         } else {
             parkingText = nil
         }
+    }
+
+    /// Match the app's euro prefix and decimal point while retaining sub-cent rates.
+    private static func euro(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_IE")
+        formatter.numberStyle = .currency
+        formatter.currencyCode = "EUR"
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 6
+        formatter.usesGroupingSeparator = false
+        return formatter.string(from: NSNumber(value: value))!
+    }
+
+    static func rateText(_ rates: [PriceEvidenceRate]?) -> String {
+        guard let rates, !rates.isEmpty, rates.allSatisfy(\.isValid) else {
+            return String(localized: "See source for prices")
+        }
+        let allKwh = rates.allSatisfy { $0.kind == "energy" && $0.unit == "kWh" }
+        let parts = rates.map { rate -> String in
+            let low = euro(rate.min)
+            let amount: String
+            if let maximum = rate.max {
+                let high = String(euro(maximum).dropFirst())
+                amount = String(localized: "\(low)–\(high)")
+            } else {
+                amount = low
+            }
+            if rate.kind == "idle" {
+                if let minutes = rate.afterMinutes {
+                    let grace = minutes.formatted(.number.locale(Locale.current).grouping(.never))
+                    return String(localized: "idle \(amount)/min after \(grace) min")
+                }
+                return String(localized: "idle \(amount)/min")
+            }
+            let labelled: String
+            let price = rate.from ? String(localized: "from \(amount)") : amount
+            switch rate.label {
+            case "normal": labelled = String(localized: "Normal \(price)")
+            case "fast": labelled = String(localized: "Fast \(price)")
+            case "ultrafast": labelled = String(localized: "Ultra-fast \(price)")
+            case "motorcycle": labelled = String(localized: "Motorcycle \(price)")
+            default: labelled = rate.from ? String(localized: "From \(amount)") : amount
+            }
+            if allKwh { return labelled }
+            return rate.unit == "started_kWh"
+                ? String(localized: "\(labelled) per started kWh")
+                : String(localized: "\(labelled) per kWh")
+        }
+        let line = parts.joined(separator: " · ")
+        return allKwh ? String(localized: "\(line) per kWh") : line
     }
 
     /// Preserve the source's calendar date, without turning a download into a
@@ -91,6 +142,12 @@ extension Station {
     var priceEvidencePresentations: [PriceEvidencePresentation] {
         (priceEvidence ?? []).compactMap(PriceEvidencePresentation.init)
     }
+
+    var cardPriceEvidencePresentations: [PriceEvidencePresentation] {
+        (priceEvidence ?? []).filter {
+            !($0.kind == "repsol_network_tariff" && priceMin != nil && hasVerifiedPrice)
+        }.compactMap(PriceEvidencePresentation.init)
+    }
 }
 
 /// Quiet wrapping source claims below the station's primary price on cards and
@@ -100,7 +157,7 @@ struct StationPriceEvidence: View {
     var showsSourceLinks = false
 
     var body: some View {
-        let items = station.priceEvidencePresentations
+        let items = showsSourceLinks ? station.priceEvidencePresentations : station.cardPriceEvidencePresentations
         if !items.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(items) { item in
@@ -122,12 +179,12 @@ struct StationPriceEvidence: View {
                         .accessibilityElement(children: .combine)
                         if showsSourceLinks, let url = item.sourceURL {
                             Link(destination: url) {
-                                Text("Source")
+                                Text("View price source")
                                     .underline()
                                     .frame(minHeight: 44)
                             }
                             .font(.caption)
-                            .accessibilityLabel(Text(verbatim: "\(String(localized: "Source")): \(item.label)"))
+                            .accessibilityLabel(Text(verbatim: String(localized: "View price source: \(item.label)")))
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)
