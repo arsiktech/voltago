@@ -47,15 +47,15 @@ final class NearbyLoadingUITests: XCTestCase {
         XCTAssertTrue(locate.waitForExistence(timeout: 15))
         let known = app.buttons["stationRow-uitest-lead-01"]
         XCTAssertFalse(known.exists, "Launch data must not preload the nearby fixture")
+        let started = ContinuousClock.now
         locate.tap()
 
         let allow = app.alerts.buttons["Allow While Using App"]
         if allow.waitForExistence(timeout: 5) { allow.tap() }
-        let started = ContinuousClock.now
         XCTAssertTrue(known.waitForExistence(timeout: 10), "Known chargers waited on the held live response")
         XCTAssertTrue(known.label.localizedCaseInsensitiveContains("Not live"))
         XCTAssertFalse(known.label.localizedCaseInsensitiveContains("Go now"))
-        let timing = XCTAttachment(string: "Permission resolved to known nearby row: \(ContinuousClock.now - started)")
+        let timing = XCTAttachment(string: "Locate tap to known nearby row, including permission interaction: \(ContinuousClock.now - started)")
         timing.lifetime = .keepAlways
         add(timing)
 
