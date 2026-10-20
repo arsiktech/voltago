@@ -27,6 +27,7 @@ import { FilterRail } from './components/FilterRail'
 import { SearchBar } from './components/SearchBar'
 import { CoverageBanner } from './components/CoverageBanner'
 import { FlowHint, type FlowHintProps } from './components/FlowHint'
+import { AgentConnection } from './components/AgentConnection'
 import { EmptyStateVisual } from './components/VisualMoment'
 import type { FlyTarget } from './components/MapView'
 import {
@@ -280,21 +281,24 @@ function DataHonestyDisclosure() {
   const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
   return (
-    <div className="data-honesty flex-none border-t border-border px-6 py-2 text-xs text-muted">
-      <motion.button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls="data-honesty-panel"
-        whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-        transition={pressSpring}
-        className="flex w-full items-center justify-between gap-3 rounded-lg py-1 text-left font-medium text-fg-soft"
-      >
-        Data honesty
-        <motion.span animate={{ rotate: open ? 180 : 0 }} transition={quickEase} className="grid flex-none">
-          <ChevronDown size={15} />
-        </motion.span>
-      </motion.button>
+    <div className="data-honesty flex-none border-t border-border px-6 py-1 text-xs text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-x-4">
+        <AgentConnection />
+        <motion.button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls="data-honesty-panel"
+          whileTap={reduceMotion ? undefined : { scale: 0.98 }}
+          transition={pressSpring}
+          className="inline-flex min-h-11 items-center justify-between gap-2 rounded-lg text-left font-medium text-fg-soft"
+        >
+          Data honesty
+          <motion.span animate={{ rotate: open ? 180 : 0 }} transition={quickEase} className="grid flex-none">
+            <ChevronDown size={15} aria-hidden="true" />
+          </motion.span>
+        </motion.button>
+      </div>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div

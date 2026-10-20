@@ -9,12 +9,14 @@ struct SheetView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if DEBUG
     @Environment(\.colorScheme) private var colorScheme
     #endif
     @FocusState private var searchFocused: Bool
     @Binding var detent: PresentationDetent
     var onOpenSettings: () -> Void = {}
+    var onOpenAIConnection: () -> Void = {}
     var onSelect: (Station) -> Void = { _ in }
     var onPeekHeight: (CGFloat) -> Void = { _ in }
     /// Selection haptic for a station row tap. One shared toggle on the always-mounted list:
@@ -76,40 +78,67 @@ struct SheetView: View {
 
     // MARK: - Pinned search
 
+    @ViewBuilder
     private var searchRow: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                TextField("Search a city…", text: $state.searchText)
-                    .focused($searchFocused)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                    .frame(minHeight: 44)
-                    .accessibilityIdentifier("discoverySearchField")
-                    .onChange(of: state.searchText) { _, text in state.searchChanged(text) }
-                if !state.searchText.isEmpty {
-                    Button {
-                        state.searchText = ""
-                        state.searchChanged("")
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                            .frame(width: 44, height: 44)
-                            .contentShape(.circle)
-                    }
-                    .buttonStyle(VoltaPressButtonStyle())
-                    .accessibilityLabel("Clear search text")
+        // Larger text gets a full-width search field. At normal sizes, fit the quiet
+        // connection prompt beside Settings without taking another row from chargers.
+        if dynamicTypeSize.isAccessibilitySize {
+            stackedSearchRow
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    searchField.frame(minWidth: 140)
+                    searchActions.fixedSize(horizontal: true, vertical: false)
                 }
+                stackedSearchRow
             }
-            .padding(.leading, 12)
-            .background(Theme.surface, in: .rect(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(searchFocused ? Theme.actionInk : Theme.hairline, lineWidth: searchFocused ? 1.5 : 1)
-            }
+        }
+    }
 
+    private var stackedSearchRow: some View {
+        VStack(spacing: 8) {
+            searchField
+            searchActions
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField("Search a city…", text: $state.searchText)
+                .focused($searchFocused)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("discoverySearchField")
+                .onChange(of: state.searchText) { _, text in state.searchChanged(text) }
+            if !state.searchText.isEmpty {
+                Button {
+                    state.searchText = ""
+                    state.searchChanged("")
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.circle)
+                }
+                .buttonStyle(VoltaPressButtonStyle())
+                .accessibilityLabel("Clear search text")
+            }
+        }
+        .padding(.leading, 12)
+        .background(Theme.surface, in: .rect(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(searchFocused ? Theme.actionInk : Theme.hairline, lineWidth: searchFocused ? 1.5 : 1)
+        }
+    }
+
+    private var searchActions: some View {
+        HStack(spacing: 8) {
             if searching {
                 Button {
                     state.clearSearch()
@@ -125,6 +154,8 @@ struct SheetView: View {
                 .accessibilityLabel("Close search")
                 .transition(.opacity)
             } else {
+                AIConnectionPrompt(action: onOpenAIConnection)
+
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape")
                         .font(.body.weight(.semibold))

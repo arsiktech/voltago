@@ -15,6 +15,13 @@ honesty rules the apps use.
 
 ## Connect
 
+In the web app, choose **Connect AI agent** beside **Data honesty** in the pinned
+discovery footer. On iOS, use the pinned **Connect AI** discovery action. The setup
+view provides a selectable server address and a copy button. Add a remote MCP
+server named Volta Go in your agent's integrations and paste the address there.
+Copy feedback confirms only that the address was copied; the agent completes
+the connection. The discovery prompt remains available after closing setup.
+
 Claude Code:
 
 ```bash

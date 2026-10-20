@@ -42,6 +42,35 @@ This queries public sources only, applies `source_policy_exclusions.json`, and w
 granted bulk redistribution. See [DEPLOY.md](../DEPLOY.md) for the gated refresh that
 production uses.
 
+## Canarias station pages
+
+The Canarias te recarga adapter reads the public map and each identity-checked
+station page. It collects connector types, explicit socket quantities, rated
+power, energy/hourly tariffs, minimum charges, conditions and source image links.
+Directory facts never establish live occupancy. A missing quantity stays unknown;
+parking spaces are separate from sockets. If a connector specification prints
+`kWh` where a power rating belongs, the original unit and the interpretation as
+`kW` remain in the source evidence and the displayed information note.
+
+Page requests use HTTPS GET on the source origin only, four workers, a 350-page
+limit, 12 seconds per request, a 180-second collection budget and a 3 MB body cap.
+Cached pages retain their fetch dates; stale fallback is labeled. Mislinked pages
+are held when the station name, address or explicit coordinates do not agree.
+Image metadata does not grant display rights: clients keep source-page links and
+automatically load only individually approved images.
+
+To update only existing Canarias contributions in a served full catalogue:
+
+```bash
+python3 scripts/enrich_canarias.py --baseline /path/to/served/free_intelligence.json \
+  --out /path/to/candidate/free_intelligence.json --report /path/to/candidate/canarias-report.json
+```
+
+This keeps canonical IDs, aliases, coordinates and unrelated records. It does not
+promote data. Use the unchanged delta/canary gates and the existing
+`runtime_refresh.py --candidate` adoption path from [DEPLOY.md](../DEPLOY.md).
+Keep full candidates, page caches and detailed collection reports out of Git.
+
 ## Worldwide candidates
 
 `python3 scripts/build_global_intelligence.py --all-countries --sources ocm`

@@ -34,6 +34,7 @@ import {
   sourceTier,
   stationAgeText,
   tariffWindow,
+  tariffNotes,
 } from '../lib/format'
 import {
   countSwap,
@@ -331,6 +332,7 @@ function StationCardBase({
               </AnimatePresence>
             </span>
             {unit && <span className="block text-[11px] leading-snug text-muted">{unit}</span>}
+            {tariffNotes(st).map(note => <span key={note} className="mt-1 block text-[11px] leading-snug text-muted">{note}</span>)}
           </div>
         </div>
 
