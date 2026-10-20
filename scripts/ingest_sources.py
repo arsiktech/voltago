@@ -1914,7 +1914,6 @@ def red_movem_tariff_review(
     tariff never fails the OSM source: dropping every OSM row for four priced rows
     removed ~900 published IDs and blocked every refresh.
     """
-    current = now or datetime.now(timezone.utc)
     fetcher = page_fetcher or (lambda: cached_fetch(RED_MOVEM_TARIFF_PAGE_URL, "red_movem_tariff_page.html", ttl_hours=24, timeout=20))
     page_detail = "not checked"
     try:
@@ -1922,7 +1921,7 @@ def red_movem_tariff_review(
         text = html.unescape(re.sub(r"<[^>]+>", " ", artifact.decode("utf-8", "replace")))
         if RED_MOVEM_TARIFF_PAGE_PATTERN.search(re.sub(r"\s+", " ", text)):
             assert_reference_review_current(
-                artifact.fetched_at, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=current, label="Red MOVEM tariff page"
+                artifact.fetched_at, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=now, label="Red MOVEM tariff page"
             )
             return {
                 "status": "page-verified",
@@ -1935,7 +1934,7 @@ def red_movem_tariff_review(
         page_detail = f"tariff page unavailable ({type(exc).__name__})"
     try:
         assert_reference_review_current(
-            RED_MOVEM_TARIFF_CHECKED_AT, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=current, label="Red MOVEM tariff"
+            RED_MOVEM_TARIFF_CHECKED_AT, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=now, label="Red MOVEM tariff"
         )
     except RuntimeError as exc:
         return {"status": "stale", "checked_at": RED_MOVEM_TARIFF_CHECKED_AT, "url": RED_MOVEM_TARIFF_URL, "detail": f"{exc}; {page_detail}"}

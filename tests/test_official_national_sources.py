@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 import unittest
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -518,6 +519,16 @@ class NarrowOfficialPolicyTests(unittest.TestCase):
         self.assertEqual(review["status"], "page-verified")
         self.assertEqual(review["checked_at"], "2027-05-31T08:00:00Z")
         self.assertEqual(review["url"], ingestion.RED_MOVEM_TARIFF_PAGE_URL)
+
+    def test_red_movem_review_accepts_a_page_fetched_just_now(self) -> None:
+        # The clock must be read after the fetch; a fetch timestamp a moment
+        # later than a pre-fetch "now" looked like a future review and was refused.
+        def fetch_now():
+            time.sleep(0.01)  # a real fetch takes time and stamps when it finishes
+            stamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            return self._tariff_page("<p>Hasta 22 kW 0,25€ / kWh</p>", fetched_at=stamp)()
+        review = ingestion.red_movem_tariff_review(page_fetcher=fetch_now)
+        self.assertEqual(review["status"], "page-verified")
 
     def test_red_movem_review_rejects_a_changed_or_old_tariff_page(self) -> None:
         changed = self._tariff_page("<p>Hasta 22 kW</p><p>0,35€ / kWh</p>")
