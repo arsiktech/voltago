@@ -1,0 +1,66 @@
+{
+  "gelfs_version": "0.96",
+  "locations": [
+    {
+      "id": "3713",
+      "stations": [
+        {
+          "id": "11258",
+          "ports": [
+            {
+              "id": "1",
+              "port_status": [
+                {
+                  "status": "OUT_OF_ORDER"
+                }
+              ],
+              "last_updated": "2026-10-03T20:23:22+02:00"
+            },
+            {
+              "id": "2",
+              "port_status": [
+                {
+                  "status": "OUT_OF_ORDER"
+                }
+              ],
+              "last_updated": "2026-10-03T20:23:22+02:00"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3715",
+      "stations": [
+        {
+          "id": "12976",
+          "ports": [
+            {
+              "id": "1",
+              "port_status": [
+                {
+                  "status": "IN_USE"
+                }
+              ],
+              "last_updated": "2026-10-14T15:16:02+02:00"
+            }
+          ]
+        },
+        {
+          "id": "12977",
+          "ports": [
+            {
+              "id": "1",
+              "port_status": [
+                {
+                  "status": "IN_USE"
+                }
+              ],
+              "last_updated": "2026-10-15T12:59:24+02:00"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

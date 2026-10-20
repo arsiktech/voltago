@@ -75,6 +75,14 @@ def station(id_, name="Station", address="", lat=39.4700, lon=-0.3700, sources=N
     return row
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class LoadAllLeadsSelfEqualityTests(unittest.TestCase):
     """load_all_leads(bbox) must return the same records across two consecutive
     calls (minus per-call timestamp-derived fields). This is the equality gate

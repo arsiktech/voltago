@@ -49,6 +49,7 @@ from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_s
 from scripts.price_evidence import price_evidence_counts
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
+from scripts import public_live_status
 from station_truth import (
     classify_source_resource,
     normalize_connector_label,
@@ -73,6 +74,13 @@ PRICE_EVIDENCE_POLICY = (
     "It is not a provider licence or rights clearance. Apple App Store Guideline 5.2.2 review remains separate. "
     "Claims cannot set primary charging or parking prices, free/cheap filters, live verification or route-ready status."
 )
+
+
+def fetch_public_live(force: bool = False) -> Dict[str, Any]:
+    grants = {grant.get("id") for grant in SOURCE_POLICY_EXCLUSIONS.get("granted_reuse", [])
+              if grant.get("status") == "permitted"}
+    enabled = [name for name in ("endolla", "spirii") if f"{name}-public-live-status" in grants]
+    return public_live_status.fetch_public_live(force=force, enabled=enabled)
 
 
 def source_policy_record_allowed(record: Dict[str, Any]) -> bool:
@@ -533,10 +541,13 @@ def freshness_timestamp(item: Dict[str, Any]) -> Any:
 
     A lead uses its oldest valid evidence timestamp across station observation and
     public-source fetch time. This is intentionally conservative for merged rows:
-    fresher donor telemetry must not make older lead evidence look new. Live rows
-    use genuine last_seen only. Neither source field is mutated, so live-staleness
-    and Electromaps' telemetry-age policy keep their original semantics.
+    fresher donor telemetry must not make older lead evidence look new. Public
+    status overlays use publication/validation evidence; their last_seen retains
+    the transition time. Other live rows use last_seen. Source fields are unchanged.
     """
+    if item.get("live_status") and not item.get("lead"):
+        status = item["live_status"]
+        return status.get("published_at") or status.get("checked_at")
     last_seen = item.get("last_seen")
     if not item.get("lead"):
         return last_seen
@@ -818,6 +829,7 @@ def ensure_claim_contract(item: Dict[str, Any]) -> None:
 
 
 def verification_profile(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
+    profile: Dict[str, Any]
     reliability = str(item.get("reliability") or "")
     snapshot_location = ((item.get("location_claim") or {}).get("method") == "public_source_coordinate"
                          and source_health_has_valid_coordinates(item))
@@ -832,6 +844,12 @@ def verification_profile(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     elif reliability == "directory-community-snapshot" and snapshot_location:
         profile = {"level": "directory", "label": "Community directory snapshot",
                    "note": "Community-maintained public directory coordinates identify this charger; tariff and current availability are unverified."}
+    elif live and reliability == "official-live-status":
+        profile = {
+            "level": "live" if (item.get("live_status") or {}).get("valid") else "official",
+            "label": "Public live status" if (item.get("live_status") or {}).get("valid") else "Status needs refresh",
+            "note": "Official public status feed; tariff and parking retain their own provenance. Per-port timestamps record status changes.",
+        }
     elif live and reliability == "official-live":
         profile = {
             "level": "live",
@@ -886,6 +904,11 @@ def verification_profile(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     profile["location_verified"] = level in {"live", "official", "official-lead", "directory"}
     profile["price_verified"] = level in {"live", "official"} and item.get("price_min") is not None
     profile["parking_verified"] = parking_kind != "unknown" and (level in {"live", "official"} or bool((item.get("parking") or {}).get("cost_hint")))
+    if item.get("live_status"):
+        # Status-only authority cannot upgrade inherited directory/community claims.
+        claims = item.get("live_claim_verification") or {}
+        profile["price_verified"] = claims.get("price_verified") is True and item.get("price_min") is not None
+        profile["parking_verified"] = claims.get("parking_verified") is True and parking_kind != "unknown"
     profile["route_checked"] = bool(profile["price_verified"] and profile["location_verified"] and level in {"live", "official"})
     return profile
 
@@ -927,8 +950,14 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
     window_label = next_window.get("label") or price_window_status.get("label")
     tesla_ok = item.get("tesla_ok") is True
     available = bool(item.get("available", 0) > 0 or item.get("status") == "AVAILABLE")
-    stale_mins = age_minutes(item.get("last_seen"))
+    stale_mins = age_minutes(freshness_timestamp(item))
     stale_live = live and stale_mins is not None and stale_mins > 180
+    if item.get("live_status"):
+        stale_live = not item["live_status"].get("valid")
+        if access.get("level") in {"restricted", "unknown"}:
+            return {"level": "verify", "label": "Verify first", "reason": access.get("note") or "Confirm access with the operator."}
+        if price_ok and (item.get("verification") or {}).get("price_verified") is not True:
+            return {"level": "verify", "label": "Verify price", "reason": "Live status does not verify the inherited charging-price claim. Confirm the tariff with the operator."}
 
     if live and price_ok and not price_ok_now and tesla_ok:
         reason = f"Matches the price standard only in a tariff window ({window_label}); keep it on the map, but verify current app price before routing now."
@@ -2071,6 +2100,9 @@ def station_source_urls(item: Dict[str, Any]) -> set:
 
 
 def likely_same_station(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    # Feed endpoints describe many sites; a shared endpoint is never site identity.
+    if a.get("live_feed") or b.get("live_feed"):
+        return public_live_identity(a, b)
     if a.get("id") and b.get("id") and str(a["id"]).lower() == str(b["id"]).lower():
         return True
     if station_source_urls(a) & station_source_urls(b):
@@ -2084,6 +2116,211 @@ def likely_same_station(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     # Within ~120 m AND sharing significant name/address tokens => same physical site
     # (generic; the old Gaia-specific "artesans/0786" heuristic was a special case of this).
     return _name_affinity(a, b)
+
+
+def _public_site_key(row: Dict[str, Any]) -> Optional[str]:
+    value = (row.get("raw") or {}).get("endolla_location_id")
+    if value is None and row.get("live_feed") == "endolla":
+        value = row.get("live_site_id")
+    return str(value) if value is not None else None
+
+
+def _public_evse_ids(row: Dict[str, Any]) -> set:
+    result = set()
+    for connector in row.get("connectors") or []:
+        for key in ("evse_id", "evse_uid"):
+            if connector.get(key):
+                result.add(str(connector[key]).upper())
+        result.update(str(v).upper() for v in connector.get("external_evse_ids") or [])
+    return result
+
+
+# Other providers publish the same physical network under a brand name: MapaREVE lists
+# Endolla sites as "Endolla Barcelona" while the city feed names the operator BSM.
+# Rows carrying the feed's own operator name are Endolla's records and get the full overlay.
+PUBLIC_LIVE_NETWORK_ALIASES = {"endolla": ("endolla",)}
+PUBLIC_LIVE_ALIAS_MAX_KM = 0.03
+
+
+def _operator_key(row: Dict[str, Any]) -> str:
+    return re.sub(r"[^a-z0-9]", "", str((row.get("owner") or {}).get("name") or row.get("operator") or "").casefold())
+
+
+def public_live_network_alias(row: Dict[str, Any], candidate: Dict[str, Any]) -> bool:
+    """True when another provider's row is the same network site at the same spot."""
+    aliases = PUBLIC_LIVE_NETWORK_ALIASES.get(row.get("live_feed") or "")
+    if not aliases or candidate.get("live_feed") or _public_site_key(candidate) is not None:
+        return False
+    coords = [safe_float(r.get(key)) for r in (row, candidate) for key in ("lat", "lon")]
+    if any(v is None for v in coords) or haversine_km(*coords) > PUBLIC_LIVE_ALIAS_MAX_KM:
+        return False
+    operator = _operator_key(candidate)
+    return (bool(operator) and operator != _operator_key(row)
+            and any(alias in operator for alias in aliases))
+
+
+def public_live_identity(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    coords = [safe_float(row.get(key)) for row in (a, b) for key in ("lat", "lon")]
+    if any(v is None for v in coords) or haversine_km(*coords) > 0.12:
+        return False
+    if public_live_network_alias(a, b) or public_live_network_alias(b, a):
+        return True
+    if a.get("live_feed") and a.get("live_feed") == b.get("live_feed"):
+        # Distinct site identities in one feed never merge through proximity.
+        return bool(a.get("live_site_id") and a.get("live_site_id") == b.get("live_site_id"))
+    ak, bk = _public_site_key(a), _public_site_key(b)
+    if ak is not None and bk is not None:
+        return ak == bk
+    if _public_evse_ids(a) & _public_evse_ids(b):
+        return True
+    if a.get("id") and a.get("id") == b.get("id"):
+        return True
+    def operator(row):
+        return re.sub(r"[^a-z0-9]", "", str((row.get("owner") or {}).get("name") or row.get("operator") or "").casefold())
+    ao, bo = operator(a), operator(b)
+    # Independent operator + coordinates + existing name guard; proximity alone is insufficient.
+    return bool(ao and ao == bo and haversine_km(*coords) <= 0.08 and _name_affinity(a, b))
+
+
+def merge_public_live_stations(stations: List[Dict[str, Any]], incoming: List[Dict[str, Any]],
+                               canonical: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Attach feed evidence without changing an existing site's ID or price/access claims."""
+    merged = list(stations)
+    existing_ids = {row.get("id") for row in merged}
+    candidates = list(merged) + [row for row in canonical if row.get("id") not in existing_ids]
+    index = _station_match_index([])
+    site_keys: Dict[str, set] = {}
+    evse_keys: Dict[str, set] = {}
+    def register(position, candidate):
+        key = _public_site_key(candidate)
+        if key is not None:
+            site_keys.setdefault(key, set()).add(position)
+        for evse in _public_evse_ids(candidate):
+            evse_keys.setdefault(evse, set()).add(position)
+        _index_add(index, position, candidate)
+    for position, candidate in enumerate(candidates):
+        register(position, candidate)
+    for row in incoming:
+        # Stable source keys with conflicting geometry also hold the overlay off-map.
+        key = _public_site_key(row)
+        keyed = set(site_keys.get(key, ()))
+        for evse in _public_evse_ids(row):
+            keyed.update(evse_keys.get(evse, ()))
+        nearby = set(_match_candidates(index, row)) | keyed
+        matches = [position for position in nearby if public_live_identity(row, candidates[position])]
+        if len(matches) > 1 or any(position not in matches for position in keyed):
+            continue
+        if not matches:
+            merged.append(row)
+            candidates.append(row)
+            register(len(candidates) - 1, row)
+            continue
+        position = matches[0]
+        previous = candidates[position]
+        if public_live_network_alias(row, previous):
+            # Another provider already publishes this site, usually only part of its
+            # hardware with its own tariff. Corroborate it rather than adding a second pin
+            # or moving that tariff onto ports it does not cover.
+            corroborated = deepcopy(previous)
+            corroborated["sources"] = source_rows_union(previous, row)
+            corroborated["source_count"] = len(corroborated["sources"])
+            if previous in merged:
+                merged[merged.index(previous)] = corroborated
+            else:
+                merged.append(corroborated)
+            candidates[position] = corroborated
+            continue
+        previous_age = age_minutes(previous.get("last_seen"))
+        previous_status = previous.get("live_status")
+        previous_fresh = (not previous.get("lead") and not previous.get("cache_stale")
+                          and not previous.get("_volta_stale_live_cache")
+                          and (bool(previous_status.get("valid")) if previous_status
+                               else previous_age is not None and previous_age <= 180)
+                          and previous.get("reliability") in {"official-live", "official-live-public-page", "official-live-status"})
+        if previous_fresh and not (row.get("live_status") or {}).get("valid"):
+            previous["sources"] = source_rows_union(previous, row)
+            continue
+        combined = deepcopy(previous)
+        previous_verification = previous.get("live_claim_verification")
+        if previous_verification is None:
+            previous_verification = previous.get("verification") or verification_profile(previous, live=previous_fresh)
+        combined["live_claim_verification"] = {
+            field: previous_verification.get(field) is True
+            for field in ("price_verified", "parking_verified")
+        }
+        row = deepcopy(row)
+        if _public_site_key(previous) is not None and previous.get("connectors"):
+            # Existing Endolla prices can apply only to a subset of normal AC ports.
+            # Do not transfer that claim to other hardware at the same location.
+            selected = {str(c.get("connector_id")) for c in previous["connectors"] if c.get("connector_id")}
+            row["connectors"] = [c for c in row["connectors"] if c["connector_id"] in selected
+                                 or ":".join(c["connector_id"].split(":")[1:]) in selected]
+            if not row["connectors"]:
+                continue
+            row["connector_labels"] = sorted({c["label"] for c in row["connectors"]})
+        # Keep the canonical coordinates, stable ID, charging, parking and access claims.
+        for key_name in ("connectors", "connector_labels", "live_feed", "live_site_id", "source_integration", "live_status",
+                         "source_fetched_at", "source_published_at", "source_last_updated", "last_seen", "cache_stale"):
+            combined[key_name] = deepcopy(row.get(key_name))
+        combined.update(lead=False, reliability="official-live-status")
+        # Keep every attached source key even when another source owns the public ID.
+        combined["raw"] = dict(previous.get("raw") or {})
+        combined["raw"][f"{row['live_feed']}_location_id"] = row["live_site_id"]
+        combined.pop("tesla_ok", None)
+        combined["tesla_ok"] = tesla_compatibility(combined)
+        powers = [safe_float(connector.get("power_kw")) for connector in combined["connectors"]]
+        powers = [value for value in powers if value is not None and value > 0]
+        combined["max_power_kw"] = max(powers, default=None)
+        combined["fast"] = any(value >= 50 for value in powers)
+        combined.pop("_volta_stale_live_cache", None)
+        if row.get("_volta_stale_live_cache"):
+            combined["_volta_stale_live_cache"] = True
+        if previous_fresh and (row.get("live_status") or {}).get("valid"):
+            if public_live_status_conflicts(previous, row):
+                combined["live_status"]["valid"] = False
+                combined["live_status"]["conflict"] = True
+                combined["cache_stale"] = True
+                combined["_volta_stale_live_cache"] = True
+                for connector in combined["connectors"]:
+                    connector["status"] = "UNKNOWN"
+        combined["sources"] = source_rows_union(row, previous)
+        combined["source_count"] = len(combined["sources"])
+        combined["status"] = "UNKNOWN"  # connector summary derives availability.
+        if previous in merged:
+            merged[merged.index(previous)] = combined
+        else:
+            merged.append(combined)
+        candidates[position] = combined
+        register(position, combined)
+    return merged
+
+
+def public_live_status_conflicts(previous: Dict[str, Any], incoming: Dict[str, Any]) -> bool:
+    """Compare identified EVSEs first, then counts; a set loses assignments and quantities."""
+    comparable_ids = bool(
+        (previous.get("live_feed") and previous.get("live_feed") == incoming.get("live_feed"))
+        or (_public_site_key(previous) is not None and _public_site_key(previous) == _public_site_key(incoming))
+    )
+    def evidence(row):
+        identities: Dict[str, str] = {}
+        states = []
+        for connector in row.get("connectors") or []:
+            state = normalize_status(connector.get("status"))
+            states.append(state)
+            keys = _public_evse_ids({"connectors": [connector]})
+            if comparable_ids and connector.get("connector_id"):
+                # Legacy Endolla hardware keys omit only the location prefix.
+                keys.add(":".join(str(connector["connector_id"]).split(":")[-2:]))
+            for key in keys:
+                if key in identities and identities[key] != state:
+                    identities[key] = "CONFLICT"
+                else:
+                    identities[key] = state
+        return identities, sorted(states or [normalize_status(row.get("status"))])
+    before, before_counts = evidence(previous)
+    after, after_counts = evidence(incoming)
+    return (any(before[key] != after[key] or before[key] == "CONFLICT" for key in before.keys() & after.keys())
+            or before_counts != after_counts)
 
 
 def source_rows_union(primary: Dict[str, Any], secondary: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -3858,7 +4095,8 @@ COMPACT_OVERVIEW_DROP_FIELDS = {
     "hardware_claim",
     "source_fetched_at",
 }
-COMPACT_CONNECTOR_FIELDS = {"connector_id", "label", "type", "status", "power_kw", "count"}
+COMPACT_CONNECTOR_FIELDS = {"connector_id", "label", "type", "status", "power_kw", "count",
+                            "evse_id", "external_evse_ids", "last_changed_at", "source_last_updated"}
 COMPACT_PRICING_FIELDS = {"valid_from", "valid_until", "days"}
 
 
@@ -3933,7 +4171,8 @@ SUMMARY_OVERVIEW_FIELDS = frozenset("""
     claim_conflict parking access verification decision pricing price_window_status tariff_details price_evidence
     freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
 """.split())
-SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution"})
+SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution", "transformation",
+                                   "source_fetched_at", "source_published_at", "source_last_updated"})
 # Community generations are process-local. A restart must not accidentally accept
 # an old token merely because its write counter has reached the same value again.
 _DETAIL_SNAPSHOT_PROCESS = os.urandom(16).hex()
@@ -4261,6 +4500,8 @@ def fetch_primary_sources_parallel(
             "max_price": max_price, "available_only": available_only,
             "fast_only": fast_only, "bbox": bbox,
         })
+    if coverage["mapareve"]:
+        jobs["public_live"] = (fetch_public_live, (), {"force": force})
     if not jobs:
         return skipped
 
@@ -4515,6 +4756,10 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
 
     gaia_result = primary_results["gaia"]
     gaia_payload = _source_payload_or_empty(gaia_result, "Gaia")
+    public_result = primary_results.get("public_live")
+    public_payload = _source_payload_or_empty(public_result, "Public status") if public_result else {"stations": []}
+    if public_payload.get("warning"):
+        payload["warning"] = f"{payload.get('warning') or ''} {public_payload['warning']}".strip()
     gaia_cache_info = dict(gaia_payload.get("cache") or {})
     if gaia_payload.get("supported") is False:
         gaia_cache_info["populated_at"] = "outside-configured-region"
@@ -4566,6 +4811,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     # correctly re-derives from the full snapped-envelope raw caches).
     sub_sources_fresh_hit = (
         cache_fresh
+        # This small overlay always rechecks source freshness and canonical identity.
+        # The assembled cache predates independent feed generations; do not reuse it.
+        and not public_payload.get("stations")
         and (gaia_payload.get("supported") is False or bool(gaia_cache_info.get("hit")))
         and not gaia_cache_info.get("stale")
     )
@@ -4659,6 +4907,15 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
             and (st.get("price_min") is None or st.get("price_min") <= max_price)
         ]
         stations = merge_gaia_stations(stations, gaia_stations)
+        public_candidates, excluded_rows = partition_records(public_payload.get("stations") or [], SOURCE_POLICY_EXCLUSIONS)
+        dropped["source_policy_excluded"] += len(excluded_rows)
+        public_candidates = [st for st in public_candidates if in_bbox(st.get("lat"), st.get("lon"), bbox)]
+        canonical = load_all_leads(bbox) if public_candidates else []
+        stations = merge_public_live_stations(stations, public_candidates, canonical)
+        stations = [st for st in stations if station_passes_route_filters(st, max_price=max_price, fast_only=fast_only)]
+        if public_result:
+            engine_record_stage(engine_stages, request_started, request_started, "public_live",
+                                duration_ms=public_result["duration_ms"], stations=len(public_candidates), parallel=True)
         engine_record_stage(
             engine_stages,
             request_started,
@@ -4781,7 +5038,7 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         # warning at all, since the per-request warning text is always recomputed fresh
         # from THIS call's own Gaia payload but the reused STATION rows never were.
         gaia_fresh_at_write = not gaia_cache_info.get("stale")
-        if mapareve_fresh_fetch and gaia_fresh_at_write:
+        if mapareve_fresh_fetch and gaia_fresh_at_write and not public_payload.get("stations"):
             with _CACHE_LOCKS["live"]:
                 CACHE["assembled"] = {
                     "key": cache_key,
@@ -4860,6 +5117,7 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     )
     has_stale_live_evidence = any(station.get("cache_stale") for station in stations)
     response_cache = payload.setdefault("cache", {})
+    response_cache["public_live"] = public_payload.get("feeds") or {}
     response_cache["fresh_live_authority"] = fresh_live_authority
     response_cache["mixed_live"] = bool(fresh_live_authority and has_stale_live_evidence)
     # `stale` describes evidence that survived into this response, not merely that
@@ -5240,7 +5498,8 @@ def source_health_summary() -> Dict[str, Any]:
     return {
         "generated_at": now_iso(),
         "scope": "worldwide",
-        "live_geography": {"mapareve": "Spain coverage envelope", "gaia": "Configured Alboraia station only"},
+        "live_geography": {"mapareve": "Spain coverage envelope", "gaia": "Configured Alboraia station only",
+                           "endolla": "Barcelona static sites only", "spirii": "Spirii AFIR sites whose address countryCode is ES"},
         "source_manifest": (intel.get("global_coverage") or {}).get("source_manifests") or intel.get("source_manifest") or {},
         "global_coverage": intel.get("global_coverage") or {},
         "policy": {
@@ -5262,6 +5521,7 @@ def source_health_summary() -> Dict[str, Any]:
             "source_policy_excluded_records": intel.get("source_policy_excluded_records", 0),
         },
         "live_cache": {
+            **public_live_status.health(),
             "mapareve": mapareve_cache,
             "gaia": gaia_cache,
             "fenie": fenie_policy,
@@ -5368,6 +5628,14 @@ def requested_source_strategy() -> Dict[str, Any]:
         "price_evidence_counts": evidence_counts,
         "price_evidence_scope": "Actual retained annotations, not national price coverage or new directory stations.",
         "requested_apps": [
+            *[{"name": "Barcelona Endolla" if name == "endolla" else "Spirii AFIR Spain",
+               "status": "implemented-public-live-status",
+               "method": "Exact anonymous static/status GETs, independent bounded caches and shared live_response enrichment; no tariff interpretation.",
+               "source_url": public_live_status.PUBLIC_LIVE_URLS[f"{name}-status"],
+               "records_now": public_live_status.health()[name],
+               "sources": public_live_status.source_refs(name, "actual operator retained per station"),
+               "risk": "Status requires fresh validated feed evidence. Stable last-change times are not heartbeats; ambiguous identities cannot promote a row."}
+              for name in ("endolla", "spirii")],
             {
                 "name": "Google Maps",
                 "status": "navigation-linkout",
@@ -5489,6 +5757,8 @@ def source_catalog_payload() -> Dict[str, Any]:
     """Public, policy-aligned inventory for /api/sources."""
     return {
         "primary_live": [
+            "Barcelona Endolla CC BY 4.0 static/status GET overlay; Ajuntament de Barcelona attribution",
+            "Spirii public AFIR Spain static/status GET overlay with actual operator attribution; tariffs omitted",
             "MapaREVE public web API: live OCPI status/tariffs, Spain viewport/bbox-driven, <= €0.25/kWh filter",
             "Gaia public start-session pages: seeded free-charger connector status/tariff/session fields via GET-only HTML parsing",
         ],

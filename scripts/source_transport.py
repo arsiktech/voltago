@@ -70,6 +70,34 @@ POST_BUDGETS: Dict[str, Tuple[float, int]] = {
 _BUDGET_LOCK = threading.Lock()
 _BUDGET_EVENTS: Dict[str, Deque[float]] = {}
 
+# These runtime feeds have narrower GET grants than the general public-page gate.
+PUBLIC_LIVE_URLS = {
+    "endolla-static": "https://opendata-ajuntament.barcelona.cat/data/dataset/8cdafa08-d378-4bf1-aad4-fafffe815940/resource/9febc26f-d6a7-45f2-8f73-f529ba4da930/download",
+    "endolla-status": "https://opendata-ajuntament.barcelona.cat/data/dataset/a2bd4c83-d024-4d78-8436-040ef996cf7f/resource/ada4c823-9566-477d-9362-7b15e7d38189/download",
+    "spirii-static": "https://api.spirii.com/v2/afir/energy-infrastructure-tables?countryIsos=ES",
+    "spirii-status": "https://api.spirii.com/v2/afir/energy-infrastructure-statuses?countryIsos=ES",
+}
+PUBLIC_LIVE_BUDGET = (600.0, 24)
+
+
+def public_live_urlopen(request: urllib.request.Request, *, timeout: float) -> Any:
+    """Exact anonymous GETs only, bounded per endpoint, without redirects."""
+    if (request.get_method() != "GET" or request.full_url not in PUBLIC_LIVE_URLS.values()
+            or request.data is not None or not 0 < timeout <= 6):
+        raise SourcePolicyBlocked("Unreviewed public live feed request")
+    headers = dict(request.header_items()) | request.unredirected_hdrs
+    if any(name.lower() in _FORBIDDEN_POST_HEADERS for name in headers):
+        raise SourcePolicyBlocked("Public live feeds never carry credentials")
+    current = time.monotonic()
+    with _BUDGET_LOCK:
+        events = _BUDGET_EVENTS.setdefault(request.full_url, deque())
+        while events and current - events[0] > PUBLIC_LIVE_BUDGET[0]:
+            events.popleft()
+        if len(events) >= PUBLIC_LIVE_BUDGET[1]:
+            raise SourcePolicyBlocked("Public live feed GET budget exhausted")
+        events.append(current)
+    return urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout)
+
 
 def _blocked(message: str) -> SourcePolicyBlocked:
     return SourcePolicyBlocked(message)

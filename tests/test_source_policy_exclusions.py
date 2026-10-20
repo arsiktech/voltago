@@ -26,6 +26,14 @@ EXCLUSION_IDS = {
 }
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class SourcePolicyArtifactTests(unittest.TestCase):
     @staticmethod
     def _live_station(station_id: str, source: str, *, nested_source: str | None = None) -> dict:

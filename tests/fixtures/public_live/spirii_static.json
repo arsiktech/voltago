@@ -1,0 +1,878 @@
+{
+  "payload": {
+    "modelBaseVersionG": "3",
+    "profileNameG": "AFIR Energy Infrastructure",
+    "profileVersionG": "01-00-00",
+    "aegiEnergyInfrastructureTablePublication": {
+      "lang": "en",
+      "publicationTime": "2026-10-20T16:25:15.007Z",
+      "publicationCreator": {
+        "country": "DK",
+        "nationalIdentifier": "DK-NAP-SPIRII"
+      },
+      "headerInformation": {
+        "confidentiality": {
+          "value": "noRestriction"
+        },
+        "informationStatus": {
+          "value": "real"
+        }
+      },
+      "energyInfrastructureTable": [
+        {
+          "idG": "spirii-table-1",
+          "versionG": "1",
+          "tableName": "Spirii Charging Locations",
+          "energyInfrastructureSite": [
+            {
+              "idG": "site-16382",
+              "versionG": "1",
+              "typeOfSite": {
+                "value": "openSpace"
+              },
+              "locationReference": {
+                "locAreaLocation": {
+                  "coordinatesForDisplay": {
+                    "latitude": 39.59456253051758,
+                    "longitude": 2.6428189277648926
+                  },
+                  "locLocationExtensionG": {
+                    "FacilityLocation": {
+                      "address": {
+                        "postcode": "07010",
+                        "city": {
+                          "values": [
+                            {
+                              "lang": "en",
+                              "value": "Palma"
+                            }
+                          ]
+                        },
+                        "countryCode": "ES",
+                        "addressLine": [
+                          {
+                            "order": 0,
+                            "type": {
+                              "value": "street"
+                            },
+                            "text": {
+                              "values": [
+                                {
+                                  "lang": "en",
+                                  "value": "C/ del General Riera, 125"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "operator": {
+                "afacAnOrganisation": {
+                  "name": {
+                    "values": [
+                      {
+                        "lang": "en",
+                        "value": "PowerGo"
+                      }
+                    ]
+                  }
+                }
+              },
+              "energyInfrastructureStation": [
+                {
+                  "idG": "station-45600",
+                  "versionG": "1",
+                  "totalMaximumPower": 200000,
+                  "numberOfRefillPoints": 2,
+                  "lastUpdated": "2026-10-20T16:10:06.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.AUT00003*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.AUT00003*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "dc"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2COMBO"
+                            },
+                            "maxPowerAtSocket": 100000,
+                            "connectorFormat": {
+                              "value": "cableMode3"
+                            },
+                            "voltage": 950,
+                            "maximumCurrent": 105
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.AUT00003*2-2",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.AUT00003*2",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "dc"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2COMBO"
+                            },
+                            "maxPowerAtSocket": 100000,
+                            "connectorFormat": {
+                              "value": "cableMode3"
+                            },
+                            "voltage": 950,
+                            "maximumCurrent": 105
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "name": {
+                "values": [
+                  {
+                    "lang": "en",
+                    "value": "Maisons du Monde (PowerGo)"
+                  }
+                ]
+              },
+              "owner": {
+                "afacAnOrganisation": {
+                  "name": {
+                    "values": [
+                      {
+                        "lang": "en",
+                        "value": "PowerGo Spain"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            {
+              "idG": "site-16397",
+              "versionG": "1",
+              "typeOfSite": {
+                "value": "openSpace"
+              },
+              "locationReference": {
+                "locAreaLocation": {
+                  "coordinatesForDisplay": {
+                    "latitude": 36.46267318725586,
+                    "longitude": -5.0863518714904785
+                  },
+                  "locLocationExtensionG": {
+                    "FacilityLocation": {
+                      "address": {
+                        "postcode": "29680",
+                        "city": {
+                          "values": [
+                            {
+                              "lang": "en",
+                              "value": "Estepona, Málaga"
+                            }
+                          ]
+                        },
+                        "countryCode": "ES",
+                        "addressLine": [
+                          {
+                            "order": 0,
+                            "type": {
+                              "value": "street"
+                            },
+                            "text": {
+                              "values": [
+                                {
+                                  "lang": "en",
+                                  "value": "Av. Parque Selwo, s/n"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "operator": {
+                "afacAnOrganisation": {
+                  "name": {
+                    "values": [
+                      {
+                        "lang": "en",
+                        "value": "PowerGo"
+                      }
+                    ]
+                  }
+                }
+              },
+              "energyInfrastructureStation": [
+                {
+                  "idG": "station-18450",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-05-13T07:05:30.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00001*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00001*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18451",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-06T10:29:57.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00002*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00002*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18452",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-08-28T14:49:24.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00003*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00003*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18453",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T09:56:31.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00004*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00004*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18454",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-19T21:02:03.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00005*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00005*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18455",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T14:54:47.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00006*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00006*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18456",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T13:45:58.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00007*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00007*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18457",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T15:02:12.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00008*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00008*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18459",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-19T21:02:18.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00009*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00009*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18460",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-19T21:25:17.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00010*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00010*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18461",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T00:06:54.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00011*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00011*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                },
+                {
+                  "idG": "station-18462",
+                  "versionG": "1",
+                  "totalMaximumPower": 22000,
+                  "numberOfRefillPoints": 1,
+                  "lastUpdated": "2026-10-20T00:05:23.000Z",
+                  "serviceType": [
+                    {
+                      "serviceType": {
+                        "value": "unattended"
+                      }
+                    }
+                  ],
+                  "refillPoint": [
+                    {
+                      "aegiElectricChargingPoint": {
+                        "idG": "cp-ES.PGO.WB00012*1-1",
+                        "versionG": "1",
+                        "externalIdentifier": [
+                          {
+                            "identifier": "ES.PGO.WB00012*1",
+                            "typeOfIdentifier": {
+                              "value": "extendedG",
+                              "extendedValueG": "evseId"
+                            }
+                          }
+                        ],
+                        "deliveryUnit": {
+                          "value": "kWh"
+                        },
+                        "currentType": {
+                          "value": "ac"
+                        },
+                        "connector": [
+                          {
+                            "connectorType": {
+                              "value": "iec62196T2"
+                            },
+                            "maxPowerAtSocket": 22000,
+                            "connectorFormat": {
+                              "value": "socket"
+                            },
+                            "voltage": 400,
+                            "maximumCurrent": 32
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ],
+              "name": {
+                "values": [
+                  {
+                    "lang": "en",
+                    "value": "Selwo Aventura (PowerGo)"
+                  }
+                ]
+              },
+              "owner": {
+                "afacAnOrganisation": {
+                  "name": {
+                    "values": [
+                      {
+                        "lang": "en",
+                        "value": "Parque Reunidos"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

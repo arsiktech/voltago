@@ -322,8 +322,7 @@
           }
         }
       }
-    }
-,
+    },
     "Showing part of this area’s charger inventory. Zoom in or search a city to see more.": {
       "extractionState": "manual",
       "localizations": {
@@ -12150,6 +12149,30 @@
           "stringUnit": {
             "state": "translated",
             "value": "Парковка: %@"
+          }
+        }
+      }
+    },
+    "Feed published: %@": {
+      "comment": "Source disclosure. The variable is the provider publication timestamp, not retrieval time or a port's last status change.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feed published: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Publicación de la fuente: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Публикация источника: %@"
           }
         }
       }
