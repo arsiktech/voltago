@@ -225,8 +225,7 @@ final class StubServer {
         headText += "Content-Length: \(bodyData.count)\r\n"
         headText += "Connection: close\r\n\r\n"
 
-        var responseData = Data(headText.utf8)
-        responseData.append(bodyData)
+        let responseData = Data(headText.utf8) + bodyData
 
         // Hold this connection without blocking catalogue responses on the server queue.
         queue.asyncAfter(deadline: .now() + response.delay) { [weak self] in

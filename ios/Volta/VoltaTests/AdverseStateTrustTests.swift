@@ -343,6 +343,7 @@ final class AppStateAdverseTrustTests: XCTestCase {
         state.loadNearby(reason: "locate")
         await waitUntilSettled(state)
         await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.overviewState, .loaded, "The delayed catalogue must actually finish")
         XCTAssertEqual(state.liveQuality, .fresh)
         XCTAssertEqual(state.leads.map(\.id), ["live-lead"])
         XCTAssertEqual(state.warning, "Fresh live response remains authoritative.")
@@ -462,6 +463,58 @@ final class AppStateAdverseTrustTests: XCTestCase {
         XCTAssertEqual(state.locationState, .denied)
         XCTAssertFalse(state.locating)
         XCTAssertNil(state.userCoordinate)
+    }
+
+    func testCatalogueDoesNotSendAnOldLocationAfterPermissionIsRevoked() async {
+        let manager = NearbyLocationManager()
+        let state = makeState(locationManager: manager) { request in
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            XCTAssertFalse(query.contains(where: { $0.name == "lat" || $0.name == "lon" }))
+            return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.userCoordinate = .init(latitude: 39.47, longitude: -0.37)
+        manager.testAuthorization = .denied
+        await state.loadOverview()
+        XCTAssertEqual(state.overviewState, .loaded)
+    }
+
+    func testSelectingAnOffscreenPinRefreshesItsAreaAndRejectsTheOldRequest() async throws {
+        try await assertRecenterRefreshesArea(select: true)
+    }
+
+    func testFocusingAnOffscreenPinRefreshesItsAreaAndRejectsTheOldRequest() async throws {
+        try await assertRecenterRefreshesArea(select: false)
+    }
+
+    private func assertRecenterRefreshesArea(select: Bool) async throws {
+        let oldStarted = expectation(description: "Old area's live request started")
+        let oldArea: (URLRequest) -> Bool = { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "bbox" })?.value?.hasPrefix("39.") == true
+        }
+        AdverseURLProtocol.delay = { oldArea($0) ? 0.5 : 0.01 }
+        let state = makeState { request in
+            if Self.isOverviewRequest(request) {
+                return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+            }
+            if oldArea(request) { oldStarted.fulfill() }
+            let id = oldArea(request) ? "old-area-live" : "new-area-live"
+            return Self.response(request, status: 200, body: """
+            {"stations":[{"id":"\(id)","name":"Live charger","lat":41.39,"lon":2.17,
+              "lead":false,"available":1,"decision":{"level":"go"},
+              "verification":{"live_verified":true}}],"leads":[]}
+            """)
+        }
+        state.loadNearby(reason: "locate")
+        await fulfillment(of: [oldStarted], timeout: 2)
+        let pin = try TestDecode.station(#"{"id":"new-area-live","name":"Pin","lat":41.39,"lon":2.17}"#)
+        if select { state.select(pin, moveMap: true) }
+        else { state.focus(pin, centerMap: true) }
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.stations.map(\.id), ["new-area-live"])
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(state.stations.map(\.id), ["new-area-live"])
+        XCTAssertEqual(state.visibleRegion.center.latitude, 41.39)
     }
 
     private static func location(age: TimeInterval, accuracy: CLLocationAccuracy, now: Date = Date()) -> CLLocation {
@@ -984,7 +1037,7 @@ final class AppStateAdverseTrustTests: XCTestCase {
     }
 
     private func makeState(
-        locationManager: CLLocationManager = CLLocationManager(),
+        locationManager: CLLocationManager = NearbyLocationManager(),
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> AppState {
         AdverseURLProtocol.handler = handler

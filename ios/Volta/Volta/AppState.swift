@@ -111,6 +111,13 @@ final class AppState: NSObject, ObservableObject {
     @Published var locating = false
     @Published var locationState: LocationState = .idle
 
+    private var locationOrigin: CLLocationCoordinate2D? {
+        switch locationManager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse: userCoordinate
+        default: nil
+        }
+    }
+
     private let locationManager: CLLocationManager
     private let apiOverride: VoltaAPI?
     private var liveTask: Task<Void, Never>?
@@ -350,6 +357,7 @@ final class AppState: NSObject, ObservableObject {
         let region = MKCoordinateRegion(center: station.coordinate, span: visibleRegion.span)
         visibleRegion = region
         camera = .region(region)
+        if mode == .live { loadNearby(reason: "focus") }
     }
 
     func clearFocus() {
@@ -370,6 +378,7 @@ final class AppState: NSObject, ObservableObject {
         } else {
             withAnimation(VoltaMotion.spatial) { camera = .region(next) }
         }
+        if mode == .live { loadNearby(reason: "selection") }
     }
 
     var focusedStation: Station? {
@@ -439,7 +448,7 @@ final class AppState: NSObject, ObservableObject {
             return
         }
         do {
-            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox, coords: userCoordinate)
+            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox, coords: locationOrigin)
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
             if mode == .overview {
                 leads = resp.leads
@@ -513,7 +522,7 @@ final class AppState: NSObject, ObservableObject {
     /// the same area; a late catalogue response cannot replace a completed live response.
     func loadNearby(reason: String) {
         let query = NearbyQuery(bbox: visibleRegion.bbox, maxPrice: maxPrice,
-                                latitude: userCoordinate?.latitude, longitude: userCoordinate?.longitude)
+                                latitude: locationOrigin?.latitude, longitude: locationOrigin?.longitude)
         guard liveState != .loading || nearbyQuery != query else { return }
         nearbyQuery = query
         overviewRequestID = UUID()
@@ -559,7 +568,7 @@ final class AppState: NSObject, ObservableObject {
             return
         }
         let bbox = visibleRegion.bbox
-        let coords = userCoordinate
+        let coords = locationOrigin
         liveState = .loading
         liveQuality = .loading
         liveTask = Task {

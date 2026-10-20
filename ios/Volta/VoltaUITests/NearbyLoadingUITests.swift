@@ -11,7 +11,10 @@ final class NearbyLoadingUITests: XCTestCase {
         server = StubServer()
         try server.start()
         server.configureOverviewResponses([.ok(#"{"stations":[],"leads":[]}"#)])
-        server.configureNearbyOverviewResponse(.ok(StubFixtures.overviewChargersJSON))
+        let nearby = StubFixtures.overviewChargersJSON
+            .replacingOccurrences(of: "39.4620", with: "39.4699")
+            .replacingOccurrences(of: "-0.4100", with: "-0.3763")
+        server.configureNearbyOverviewResponse(.ok(nearby))
         server.configureLiveResponses([
             .init(status: "200 OK", body: StubFixtures.liveChargersJSON, delay: 30),
         ])
