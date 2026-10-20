@@ -44,7 +44,7 @@ class PWAOfflineContractTests(unittest.TestCase):
             source,
         )
         self.assertIn("url.searchParams.get('max_price') !== '5.0'", source)
-        self.assertIn("const CACHE_VERSION = `${CACHE_PREFIX}v6`", source)
+        self.assertIn("const CACHE_VERSION = `${CACHE_PREFIX}v7`", source)
 
     def test_only_fixed_landing_area_can_be_cached_not_global_or_user_views(self):
         script = r"""

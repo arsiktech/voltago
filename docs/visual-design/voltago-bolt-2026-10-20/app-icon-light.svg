@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><defs><linearGradient id="bgl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FAFDF9"/><stop offset="1" stop-color="#D8EDEB"/></linearGradient><radialGradient id="bgh" cx="0.25" cy="0.3" r="0.6"><stop offset="0" stop-color="#E6EEF8" stop-opacity="0.9"/><stop offset="1" stop-color="#E6EEF8" stop-opacity="0"/></radialGradient></defs><rect width="1024" height="1024" fill="url(#bgl)"/><rect width="1024" height="1024" fill="url(#bgh)"/>
+  <defs>
+    <linearGradient id="lb" x1="0.3" y1="0" x2="0.7" y2="1"><stop offset="0" stop-color="#E4FB7A"/><stop offset="0.45" stop-color="#C8F03C"/><stop offset="1" stop-color="#5DBB4A"/></linearGradient>
+    <linearGradient id="lh" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity="0.75"/><stop offset="0.5" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <filter id="ls" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="22"/></filter>
+    <clipPath id="lc"><path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z"/></clipPath>
+  </defs>
+  <g transform="translate(512,512) scale(1.0) translate(-512,-512)">
+    <path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z" fill="#5DBB4A" opacity="0.35" filter="url(#ls)" transform="translate(0,26)"/>
+    <path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z" fill="url(#lb)"/>
+    <g clip-path="url(#lc)"><rect x="0" y="0" width="1024" height="560" fill="url(#lh)"/></g>
+    <path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z" fill="none" stroke="#fff" stroke-opacity="0.55" stroke-width="6"/>
+  </g></svg>

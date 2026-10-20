@@ -538,73 +538,49 @@ class IOSReleaseContractTests(unittest.TestCase):
                 APP / "Assets.xcassets" / "AppIcon.appiconset" / "Contents.json"
             ).read_text(encoding="utf-8")
         )
-        self.assertTrue(
-            any(image.get("idiom") == "ios-marketing" for image in icon["images"])
-        )
+        # iOS 18-25 fallback: one 1024 universal icon per appearance (light, dark, tinted).
+        appearances = {
+            (image.get("appearances") or [{"value": "any"}])[0]["value"]: image
+            for image in icon["images"]
+        }
+        self.assertEqual(set(appearances), {"any", "dark", "tinted"})
+        for image in icon["images"]:
+            self.assertEqual((image["idiom"], image["platform"], image["size"]),
+                             ("universal", "ios", "1024x1024"))
+
+        # iOS 26+: Icon Composer document. Its single bolt layer must be the canonical mark,
+        # and light/dark must use distinct backgrounds and bolt treatments.
         composer = APP / "AppIcon.icon"
         self.assertTrue(composer.is_dir())
         icon_document = json.loads((composer / "icon.json").read_text(encoding="utf-8"))
-        layer_names = [
-            layer["image-name"]
-            for group in icon_document["groups"]
-            for layer in group["layers"]
-        ]
-        self.assertEqual(
-            layer_names,
-            [
-                "03-route-accent.svg",
-                "02-bolt.svg",
-                "01-pin.svg",
-                "00-background.svg",
-            ],
-        )
-        for layer_name in layer_names:
-            composer_layer = composer / "Assets" / layer_name
-            canonical_layer = (
-                ROOT
-                / "docs"
-                / "visual-design"
-                / "voltago-logo-2026-07-15"
-                / "layers"
-                / layer_name
-            )
-            self.assertTrue(composer_layer.is_file())
-            self.assertEqual(composer_layer.read_bytes(), canonical_layer.read_bytes())
+        layers = [layer for group in icon_document["groups"] for layer in group["layers"]]
+        self.assertEqual({layer["image-name"] for layer in layers}, {"bolt.svg"})
+        design_dir = ROOT / "docs" / "visual-design" / "voltago-bolt-2026-10-20"
+        self.assertEqual((composer / "Assets" / "bolt.svg").read_bytes(),
+                         (design_dir / "bolt.svg").read_bytes())
+        background = {spec.get("appearance", "light") for spec in icon_document["fill-specializations"]}
+        self.assertEqual(background, {"light", "dark"})
+        hidden = {layer["name"]: layer["hidden-specializations"] for layer in layers}
+        self.assertEqual(set(hidden), {"bolt-glass", "bolt-flat"})
 
-        design_dir = ROOT / "docs" / "visual-design" / "voltago-logo-2026-07-15"
-        canonical_mark = (design_dir / "voltago-mark.svg").read_text(encoding="utf-8")
-        geometry_consumers = [
-            (design_dir / "voltago-app-icon-flat.svg").read_text(encoding="utf-8"),
-            # The web mark was replaced on 2026-09-16 (owner rejected the old mark); the
-            # web icon no longer derives from the iOS composer layers. The native icon
-            # package keeps its own canonical layers unchanged below.
-            "\n".join(
-                (composer / "Assets" / layer_name).read_text(encoding="utf-8")
-                for layer_name in layer_names
-            ),
-        ]
-        canonical_paths = re.findall(r'\sd="([^"]+)"', canonical_mark)
-        self.assertEqual(len(canonical_paths), 4)
-        for path_data in canonical_paths:
-            for consumer in geometry_consumers:
-                self.assertIn(f'd="{path_data}"', consumer)
+        # Web marks and native fallbacks draw the same bolt geometry.
+        canonical_paths = re.findall(r'\sd="([^"]+)"', (design_dir / "bolt.svg").read_text(encoding="utf-8"))
+        self.assertEqual(len(canonical_paths), 1)
+        for consumer in ("app-icon-light.svg", "app-icon-dark.svg", "volta-icon-light.svg", "volta-icon-dark.svg"):
+            self.assertIn(f'd="{canonical_paths[0]}"', (design_dir / consumer).read_text(encoding="utf-8"))
+        self.assertIn(f'd="{canonical_paths[0]}"',
+                      (ROOT / "frontend" / "public" / "volta-icon.svg").read_text(encoding="utf-8"))
 
         icon_dir = APP / "Assets.xcassets" / "AppIcon.appiconset"
         for image in icon["images"]:
-            filename = image.get("filename")
-            if not filename:
-                continue
-            size = float(image["size"].split("x", 1)[0])
-            scale = float(image["scale"].removesuffix("x"))
-            expected_pixels = round(size * scale)
-            png = (icon_dir / filename).read_bytes()
+            png = (icon_dir / image["filename"]).read_bytes()
             self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
-            self.assertEqual(int.from_bytes(png[16:20], "big"), expected_pixels)
-            self.assertEqual(int.from_bytes(png[20:24], "big"), expected_pixels)
-            self.assertNotIn(png[25], {4, 6}, f"{filename} must not contain alpha")
-
-        marketing_icon = APP / "Assets.xcassets" / "AppIcon.appiconset" / "AppIcon1024.png"
-        self.assertGreater(marketing_icon.stat().st_size, 20_000)
+            self.assertEqual(int.from_bytes(png[16:20], "big"), 1024)
+            self.assertEqual(int.from_bytes(png[20:24], "big"), 1024)
+            self.assertNotIn(png[25], {4, 6}, f"{image['filename']} must not contain alpha")
+            # A real artwork, not a blank: tinted is a flat grayscale mask and compresses well.
+            minimum = 4_000 if image.get("appearances") == [{"appearance": "luminosity", "value": "tinted"}] else 20_000
+            self.assertGreater(len(png), minimum)
 
     def _target_configuration(self, identifier: str) -> str:
         match = re.search(

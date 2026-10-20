@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'volta-offline-'
-const CACHE_VERSION = `${CACHE_PREFIX}v6`
+const CACHE_VERSION = `${CACHE_PREFIX}v7`
 const SHELL_CACHE = `${CACHE_VERSION}-shell`
 const OVERVIEW_CACHE = `${CACHE_VERSION}-overview`
 const BUILD_MANIFEST_URL = '/.vite/manifest.json'
@@ -11,6 +11,8 @@ const SHELL_URLS = [
   '/',
   '/manifest.webmanifest',
   '/volta-icon.svg',
+  '/volta-icon-light.svg',
+  '/volta-icon-dark.svg',
   '/brand/volta-icon.png',
 ]
 const OFFLINE_WARNING = 'Offline — showing previously cached source-backed leads. Nothing is live.'

@@ -1,41 +1,121 @@
 {
-  "fill" : {
-    "automatic-gradient" : "extended-srgb:0.00000,0.53333,1.00000,1.00000"
-  },
-  "groups" : [
+  "fill-specializations": [
     {
-      "layers" : [
-        {
-          "image-name" : "03-route-accent.svg",
-          "name" : "03-route-accent"
-        },
-        {
-          "image-name" : "02-bolt.svg",
-          "name" : "02-bolt"
-        },
-        {
-          "image-name" : "01-pin.svg",
-          "name" : "01-pin"
-        },
-        {
-          "image-name" : "00-background.svg",
-          "name" : "00-background"
+      "value": {
+        "linear-gradient": [
+          "srgb:0.98039,0.99216,0.97647,1.00000",
+          "srgb:0.84706,0.92941,0.92157,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
         }
-      ],
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.6
-      },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.2
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.10196,0.14510,0.09804,1.00000",
+          "srgb:0.04706,0.07059,0.04314,1.00000"
+        ],
+        "orientation": {
+          "start": {
+            "x": 0.5,
+            "y": 0
+          },
+          "stop": {
+            "x": 0.5,
+            "y": 1
+          }
+        }
       }
     }
   ],
-  "supported-platforms" : {
-    "circles" : [
+  "groups": [
+    {
+      "name": "dark-flat",
+      "layers": [
+        {
+          "image-name": "bolt.svg",
+          "name": "bolt-flat",
+          "glass": false,
+          "fill": {
+            "solid": "srgb:0.78431,0.94118,0.23529,1.00000"
+          },
+          "hidden-specializations": [
+            {
+              "value": true
+            },
+            {
+              "appearance": "dark",
+              "value": false
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 1.0
+      },
+      "specular": false
+    },
+    {
+      "name": "light-glass",
+      "layers": [
+        {
+          "image-name": "bolt.svg",
+          "name": "bolt-glass",
+          "glass": true,
+          "fill": {
+            "linear-gradient": [
+              "srgb:0.78431,0.94118,0.23529,1.00000",
+              "srgb:0.36471,0.73333,0.29020,1.00000"
+            ],
+            "orientation": {
+              "start": {
+                "x": 0.3,
+                "y": 0
+              },
+              "stop": {
+                "x": 0.7,
+                "y": 1
+              }
+            }
+          },
+          "hidden-specializations": [
+            {
+              "value": false
+            },
+            {
+              "appearance": "dark",
+              "value": true
+            }
+          ]
+        }
+      ],
+      "shadow": {
+        "kind": "layer-color",
+        "opacity": 0.75
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.35
+      },
+      "specular": true,
+      "lighting": "combined"
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
       "watchOS"
     ],
-    "squares" : "shared"
+    "squares": "shared"
   }
 }
