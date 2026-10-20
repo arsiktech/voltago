@@ -32,13 +32,19 @@ struct VoltaAPI {
     }
 
     /// Stored evidence for the visible area; never downloads an unbounded global catalog.
-    func overview(maxPrice: Double, bbox: BBox) async throws -> ChargersResponse {
-        try await get("api/chargers", [
+    func overview(maxPrice: Double, bbox: BBox, coords: CLLocationCoordinate2D? = nil) async throws -> ChargersResponse {
+        var query: [URLQueryItem] = [
             .init(name: "overview", value: "true"),
             .init(name: "include_leads", value: "true"),
+            .init(name: "compact", value: "true"),
             .init(name: "max_price", value: String(maxPrice)),
             .init(name: "bbox", value: bbox.queryValue),
-        ])
+        ]
+        if let coords {
+            query.append(.init(name: "lat", value: String(coords.latitude)))
+            query.append(.init(name: "lon", value: String(coords.longitude)))
+        }
+        return try await get("api/chargers", query)
     }
 
     /// Live viewport fetch (MapaREVE + permitted Gaia public pages merged server-side).

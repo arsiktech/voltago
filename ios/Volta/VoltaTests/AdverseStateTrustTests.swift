@@ -315,6 +315,167 @@ final class AppStateAdverseTrustTests: XCTestCase {
         super.tearDown()
     }
 
+    func testNearbyCatalogueAppearsBeforeSlowLiveProvidersEvenWithOldLeads() async throws {
+        AdverseURLProtocol.delay = { Self.isOverviewRequest($0) ? 0.02 : 0.8 }
+        let state = makeState { request in
+            Self.response(request, status: 200, body: Self.isOverviewRequest(request)
+                          ? Self.nearbyOverviewJSON : Self.freshLivePresentationJSON)
+        }
+        state.leads = try TestDecode.chargersResponse(Self.lateOverviewJSON).leads
+        state.loadNearby(reason: "locate")
+        await waitForOverview(state, expected: .loaded)
+
+        XCTAssertEqual(state.liveState, .loading)
+        XCTAssertEqual(state.listRows.map(\.id), ["nearby-known"])
+        XCTAssertFalse(try XCTUnwrap(state.listRows.first).isRouteReady)
+        XCTAssertFalse(try XCTUnwrap(state.listRows.first).canShowLiveAvailability)
+        XCTAssertNil(state.routeMoment)
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.leads.map(\.id), ["live-lead"])
+    }
+
+    func testNearbyCatalogueCannotReplaceAFasterLiveResponse() async {
+        AdverseURLProtocol.delay = { Self.isOverviewRequest($0) ? 0.5 : 0.01 }
+        let state = makeState { request in
+            Self.response(request, status: 200, body: Self.isOverviewRequest(request)
+                          ? Self.nearbyOverviewJSON : Self.freshLivePresentationJSON)
+        }
+        state.loadNearby(reason: "locate")
+        await waitUntilSettled(state)
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.liveQuality, .fresh)
+        XCTAssertEqual(state.leads.map(\.id), ["live-lead"])
+        XCTAssertEqual(state.warning, "Fresh live response remains authoritative.")
+    }
+
+    func testMovingToAnotherAreaRejectsTheEarlierNearbyCatalogue() async throws {
+        let firstStarted = expectation(description: "First area's catalogue requested")
+        let isEarlier: (URLRequest) -> Bool = { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                .contains(where: { $0.name == "lat" && $0.value == "39.47" }) == true
+        }
+        AdverseURLProtocol.delay = { request in
+            Self.isOverviewRequest(request) ? (isEarlier(request) ? 0.5 : 0.01) : 0.9
+        }
+        let state = makeState { request in
+            if Self.isOverviewRequest(request) {
+                if isEarlier(request) { firstStarted.fulfill() }
+                let body = isEarlier(request) ? Self.nearbyOverviewJSON
+                    : Self.nearbyOverviewJSON.replacingOccurrences(of: "nearby-known", with: "new-area-known")
+                return Self.response(request, status: 200, body: body)
+            }
+            return Self.response(request, status: 200, body: Self.freshLivePresentationJSON)
+        }
+        state.userCoordinate = .init(latitude: 39.47, longitude: -0.37)
+        state.loadNearby(reason: "locate")
+        await fulfillment(of: [firstStarted], timeout: 2)
+        state.userCoordinate = .init(latitude: 39.48, longitude: -0.37)
+        state.visibleRegion.center = state.userCoordinate!
+        state.loadNearby(reason: "locate")
+        await waitForOverview(state, expected: .loaded)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(state.leads.map(\.id), ["new-area-known"])
+        XCTAssertEqual(state.liveState, .loading)
+        await waitUntilSettled(state)
+    }
+
+    func testLocateReusesARecentFixAndDoesNotRestartTheSamePendingLookup() async throws {
+        let manager = NearbyLocationManager()
+        manager.cachedLocation = Self.location(age: 1, accuracy: 40)
+        let catalogueStarted = expectation(description: "Nearby catalogue requested once")
+        let liveStarted = expectation(description: "Live request started once")
+        catalogueStarted.assertForOverFulfill = true
+        liveStarted.assertForOverFulfill = true
+        AdverseURLProtocol.delay = { Self.isOverviewRequest($0) ? 0.02 : 0.8 }
+        let state = makeState(locationManager: manager) { request in
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first(where: { $0.name == "lat" })?.value, "39.47")
+            XCTAssertEqual(query?.first(where: { $0.name == "lon" })?.value, "-0.37")
+            XCTAssertNotNil(query?.first(where: { $0.name == "bbox" }))
+            if Self.isOverviewRequest(request) {
+                catalogueStarted.fulfill()
+                XCTAssertEqual(query?.first(where: { $0.name == "compact" })?.value, "true")
+                XCTAssertNil(query?.first(where: { $0.name == "summary" }), "Native details still need provenance")
+                return Self.response(request, status: 200, body: Self.nearbyOverviewJSON)
+            }
+            liveStarted.fulfill()
+            return Self.response(request, status: 200, body: Self.freshLivePresentationJSON)
+        }
+        state.locate()
+        state.locate()
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertFalse(state.locating)
+        XCTAssertEqual(state.locationState, .located)
+        XCTAssertEqual(state.userCoordinate?.latitude, 39.47)
+        await fulfillment(of: [catalogueStarted, liveStarted], timeout: 2)
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.listRows.map(\.id), ["nearby-known"])
+        XCTAssertEqual(state.liveState, .loading)
+        await waitUntilSettled(state)
+    }
+
+    func testLocateRequestsNeighbourhoodAccuracyAndCoalescesTapsWithoutAFreshFix() async {
+        let manager = NearbyLocationManager()
+        manager.cachedLocation = Self.location(age: 60, accuracy: 40)
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.locate()
+        state.locate()
+        XCTAssertEqual(manager.desiredAccuracy, kCLLocationAccuracyHundredMeters)
+        XCTAssertEqual(manager.locationRequests, 1)
+        XCTAssertTrue(state.locating)
+        XCTAssertEqual(state.locationState, .requesting)
+        XCTAssertNil(state.userCoordinate)
+
+        state.locationManager(manager, didUpdateLocations: [Self.location(age: 0, accuracy: 40)])
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.locationState, .located)
+        XCTAssertFalse(state.locating)
+        XCTAssertEqual(state.userCoordinate?.latitude, 39.47)
+        await waitUntilSettled(state)
+    }
+
+    func testCachedLocationMustBeRecentValidAndAccurateEnoughForTheNeighbourhood() {
+        let now = Date()
+        for (age, accuracy) in [(0.0, 40.0), (15, 500)] {
+            XCTAssertTrue(AppState.canReuseLocation(Self.location(age: age, accuracy: accuracy, now: now), now: now))
+        }
+        for (age, accuracy) in [(16.0, 40.0), (-1, 40), (0, -1), (0, 501)] {
+            XCTAssertFalse(AppState.canReuseLocation(Self.location(age: age, accuracy: accuracy, now: now), now: now))
+        }
+        let invalid = CLLocation(coordinate: .init(latitude: 91, longitude: 0), altitude: 0,
+                                 horizontalAccuracy: 40, verticalAccuracy: 0, timestamp: now)
+        XCTAssertFalse(AppState.canReuseLocation(invalid, now: now))
+    }
+
+    func testDeniedPermissionNeverReusesTheLocationCache() {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .denied
+        manager.cachedLocation = Self.location(age: 1, accuracy: 40)
+        let state = makeState(locationManager: manager) { request in
+            XCTFail("Denied permission must not start a nearby lookup")
+            return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.locate()
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertEqual(state.locationState, .denied)
+        XCTAssertFalse(state.locating)
+        XCTAssertNil(state.userCoordinate)
+    }
+
+    private static func location(age: TimeInterval, accuracy: CLLocationAccuracy, now: Date = Date()) -> CLLocation {
+        CLLocation(coordinate: .init(latitude: 39.47, longitude: -0.37), altitude: 0,
+                   horizontalAccuracy: accuracy, verticalAccuracy: 0, timestamp: now.addingTimeInterval(-age))
+    }
+
+    private static let nearbyOverviewJSON = """
+    {"stations":[],"leads":[{"id":"nearby-known","name":"Known nearby charger",
+      "lat":39.47,"lon":-0.37,"lead":true,"is_free":true,"price_min":0,
+      "reliability":"official_directory","verification":{"location_verified":true}}],
+     "cache":{"overview":true},"meta":{"coverage":{"mode":"overview"}}}
+    """
+
     func testLatestOverviewOwnsRowsWhenEarlierOverviewFinishesLast() async throws {
         await assertLatestOverviewWins(earlierStatus: 200)
     }
@@ -823,13 +984,15 @@ final class AppStateAdverseTrustTests: XCTestCase {
     }
 
     private func makeState(
+        locationManager: CLLocationManager = CLLocationManager(),
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
     ) -> AppState {
         AdverseURLProtocol.handler = handler
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AdverseURLProtocol.self]
         let session = URLSession(configuration: configuration)
-        let state = AppState(api: VoltaAPI(baseURL: URL(string: "https://volta.test")!, session: session))
+        let state = AppState(api: VoltaAPI(baseURL: URL(string: "https://volta.test")!, session: session),
+                             locationManager: locationManager)
         // Live-response fixtures model a local search; country views now use overview.
         state.visibleRegion = MKCoordinateRegion(center: .init(latitude: 39.47, longitude: -0.37),
                                                 span: .init(latitudeDelta: 0.16, longitudeDelta: 0.16))
@@ -1009,6 +1172,16 @@ final class AppStateAdverseTrustTests: XCTestCase {
       "meta":{"coverage":{"mode":"standard"}}
     }
     """
+}
+
+private final class NearbyLocationManager: CLLocationManager {
+    var testAuthorization: CLAuthorizationStatus = .authorizedWhenInUse
+    var cachedLocation: CLLocation?
+    var locationRequests = 0
+
+    override var authorizationStatus: CLAuthorizationStatus { testAuthorization }
+    override var location: CLLocation? { cachedLocation }
+    override func requestLocation() { locationRequests += 1 }
 }
 
 private final class AdverseURLProtocol: URLProtocol {

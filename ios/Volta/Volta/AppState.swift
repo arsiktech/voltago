@@ -111,9 +111,18 @@ final class AppState: NSObject, ObservableObject {
     @Published var locating = false
     @Published var locationState: LocationState = .idle
 
-    private let locationManager = CLLocationManager()
+    private let locationManager: CLLocationManager
     private let apiOverride: VoltaAPI?
     private var liveTask: Task<Void, Never>?
+    private var nearbyOverviewTask: Task<Void, Never>?
+    private var nearbyQuery: NearbyQuery?
+
+    private struct NearbyQuery: Equatable {
+        var bbox: BBox
+        var maxPrice: Double
+        var latitude: Double?
+        var longitude: Double?
+    }
     /// Only the latest overview request may publish. The endpoint reset also invalidates
     /// this token because callers own the tasks that await loadOverview().
     private var overviewRequestID = UUID()
@@ -207,16 +216,20 @@ final class AppState: NSObject, ObservableObject {
 
     override init() {
         apiOverride = nil
+        locationManager = CLLocationManager()
         super.init()
         migrateRetiredDebugEndpointIfNeeded()
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.delegate = self
         applyDebugLocationOverride()
     }
 
-    init(api: VoltaAPI) {
+    init(api: VoltaAPI, locationManager: CLLocationManager = CLLocationManager()) {
         apiOverride = api
+        self.locationManager = locationManager
         super.init()
         migrateRetiredDebugEndpointIfNeeded()
+        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.delegate = self
         applyDebugLocationOverride()
     }
@@ -426,7 +439,7 @@ final class AppState: NSObject, ObservableObject {
             return
         }
         do {
-            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox)
+            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox, coords: userCoordinate)
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
             if mode == .overview {
                 leads = resp.leads
@@ -437,13 +450,10 @@ final class AppState: NSObject, ObservableObject {
                 warning = resp.warning
                 warningIsServerUnreachable = false
                 announce(String(localized: "Known chargers loaded."))
-            } else if (liveState == .loading || liveState == .failed),
-                      stations.isEmpty,
-                      leads.isEmpty {
-                // The always-started overview can resolve while live is pending or after it
-                // fails. In either ordering, recover the honest, non-live fallback rows without
-                // touching live's warning, stations, or route notice. A successful live response
-                // already owns its presentation and never satisfies this branch.
+            } else if liveState == .loading || liveState == .failed {
+                // The latest area's catalogue can replace an older area's leads while live
+                // is pending or failed. Keep live's warning/stations/route notice intact;
+                // a completed successful live response owns its presentation instead.
                 leads = resp.leads
                 resultsTruncated = resp.meta?.truncated == true
             }
@@ -466,6 +476,8 @@ final class AppState: NSObject, ObservableObject {
         // Rows, selection and pending responses belong to the previous service.
         // Invalidate them together before the replacement overview starts.
         overviewRequestID = UUID()
+        nearbyOverviewTask?.cancel()
+        nearbyQuery = nil
         liveTask?.cancel()
         refreshTimer?.invalidate()
         clearSearch()
@@ -497,10 +509,27 @@ final class AppState: NSObject, ObservableObject {
     }
     #endif
 
-    /// Enter/refresh live mode for the current viewport (debounced by the map's onEnd events).
+    /// Paint the local catalogue independently of slower live providers. Both requests use
+    /// the same area; a late catalogue response cannot replace a completed live response.
+    func loadNearby(reason: String) {
+        let query = NearbyQuery(bbox: visibleRegion.bbox, maxPrice: maxPrice,
+                                latitude: userCoordinate?.latitude, longitude: userCoordinate?.longitude)
+        guard liveState != .loading || nearbyQuery != query else { return }
+        nearbyQuery = query
+        overviewRequestID = UUID()
+        nearbyOverviewTask?.cancel()
+        fetchLive(reason: reason)
+        guard mode == .live else { return }
+        nearbyOverviewTask = Task { await loadOverview() }
+    }
+
+    /// Enter/refresh live mode for the current viewport.
     func fetchLive(reason: String = "") {
         // Continental/world views use stored evidence; live providers have a local budget.
         guard visibleRegion.bbox.supportsLiveLookup else {
+            overviewRequestID = UUID()
+            nearbyOverviewTask?.cancel()
+            nearbyQuery = nil
             liveTask?.cancel()
             refreshTimer?.invalidate()
             mode = .overview
@@ -690,7 +719,7 @@ final class AppState: NSObject, ObservableObject {
     }
 
     private func refetch() {
-        if mode == .live { fetchLive(reason: "filter") }
+        if mode == .live { loadNearby(reason: "filter") }
     }
 
     // MARK: - Saved chargers
@@ -801,7 +830,7 @@ final class AppState: NSObject, ObservableObject {
         }
         visibleRegion = region
         withAnimation(cameraAnimation) { camera = .region(region) }
-        fetchLive(reason: "search")
+        loadNearby(reason: "search")
     }
 
     /// From an out-of-service charger: close its detail and show the chargers around it, so
@@ -813,7 +842,7 @@ final class AppState: NSObject, ObservableObject {
                                         span: .init(latitudeDelta: 0.08, longitudeDelta: 0.08))
         visibleRegion = region
         withAnimation(cameraAnimation) { camera = .region(region) }
-        fetchLive(reason: "nearby-alternatives")
+        loadNearby(reason: "nearby-alternatives")
     }
 
     // MARK: - Location
@@ -875,6 +904,36 @@ final class AppState: NSObject, ObservableObject {
         hasUsableCoordinate ? .located : .failed
     }
 
+    /// A short-lived fix is enough to recenter a neighbourhood lookup. Older, invalid or
+    /// imprecise fixes still go through Core Location instead of silently moving the driver.
+    static func canReuseLocation(_ location: CLLocation, now: Date = Date()) -> Bool {
+        let age = now.timeIntervalSince(location.timestamp)
+        return CLLocationCoordinate2DIsValid(location.coordinate)
+            && location.horizontalAccuracy >= 0 && location.horizontalAccuracy <= 500
+            && age >= 0 && age <= 15
+    }
+
+    private func requestCurrentLocation(using manager: CLLocationManager) {
+        if let cached = manager.location, Self.canReuseLocation(cached) {
+            showLocation(cached)
+        } else {
+            manager.requestLocation()
+        }
+    }
+
+    private func showLocation(_ location: CLLocation) {
+        locating = false
+        awaitingLocationAuthorization = false
+        locationState = .located
+        userCoordinate = location.coordinate
+        let region = MKCoordinateRegion(center: location.coordinate,
+                                        latitudinalMeters: 1_200, longitudinalMeters: 1_200)
+        visibleRegion = region
+        withAnimation(cameraAnimation) { camera = .region(region) }
+        loadNearby(reason: "locate")
+        announce(String(localized: "Location found. Loading nearby chargers."))
+    }
+
     func locate() {
         #if DEBUG
         if let override = Self.debugLocationOverride {
@@ -886,12 +945,13 @@ final class AppState: NSObject, ObservableObject {
         }
         #endif
 
+        guard !locating else { return }
         locating = true
         locationState = .requesting
         switch locationManager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             awaitingLocationAuthorization = false
-            locationManager.requestLocation()
+            requestCurrentLocation(using: locationManager)
         case .notDetermined:
             awaitingLocationAuthorization = true
             locationManager.requestWhenInUseAuthorization()
@@ -946,7 +1006,7 @@ extension AppState: CLLocationManagerDelegate {
             self.awaitingLocationAuthorization = transition.awaitingAuthorization
 
             if transition.shouldRequestLocation {
-                manager.requestLocation()
+                self.requestCurrentLocation(using: manager)
             } else if transition.locationState == .denied
                         || transition.locationState == .restricted
                         || transition.locationState == .failed {
@@ -966,16 +1026,7 @@ extension AppState: CLLocationManagerDelegate {
                 return
             }
             #endif
-            self.locating = false
-            self.awaitingLocationAuthorization = false
-            self.locationState = .located
-            self.userCoordinate = loc.coordinate
-            let region = MKCoordinateRegion(center: loc.coordinate,
-                                            latitudinalMeters: 1_200, longitudinalMeters: 1_200)
-            self.visibleRegion = region
-            withAnimation(self.cameraAnimation) { self.camera = .region(region) }
-            self.fetchLive(reason: "locate")
-            self.announce(String(localized: "Location found. Loading nearby chargers."))
+            self.showLocation(loc)
         }
     }
 

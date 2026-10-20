@@ -171,8 +171,11 @@ struct MapLayer: View {
         .onMapCameraChange(frequency: .onEnd) { ctx in
             let areaChanged = state.visibleRegion.bbox != ctx.region.bbox
             state.visibleRegion = ctx.region
-            if state.mode == .live { state.fetchLive(reason: "pan") }
-            else if areaChanged { Task { await state.loadOverview() } }
+            // Locate/search already started their lookup. Their camera animation must not
+            // cancel and restart it when MapKit finishes fitting the requested region.
+            if state.mode == .live {
+                if areaChanged, state.camera.positionedByUser { state.loadNearby(reason: "pan") }
+            } else if areaChanged { Task { await state.loadOverview() } }
         }
         // Sparing: pin and cluster taps are the only map haptic; pan, zoom and locate stay silent.
         .sensoryFeedback(.selection, trigger: mapTapFeedback)
@@ -221,6 +224,7 @@ struct MapLayer: View {
         withAnimation(reduceMotion ? nil : VoltaMotion.spatial) {
             state.camera = .region(region)
         }
+        if state.mode == .live { state.loadNearby(reason: "cluster") }
     }
 
     private func stationAccessibilityValue(_ station: Station) -> String {

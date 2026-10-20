@@ -31,6 +31,13 @@ final class StubServer {
     struct ResponseStep {
         let status: String
         let body: String
+        let delay: TimeInterval
+
+        init(status: String, body: String, delay: TimeInterval = 0) {
+            self.status = status
+            self.body = body
+            self.delay = delay
+        }
 
         static func ok(_ body: String) -> ResponseStep {
             ResponseStep(status: "200 OK", body: body)
@@ -55,6 +62,7 @@ final class StubServer {
     private var overviewResponses: [ResponseStep] = []
     private var liveResponses: [ResponseStep] = []
     private var geocodeResponses: [ResponseStep] = []
+    private var nearbyOverviewResponse: ResponseStep?
 
     private(set) var port: UInt16 = 0
     private var listener: NWListener?
@@ -66,6 +74,7 @@ final class StubServer {
     private var liveResponseIndex = 0
     private var geocodeResponseIndex = 0
     private var recordedRequests: [String] = []
+    private var deliveredResponses: [String] = []
 
     var baseURLString: String { "http://127.0.0.1:\(port)" }
 
@@ -86,6 +95,11 @@ final class StubServer {
         }
     }
 
+    /// Keep launch overviews separate so a preloaded fixture cannot prove fast location loading.
+    func configureNearbyOverviewResponse(_ response: ResponseStep) {
+        queue.sync { nearbyOverviewResponse = response }
+    }
+
     func configureGeocodeResponses(_ responses: [ResponseStep]) {
         queue.sync {
             geocodeResponses = responses
@@ -95,6 +109,10 @@ final class StubServer {
 
     func recordedRequestPaths() -> [String] {
         queue.sync { recordedRequests }
+    }
+
+    func deliveredResponsePaths() -> [String] {
+        queue.sync { deliveredResponses }
     }
 
     /// Starts listening on an OS-assigned ephemeral loopback port and blocks (briefly) until
@@ -210,10 +228,15 @@ final class StubServer {
         var responseData = Data(headText.utf8)
         responseData.append(bodyData)
 
-        connection.send(content: responseData, completion: .contentProcessed { [weak self] _ in
-            self?.connections.removeValue(forKey: key)
-            connection.cancel()
-        })
+        // Hold this connection without blocking catalogue responses on the server queue.
+        queue.asyncAfter(deadline: .now() + response.delay) { [weak self] in
+            guard let self, self.connections[key] != nil else { return }
+            connection.send(content: responseData, completion: .contentProcessed { [weak self] error in
+                if error == nil { self?.deliveredResponses.append(requestPath) }
+                self?.connections.removeValue(forKey: key)
+                connection.cancel()
+            })
+        }
     }
 
     private func route(_ requestPath: String) -> ResponseStep {
@@ -233,6 +256,10 @@ final class StubServer {
         case "/api/chargers":
             let isOverview = query.contains("overview=true")
             if isOverview {
+                if let nearbyOverviewResponse,
+                   URLComponents(string: "http://localhost" + requestPath)?.queryItems?.contains(where: { $0.name == "lat" }) == true {
+                    return nearbyOverviewResponse
+                }
                 return nextStep(
                     from: overviewResponses,
                     index: &overviewResponseIndex,
