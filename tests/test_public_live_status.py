@@ -27,6 +27,16 @@ class ParserTests(unittest.TestCase):
         self.assertIsNone(row["price_min"])
         self.assertFalse(row["is_free"])
 
+    def test_endolla_code_names_display_the_published_address(self):
+        self.assertEqual(feeds.endolla_display_name('19102Moragas17', 'c/ Moragas 17'), 'c/ Moragas 17')
+        self.assertEqual(feeds.endolla_display_name('17802 Roger Lluria ', 'c/ Roger de Llúria 124'), 'c/ Roger de Llúria 124')
+        self.assertEqual(feeds.endolla_display_name('Aparcament Ap. BSM - Gràcia', 'c/ Gran de Gràcia 190'), 'Aparcament Ap. BSM - Gràcia')
+        self.assertEqual(feeds.endolla_display_name('19102Moragas17', ''), '19102Moragas17')
+        result = feeds.parse_endolla(fixture("endolla_static"), fixture("endolla_status"))
+        for row in result["stations"]:
+            self.assertIn("endolla_station_name", row["raw"])
+            self.assertFalse(row["name"][:3].isdigit() and row["address"], row["name"])
+
     def test_spirii_reference_join_preserves_evse_and_ignores_tariffs(self):
         result = feeds.parse_spirii(fixture("spirii_static"), fixture("spirii_status"))
         row = result["stations"][0]

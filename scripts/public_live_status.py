@@ -104,6 +104,17 @@ def station(feed, site_id, name, address, city, coords, operator, connectors):
             "fast": any((c.get("power_kw") or 0) >= 50 for c in connectors)}
 
 
+def endolla_display_name(source_name, address):
+    """Endolla labels many stations with an internal code ("19102Moragas17").
+
+    Show the published street address for those; keep descriptive names as they are.
+    """
+    name = (source_name or "").strip()
+    if address and (not name or name[:3].isdigit()):
+        return address
+    return name or "Endolla Barcelona"
+
+
 def _endolla_ports(payload):
     locations = rows(payload["locations"])
     if not locations:
@@ -146,9 +157,12 @@ def parse_endolla(static, dynamic):
                      "power_kw": _power(port.get("power_kw")), "count": 1}
         if key[0] not in sites:
             addr = loc.get("address") or {}
-            sites[key[0]] = station("endolla", key[0], str(st.get("notes") or st.get("label") or "Endolla Barcelona"),
-                                   str(addr.get("address_string") or ""), str(addr.get("locality") or "Barcelona"),
+            address = str(addr.get("address_string") or "").strip()
+            source_name = str(st.get("notes") or st.get("label") or "Endolla Barcelona").strip()
+            sites[key[0]] = station("endolla", key[0], endolla_display_name(source_name, address),
+                                   address, str(addr.get("locality") or "Barcelona"),
                                    coords, str(loc.get("network_name") or "Endolla Barcelona"), [])
+            sites[key[0]]["raw"]["endolla_station_name"] = source_name
             sites[key[0]]["access"] = {"level": "public" if loc.get("access_restriction") == "PUBLIC" else "unknown",
                                        "note": "Check source access restrictions and onsite signs."}
             sites[key[0]]["sources"][1]["source_last_updated"] = loc.get("last_updated")
