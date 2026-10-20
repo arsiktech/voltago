@@ -168,8 +168,9 @@ def parse_electromaps_price(detail, fetched_at):
     # A paid/free marker, an empty field or an app instruction is not tariff evidence.
     if not re.search(r'(?:\d[\d,.]*\s*(?:€|EUR)|(?:€|EUR)\s*\d|gratis|gratuit[oa]|free)', text, re.I):
         return None
-    prices = re.findall(r'(\d+(?:[,.]\d+)?)\s*(?:€|EUR)\s*/\s*kWh\b', text, re.I)
-    price = number(prices[0]) if len(prices) == 1 else None
+    # A range such as 0.35-0.54€/kWh is source text, not one numeric tariff.
+    exact_price = re.fullmatch(r'(\d+(?:[,.]\d+)?)\s*(?:€|EUR)\s*/\s*kWh', text, re.I)
+    price = number(exact_price[1]) if exact_price else None
     parking_price = str(detail.get('parking_price') or '').strip()
     details = {'parking_price': parking_price, 'raw_tariff_text': text}
     claim = evidence(KINDS[1], 'Electromaps', 'Electromaps community price · ' + source_date.date().isoformat(),

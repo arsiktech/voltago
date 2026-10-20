@@ -137,6 +137,13 @@ class ParserTests(unittest.TestCase):
             detail = p.sanitize_electromaps(load('electromaps.json')); detail['charge_price'] = price
             self.assertIsNone(p.parse_electromaps_price(detail, FETCHED))
 
+    def test_community_price_range_keeps_text_without_a_single_numeric_tariff(self):
+        detail = p.sanitize_electromaps(load('electromaps.json'))
+        detail['charge_price'] = '0.35-0.54€/KWH'
+        claim = p.parse_electromaps_price(detail, FETCHED)
+        self.assertEqual(claim['text'], '0.35-0.54€/KWH')
+        self.assertIsNone(claim['price_per_kwh'])
+
     def test_chargemap_started_energy_and_idle_fees_are_preserved(self):
         claim = p.parse_chargemap_price(load('chargemap.html'), FETCHED, '315448')
         self.assertEqual(claim['label'], 'Price with Chargemap Pass')
