@@ -8611,6 +8611,98 @@
         }
       }
     },
+    "View Google Maps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View Google Maps"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver Google Maps"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть Google Карты"
+          }
+        }
+      }
+    },
+    "Search Google Maps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Google Maps"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar en Google Maps"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в Google Картах"
+          }
+        }
+      }
+    },
+    "Opens this charger's Google Maps listing for reviews and place details": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens this charger's Google Maps listing for reviews and place details"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la ficha de este cargador en Google Maps con reseñas e información del lugar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открывает карточку этой зарядной станции в Google Картах с отзывами и сведениями о месте"
+          }
+        }
+      }
+    },
+    "Searches Google Maps; confirm the result matches this charger": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searches Google Maps; confirm the result matches this charger"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Busca en Google Maps; comprueba que el resultado corresponde a este cargador"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ищет в Google Картах; убедитесь, что результат соответствует этой зарядной станции"
+          }
+        }
+      }
+    },
     "Unknown connector": {
       "extractionState": "manual",
       "localizations": {

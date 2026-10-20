@@ -11,6 +11,14 @@ the worldwide catalogue or establish charger evidence.
 publish open reuse terms. It keeps tests, the Docker image and local runs working
 offline. It is not the dataset served at [voltago.app](https://voltago.app).
 
+`google_maps_links.json` holds reviewed Google Maps listing handoffs, matched by
+canonical station ID or the station's exact public source URL. It survives charger
+data rebuilds and contains no copied Google ratings, reviews, or charging claims.
+Other rows can publish a `google_place_id`, `google_maps_url`, or
+`navigation.google_listing`; unmatched rows get a labeled Google Maps search.
+See [Google Maps integration](../docs/google-maps.md) for the client contract and
+the requirements for optional ratings and reviews.
+
 | Source | Records | Terms |
 | --- | ---: | --- |
 | OpenStreetMap public tags | 94 | ODbL (OpenStreetMap contributors) |

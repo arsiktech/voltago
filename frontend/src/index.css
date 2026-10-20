@@ -546,6 +546,16 @@
 .volta-popup {
   z-index: 40;
 }
+/* A popup must fit on either side of its pin, including the extra place action.
+   Keep long source details scrollable on shorter desktop maps. Mobile popups
+   intentionally extend beyond the map strip above the sheet. */
+@media (min-width: 768px) {
+  .volta-popup .maplibregl-popup-content {
+    max-height: calc((100dvh - var(--header-height) - var(--page-gutter)) / 2 - 74px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
 .maplibregl-popup-tip {
   border-top-color: var(--surface) !important;
   border-bottom-color: var(--surface) !important;

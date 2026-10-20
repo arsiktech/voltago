@@ -12,6 +12,7 @@ RUNTIME_FILES = (
     "agent_mcp.py",
     "community.py",
     "station_truth.py",
+    "google_maps.py",
     "scripts/source_policy.py",
     "scripts/json_recordset.py",
     "scripts/global_source_catalog.py",
@@ -20,4 +21,5 @@ RUNTIME_FILES = (
     "data/free_intelligence.json",
     "data/seed_leads.json",
     "data/source_policy_exclusions.json",
+    "data/google_maps_links.json",
 )

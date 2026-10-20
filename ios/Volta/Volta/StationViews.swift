@@ -9,7 +9,6 @@ import SwiftUI
 struct StationCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let station: Station
-    var selected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -31,7 +30,6 @@ struct StationCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .voltaCard(selected: selected)
         .contentShape(.rect)
     }
 

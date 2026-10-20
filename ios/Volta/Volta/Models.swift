@@ -287,6 +287,81 @@ enum PublicWebURL {
     }
 }
 
+/// Google Maps handoffs have a narrower boundary than general evidence links. A listing
+/// needs a Google place identifier (or a Google share code); a name/coordinate search alone
+/// must remain a search, even when a malformed service response labels it as a listing.
+enum GoogleMapsURL {
+    private static func validatedComponents(_ value: String?) -> URLComponents? {
+        guard let url = PublicWebURL.validated(value),
+              url.scheme?.lowercased() == "https",
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.port == nil || components.port == 443,
+              let host = components.host?.lowercased(),
+              components.percentEncodedHost?.lowercased() == host
+        else { return nil }
+
+        let path = components.path
+        switch host {
+        case "google.com", "www.google.com", "google.es", "www.google.es":
+            guard path == "/maps" || path.hasPrefix("/maps/") else { return nil }
+        case "maps.google.com", "maps.google.es":
+            guard path.isEmpty || path == "/" || path == "/maps" || path.hasPrefix("/maps/")
+            else { return nil }
+        case "maps.app.goo.gl":
+            guard path.range(of: #"^/[A-Za-z0-9_-]+/?$"#, options: .regularExpression) != nil
+            else { return nil }
+        case "goo.gl":
+            guard path.range(of: #"^/maps/[A-Za-z0-9_-]+/?$"#, options: .regularExpression) != nil
+            else { return nil }
+        default:
+            return nil
+        }
+        return components
+    }
+
+    static func listing(_ value: String?) -> URL? {
+        guard let components = validatedComponents(value) else { return nil }
+        let path = components.path
+        guard path != "/maps/dir", !path.hasPrefix("/maps/dir/") else { return nil }
+        if components.host?.lowercased() == "maps.app.goo.gl" || components.host?.lowercased() == "goo.gl" {
+            return components.url
+        }
+
+        let items = components.queryItems ?? []
+        let hasPlaceID = items.contains { item in
+            let value = item.value ?? ""
+            let placeID = item.name == "query_place_id" ? value
+                : item.name == "q" && value.hasPrefix("place_id:") ? String(value.dropFirst(9)) : ""
+            return placeID.range(of: #"^[A-Za-z0-9_-]{3,255}$"#, options: .regularExpression) != nil
+        }
+        let hasCID = items.contains {
+            $0.name == "cid" && ($0.value ?? "").range(of: #"^[1-9][0-9]{0,19}$"#, options: .regularExpression) != nil
+        }
+        let hasFeatureID = items.contains {
+            $0.name == "ftid" && ($0.value ?? "").range(
+                of: #"^0x[0-9a-fA-F]+:0x[0-9a-fA-F]+$"#, options: .regularExpression
+            ) != nil
+        }
+        let hasPlaceData = path.hasPrefix("/maps/place/") && components.percentEncodedPath.range(
+            of: #"!(?:1s|16s)[^!/?#]+"#, options: .regularExpression
+        ) != nil
+        return hasPlaceID || hasCID || hasFeatureID || hasPlaceData ? components.url : nil
+    }
+
+    static func search(_ value: String?) -> URL? {
+        guard let components = validatedComponents(value) else { return nil }
+        let path = components.path
+        guard path == "/maps" || path == "/maps/" || path == "/maps/search"
+                || path == "/maps/search/" || path.isEmpty || path == "/",
+              components.queryItems?.contains(where: {
+                  ($0.name == "query" || $0.name == "q")
+                      && !($0.value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              }) == true
+        else { return nil }
+        return components.url
+    }
+}
+
 struct Connector: Decodable, Hashable {
     var connectorId: String?
     var label: String?
@@ -937,6 +1012,42 @@ extension Station {
         if let u = PublicWebURL.validated(navigation?["google"]) { return u }
         if let u = PublicWebURL.validated(navigation?["apple"]) { return u }
         return PublicWebURL.validated("https://maps.apple.com/?ll=\(lat),\(lon)")
+    }
+
+    var googleMapsListingURL: URL? {
+        GoogleMapsURL.listing(navigation?["google_listing"])
+    }
+
+    /// Older services may not send Google links yet. Keep their cards useful with an
+    /// explicitly labeled name/address search, with coordinates only as nearby context.
+    var googleMapsActionURL: URL? {
+        if let url = googleMapsListingURL { return url }
+        if let url = GoogleMapsURL.search(navigation?["google_search"]) { return url }
+        let place = [name, address, city].compactMap { value -> String? in
+            let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return text.isEmpty ? nil : text
+        }.joined(separator: ", ")
+        var query = "EV charging station"
+        if !place.isEmpty { query += " \(place)" }
+        if lat.isFinite, lon.isFinite, (-90...90).contains(lat), (-180...180).contains(lon) {
+            query += " near \(lat),\(lon)"
+        }
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "www.google.com"
+        components.path = "/maps/search/"
+        components.queryItems = [URLQueryItem(name: "api", value: "1"), URLQueryItem(name: "query", value: query)]
+        return components.url
+    }
+
+    var googleMapsActionLabel: String {
+        googleMapsListingURL != nil ? String(localized: "View Google Maps") : String(localized: "Search Google Maps")
+    }
+
+    var googleMapsActionHint: String {
+        googleMapsListingURL != nil
+            ? String(localized: "Opens this charger's Google Maps listing for reviews and place details")
+            : String(localized: "Searches Google Maps; confirm the result matches this charger")
     }
 
     var sourceURL: URL? {

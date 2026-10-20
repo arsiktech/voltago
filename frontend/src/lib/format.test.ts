@@ -15,6 +15,7 @@ import {
   decisionLevel,
   distanceText,
   hasVerifiedPrice,
+  googleMapsLink,
   inViewport,
   isMapLocationVerified,
   isParkingRisk,
@@ -379,6 +380,50 @@ describe('mapsUrl', () => {
     expect(mapsUrl(mk({ navigation: { google: 'file:///tmp/map' }, lat: 1, lon: 2 }))).toBe(
       'https://www.google.com/maps/search/?api=1&query=1,2',
     )
+  })
+})
+
+describe('googleMapsLink', () => {
+  it('opens a known listing separately from coordinate navigation', () => {
+    const href = 'https://maps.app.goo.gl/YXKoYi8GzoUeYwiF7'
+    const station = mk({ navigation: { google_listing: href, google: 'https://www.google.com/maps/search/?api=1&query=1,2' } })
+    expect(googleMapsLink(station)).toEqual({ href, listing: true })
+    expect(mapsUrl(station)).toContain('query=1,2')
+  })
+
+  it('uses place identifiers already published in navigation or provenance', () => {
+    for (const href of [
+      'https://www.google.com/maps/search/?api=1&query=charger&query_place_id=ChIJ_example',
+      'https://www.google.com/maps?cid=123456',
+      'https://www.google.com/maps/place/Charger/data=!4m5!3m4!1s0xc:0xd',
+    ]) {
+      expect(googleMapsLink(mk({ navigation: { google: href } }))).toEqual({ href, listing: true })
+      expect(googleMapsLink(mk({ source_url: href }))).toEqual({ href, listing: true })
+    }
+  })
+
+  it('labels a missing match as a local search with the name and address', () => {
+    const link = googleMapsLink(mk({ name: 'Buenavista', address: 'C/ La Cuesta, 519', city: 'Buenavista del Norte', lat: 28.362, lon: -16.848 }))
+    expect(link.listing).toBe(false)
+    const url = new URL(link.href)
+    expect(url.origin).toBe('https://www.google.com')
+    expect(url.searchParams.get('api')).toBe('1')
+    expect(url.searchParams.get('query')).toContain('Buenavista C/ La Cuesta, 519 Buenavista del Norte near 28.362000,-16.848000')
+  })
+
+  it.each([
+    'https://www.google.com/maps/search/?api=1&query=1,2',
+    'https://www.google.com/maps/place/EV+charger',
+    'https://www.google.com/maps/dir/?api=1&query_place_id=ChIJ_example',
+    'https://google.com.evil.example/maps?cid=123456',
+    'https://www.google.com:444/maps?cid=123456',
+    'https://user:pass@www.google.com/maps?cid=123456',
+    'https://maps.app.goo.gl/',
+    'javascript:alert(1)',
+  ])('never presents an unsafe or unidentified URL as a listing: %s', (href) => {
+    const result = googleMapsLink(mk({ navigation: { google_listing: href, google_search: href } }))
+    expect(result.listing).toBe(false)
+    expect(result.href).toMatch(/^https:\/\/www.google.com\/maps\/search\//)
   })
 })
 

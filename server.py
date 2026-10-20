@@ -57,6 +57,7 @@ from station_truth import (
 
 import agent_mcp
 import community as community_store
+from google_maps import attach_google_maps_navigation
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -1083,6 +1084,7 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["parking"] = normalize_parking_profile(item)
     item["access"] = access_profile(item)
     item["primary_source"] = primary_source_for(item)
+    attach_google_maps_navigation(item)
     item["verification"] = verification_profile(item, live=live)
     item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
@@ -5317,10 +5319,10 @@ def requested_source_strategy() -> Dict[str, Any]:
             {
                 "name": "Google Maps",
                 "status": "navigation-linkout",
-                "method": "Volta creates Google Maps navigation/search links from source-backed coordinates; Google Places content is not mixed into the non-Google map or used as tariff evidence.",
+                "method": "Volta links known Google Maps place identifiers and reviewed share links, with labeled name/address/coordinate searches for unmatched stations. Google Places content is not mixed into the non-Google map or used as tariff evidence.",
                 "records_now": {"navigation_links": "generated per station/card"},
                 "source_url": "https://www.google.com/maps",
-                "risk": "Google Maps is used for driver navigation only. Provider/source pages and onsite signs remain tariff/parking authority.",
+                "risk": "Google Maps opens externally for navigation, reviews and place details; ratings/reviews are not fetched into Volta. Provider/source pages and onsite signs remain tariff/parking authority.",
             },
             {
                 "name": "Electromaps",

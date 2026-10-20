@@ -184,10 +184,18 @@ Volta/            synchronized folder — new .swift files are picked up automat
                       cards put availability and route facts on separate rows so neither
                       is squeezed into unreadable vertical text.
   StationActions.swift       shared map/detail action order: source check first unless
-                             explicit route readiness makes Maps the primary action
+                             explicit route readiness makes Maps the primary action;
+                             separate Google Maps listing/search action on every card/detail
   StationPresentation.swift  compact parking/access facts, separate from charging price;
                              full claim attribution remains in StationViews
 ```
+
+Each card and station detail offers **View Google Maps** when `navigation.google_listing`
+contains a Google place identifier or share link. Otherwise **Search Google Maps** uses
+`navigation.google_search`, or builds a charger/name/address search near the coordinates
+for older services. A search result needs a matching check; neither action adds charging
+evidence or bypasses the existing out-of-service directions confirmation. Google ratings
+and reviews remain on the linked Google Maps page rather than being copied into the app.
 
 `AppState.clearFilters()` restores the launch defaults for free-only, maximum
 price, connector types, minimum power and saved-only filtering. It preserves the

@@ -140,6 +140,13 @@ this file in the same change.
 - Actions: `a` `Open in Maps` (Google/Apple maps href), `a` `Source` (provider page), both
   `target="_blank" rel="noopener noreferrer"`; visible `Details` button with
   `aria-label="Source details for <station title>"` and `aria-expanded`.
+- Each card also has a full-width secondary `a[data-google-maps]`: `listing` is
+  named `View <station> on Google Maps` and displays `View Google Maps`; `search`
+  is named `Find <station> on Google Maps` and displays `Search Google Maps`.
+  The former uses a known listing ID/URL; the latter uses name/address/location
+  to find a match and makes no coverage claim. Both have a 44px minimum target.
+  Map popup cards expose the same listing/search action, including directory and
+  cached cards, without upgrading their evidence or enabling directions there.
 - Details (expanded): source-bound deferred evidence; connector quantities, types,
   rated power and source links; charger information and tariff conditions;
   `Why “<label>”:` decision reason; `Charging claim` / `Parking claim` sections;

@@ -394,20 +394,28 @@ struct SheetView: View {
             emptyState
         } else {
             ForEach(state.listRows) { st in
-                Button {
-                    rowTapFeedback.toggle()
-                    onSelect(st)
-                } label: {
-                    StationCard(station: st, selected: state.focusedStationID == st.id)
+                VStack(spacing: 0) {
+                    Button {
+                        rowTapFeedback.toggle()
+                        onSelect(st)
+                    } label: {
+                        StationCard(station: st)
+                    }
+                    .buttonStyle(VoltaPressButtonStyle(pressedScale: 0.985))
+                    .accessibilityIdentifier("stationRow-\(st.id)")
+                    .accessibilityAddTraits(state.focusedStationID == st.id ? .isSelected : [])
+                    .accessibilityHint("Opens details and shows this charger on the map")
+
+                    StationGoogleMapsAction(station: st)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
                 }
-                .buttonStyle(VoltaPressButtonStyle(pressedScale: 0.985))
+                .voltaCard(selected: state.focusedStationID == st.id)
+                .accessibilityElement(children: .contain)
                 .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .id(st.id)
-                .accessibilityIdentifier("stationRow-\(st.id)")
-                .accessibilityAddTraits(state.focusedStationID == st.id ? .isSelected : [])
-                .accessibilityHint("Opens details and shows this charger on the map")
             }
         }
     }
