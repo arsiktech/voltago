@@ -61,6 +61,14 @@ def _patch_live_sources():
     )
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class _LiveCacheResetMixin:
     """Shared setUp/tearDown for tests that call into live_response: save/restore
     the module-level caches so one test's state can never leak into another

@@ -47,7 +47,7 @@ struct VoltaAPI {
         return try await get("api/chargers", query)
     }
 
-    /// Live viewport fetch (MapaREVE + permitted Gaia public pages merged server-side).
+    /// Live viewport fetch; regional public status feeds merge through the server's shared decision path.
     func live(bbox: BBox, coords: CLLocationCoordinate2D?, maxPrice: Double, availableOnly: Bool) async throws -> ChargersResponse {
         var q: [URLQueryItem] = [
             .init(name: "include_leads", value: "true"),

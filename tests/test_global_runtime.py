@@ -29,6 +29,14 @@ def directory(identifier="global", lat=35.68, lon=139.76, country="JP", currency
     }
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class WorldViewportTests(unittest.TestCase):
     def test_world_cities_are_not_moved_into_spain(self):
         for lat, lon in [(51.5, -0.1), (35.68, 139.76), (-33.87, 151.21), (37.77, -122.42), (89.9, 179.9), (-89.9, -179.9)]:

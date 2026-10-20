@@ -19,6 +19,7 @@ RUNTIME_FILES = (
     "scripts/global_source_catalog.py",
     "scripts/intelligence_index.py",
     "scripts/source_transport.py",
+    "scripts/public_live_status.py",
     "data/free_intelligence.json",
     "data/seed_leads.json",
     "data/source_policy_exclusions.json",

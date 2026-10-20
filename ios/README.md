@@ -13,6 +13,14 @@ Go-now, and only map-pinned when their location is verified). This is the app's 
 hiding leads previously left the national overview empty (fixed 2026-07-18, WS-1). Detailed
 nonfatal source warnings live in Settings rather than competing with the route decision.
 
+Nearby requests can attach fresh Barcelona Endolla and Spain-only Spirii AFIR status
+through the same server decision path as MapaREVE. Existing station IDs remain intact.
+Endolla source details credit Ajuntament de Barcelona and link CC BY 4.0; Spirii details
+credit Spirii and the operator. Retrieval, provider publication and status-change times
+are distinct. Status-only evidence supplies no tariff, and stale or failed status cannot
+claim a free connector. `PublicLiveSourcesUITests` verifies the shared disclosure with
+synthetic loopback fixtures, including both providers and all three clocks.
+
 Place search and map navigation work worldwide, with Spain as the initial region.
 Overview requests include the visible bounds instead of downloading a global catalog.
 Crossing the date line and reaching the poles preserve valid API coordinates; views wider

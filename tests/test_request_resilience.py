@@ -39,6 +39,14 @@ sys.path.insert(0, str(ROOT))
 import server  # noqa: E402
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class AgeMinutesNaiveTimestampTests(unittest.TestCase):
     """Defect 1: parse_iso returns a naive datetime for offset-less input;
     age_minutes then subtracts it from an aware datetime.now(timezone.utc)."""

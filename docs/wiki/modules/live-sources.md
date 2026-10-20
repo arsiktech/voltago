@@ -69,3 +69,23 @@ revocation gate. Overpass uses GET.
   function presence is not evidence that an adapter is active.
 - Cloud/datacenter hosts can receive poorer upstream behavior than a local
   residential IP.
+
+## Endolla and Spirii public status
+
+[`scripts/public_live_status.py`](../../../scripts/public_live_status.py) contributes
+Barcelona Endolla and Spanish Spirii AFIR status through the existing
+`live_response` enrichment and ranking. See the
+[backend design checkpoint and cache/identity contract](../../backend-engine.md#endolla-and-spirii-status-overlay).
+
+Endolla uses the full location/station/port triple. Spirii joins dynamic point
+references to static `idG` and checks the actual address country. Stable bundle
+IDs and EVSE identifiers survive attachment. Shared feed URLs and proximity alone
+cannot identify a site. Failed, stale, conflicting or ambiguous evidence cannot
+grant availability or a Go decision.
+
+Standard `sources[]` retain Ajuntament de Barcelona attribution, CC BY 4.0 and its
+licence link, transformation, fetch, publication and last-change evidence.
+Spirii retains provider and actual operator attribution under the recorded owner
+approval. Its tariffs and schedules are excluded. Payment-required flags never
+become prices. Source-health and source-strategy expose the independent caches;
+transport restricts these adapters to the four exact approved GET URLs.

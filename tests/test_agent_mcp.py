@@ -83,6 +83,14 @@ def empty_live_payload() -> Dict[str, Any]:
     return {"stations": [], "raw_count": 0, "cache": {}, "errors": []}
 
 
+
+def setUpModule():
+    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
+    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
+    live_patch.start()
+    unittest.addModuleCleanup(live_patch.stop)
+
+
 class AgentMcpHttpTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

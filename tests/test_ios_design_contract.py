@@ -109,6 +109,7 @@ PAYWALL_LOCALIZATION_KEYS = {
 # catalog yet.
 TRUST_SOURCE_LOCALIZATION_KEYS = {
     "Attribution: %@",
+    "Feed published: %@",
     "Fresh live status is available; cached rows remain marked stale.",
     "License: %@",
     "Live + cached",
@@ -744,6 +745,7 @@ class IOSDesignContractTests(unittest.TestCase):
             "var attribution: String?",
             "var transformation: String?",
             "var sourceFetchedAt: String?",
+            "var sourcePublishedAt: String?",
         ):
             self.assertIn(field, self.models)
         for visible_contract in (
@@ -751,6 +753,7 @@ class IOSDesignContractTests(unittest.TestCase):
             'Link("License: \\(license)", destination: licenseURL)',
             'Text("Transformation: \\(transformation)")',
             'Text("Source updated: \\(updated)")',
+            'Text("Feed published: \\(published)")',
             'Text("Retrieved: \\(fetched)")',
         ):
             self.assertIn(visible_contract, self.station_views)

@@ -160,6 +160,35 @@ final class StationAdverseTrustTests: XCTestCase {
         XCTAssertEqual(source.safeLicenseURL?.host, "creativecommons.org")
     }
 
+    func testPublicLiveSourcesPreserveThreeClocksWithoutInventingPrice() throws {
+        let station = try TestDecode.station("""
+        {"id":"existing-endolla","name":"Endolla","lat":41.4,"lon":2.1,
+         "lead":false,"status":"AVAILABLE","available":1,"total_evse":2,
+         "verification":{"live_verified":true,"level":"live"},
+         "decision":{"level":"go","label":"Go now"},
+         "sources":[{"name":"Barcelona Endolla live","attribution":"Ajuntament de Barcelona",
+                     "license":"CC BY 4.0","license_url":"https://creativecommons.org/licenses/by/4.0/",
+                     "source_fetched_at":"2026-10-20T16:30:00Z",
+                     "source_published_at":"2026-10-20T16:29:00Z",
+                     "source_last_updated":"2024-01-01T00:00:00Z"},
+                    {"name":"Spirii AFIR","attribution":"Spirii; PowerGo"}]}
+        """)
+        let source = try XCTUnwrap(station.sources?.first)
+        XCTAssertEqual(source.sourceFetchedAt, "2026-10-20T16:30:00Z")
+        XCTAssertEqual(source.sourcePublishedAt, "2026-10-20T16:29:00Z")
+        XCTAssertEqual(source.sourceLastUpdated, "2024-01-01T00:00:00Z")
+        XCTAssertEqual(source.attribution, "Ajuntament de Barcelona")
+        XCTAssertEqual(source.safeLicenseURL?.host, "creativecommons.org")
+        XCTAssertEqual(station.sources?.last?.attribution, "Spirii; PowerGo")
+        XCTAssertNil(station.priceMin)
+        XCTAssertNil(station.tariffDetails)
+        XCTAssertTrue(station.isRouteReady, "Last-change time is not a heartbeat")
+        var stale = station
+        stale.cacheStale = true
+        XCTAssertFalse(stale.isRouteReady)
+        XCTAssertFalse(stale.canShowLiveAvailability)
+    }
+
     func testAllPublicHandoffSurfacesShareStrictHTTPURLValidation() throws {
         let unsafeValues = [
             "file:///tmp/private.html",

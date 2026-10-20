@@ -173,24 +173,29 @@ export function SourceProvenance({ st }: { st: Station }) {
                 transition={{ duration: 0.14, delay: Math.min(i, 6) * 0.025 }}
               >
                 <Ext href={s.url}>{s.name || 'source'}</Ext>
-                {s.evidence && <div className="mt-0.5 text-faint">{s.evidence}</div>}
+                {s.evidence && <div className="mt-0.5 text-muted">{s.evidence}</div>}
                 {(s.attribution || s.license) && (
-                  <div className="mt-0.5 text-faint">
+                  <div className="mt-0.5 text-muted">
                     {s.attribution ? <>Attribution: {s.attribution}</> : null}
                     {s.attribution && s.license ? ' · ' : null}
                     {s.license ? <Ext href={s.license_url}>{s.license}</Ext> : null}
                   </div>
                 )}
                 {s.transformation && (
-                  <div className="mt-0.5 text-faint">Transformation: {s.transformation}</div>
+                  <div className="mt-0.5 text-muted">Transformation: {s.transformation}</div>
                 )}
                 {s.source_last_updated && (
-                  <div className="mt-0.5 text-faint">
+                  <div className="mt-0.5 text-muted">
                     Source updated: {s.source_last_updated}
                   </div>
                 )}
-                {!s.source_last_updated && s.source_fetched_at && (
-                  <div className="mt-0.5 text-faint">
+                {s.source_published_at && (
+                  <div className="mt-0.5 text-muted">
+                    Feed published: {s.source_published_at}
+                  </div>
+                )}
+                {s.source_fetched_at && (
+                  <div className="mt-0.5 text-muted">
                     Retrieved: {s.source_fetched_at}
                   </div>
                 )}

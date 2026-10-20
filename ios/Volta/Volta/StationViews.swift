@@ -658,7 +658,13 @@ struct StationDetailView: View {
                                 Text("Source updated: \(updated)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
-                            } else if let fetched = src.sourceFetchedAt, !fetched.isEmpty {
+                            }
+                            if let published = src.sourcePublishedAt, !published.isEmpty {
+                                Text("Feed published: \(published)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let fetched = src.sourceFetchedAt, !fetched.isEmpty {
                                 Text("Retrieved: \(fetched)")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -708,7 +714,7 @@ struct StationDetailView: View {
 
     private func connectorColor(_ status: String?) -> Color {
         let s = (status ?? "").uppercased()
-        if s.contains("AVAIL") { return Theme.go }
+        if s == "AVAILABLE" { return Theme.go }
         if s.contains("CHARG") || s.contains("OCCUP") || s.contains("BUSY") { return Theme.check }
         if s.contains("OUT") || s.contains("FAULT") || s.contains("UNAVAIL") { return Theme.danger }
         return .secondary

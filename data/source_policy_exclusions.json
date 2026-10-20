@@ -1,13 +1,18 @@
 {
-  "version": 6,
-  "updated_at": "2026-10-06",
+  "version": 7,
+  "updated_at": "2026-10-20",
   "normalization": "unicode-casefold-strip-diacritics",
   "granted_reuse": [
     {
       "id": "fenie-owner-attested-permission",
       "family": "Feníe Energía Recarga",
-      "source_family_terms": ["fenie", "fenieenergia"],
-      "origin_hosts": ["recarga.fenieenergia.es"],
+      "source_family_terms": [
+        "fenie",
+        "fenieenergia"
+      ],
+      "origin_hosts": [
+        "recarga.fenieenergia.es"
+      ],
       "status": "permitted",
       "basis": "owner-attested express written permission covering public redistribution",
       "granted_on": "2026-07-18",
@@ -18,46 +23,129 @@
       "attribution_required": "Feníe Energía — Red de recarga (public map)",
       "audit_note": "The written permission is retained by the owner off-repo and was recorded from the owner's explicit in-session attestation; it was not independently verified in this workspace. As of 2026-10-06 the separate request-method block is lifted by the owner's narrow read-only query exception.",
       "revocation_gate": "Remove this record and restore a Feníe exclusion if the permission is withdrawn or its scope no longer covers public redistribution."
+    },
+    {
+      "id": "endolla-public-live-status",
+      "family": "Barcelona Endolla",
+      "source_family_terms": [
+        "endolla"
+      ],
+      "origin_hosts": [
+        "opendata-ajuntament.barcelona.cat"
+      ],
+      "status": "permitted",
+      "basis": "CC BY 4.0 with owner approval for live status reuse",
+      "granted_on": "2026-10-20",
+      "attribution_required": "Ajuntament de Barcelona / Endolla",
+      "scope": [
+        "exact public static/status GET endpoints",
+        "bounded caching",
+        "identity joins",
+        "status normalization",
+        "public status redistribution"
+      ],
+      "access_method_note": "Only the two exact anonymous HTTPS GET endpoints per source in scripts/source_transport.py; no redirects, credentials or provider actions.",
+      "transformation_required": "Identify joining and normalization by Volta Go. Preserve source timestamps and uncertainty.",
+      "revocation_gate": "Remove this grant to disable runtime collection. Existing exclusions still apply.",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "id": "spirii-public-live-status",
+      "family": "Spirii AFIR Spain",
+      "source_family_terms": [
+        "spirii"
+      ],
+      "origin_hosts": [
+        "api.spirii.com"
+      ],
+      "status": "permitted",
+      "basis": "Owner-approved public AFIR Spain status reuse; no named dataset licence established",
+      "granted_on": "2026-10-20",
+      "attribution_required": "Spirii and the actual operator named in each static site",
+      "scope": [
+        "exact public static/status GET endpoints",
+        "bounded caching",
+        "identity joins",
+        "status normalization",
+        "public status redistribution"
+      ],
+      "access_method_note": "Only the two exact anonymous HTTPS GET endpoints per source in scripts/source_transport.py; no redirects, credentials or provider actions.",
+      "transformation_required": "Identify joining and normalization by Volta Go. Preserve source timestamps and uncertainty.",
+      "revocation_gate": "Remove this grant to disable runtime collection. Existing exclusions still apply.",
+      "out_of_scope": [
+        "tariff parsing",
+        "tariff schedules",
+        "price inference",
+        "payment or session actions"
+      ]
     }
   ],
   "exclusions": [
     {
       "id": "electromaps-reuse-rights",
       "family": "Electromaps",
-      "source_family_terms": ["electromaps"],
-      "origin_hosts": ["electromaps.com"],
+      "source_family_terms": [
+        "electromaps"
+      ],
+      "origin_hosts": [
+        "electromaps.com"
+      ],
       "match_scope": "structured-source-origin-only",
       "status": "link-only-rights-blocked",
       "homepage_url": "https://www.electromaps.com/",
       "terms_url": "https://www.electromaps.com/es/terms-and-conditions",
       "reason": "Electromaps' public terms reserve extraction, sharing, and exploitation rights absent express permission. Public GET access and permissive robots rules do not grant storage, transformation, or redistribution rights.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
       "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence."
     },
     {
       "id": "chargemap-reuse-and-robots",
       "family": "Chargemap",
-      "source_family_terms": ["chargemap public map api"],
-      "origin_hosts": ["chargemap.com"],
+      "source_family_terms": [
+        "chargemap public map api"
+      ],
+      "origin_hosts": [
+        "chargemap.com"
+      ],
       "match_scope": "structured-source-origin-only",
       "status": "removed-rights-blocked",
       "homepage_url": "https://chargemap.com/",
       "terms_url": "https://chargemap.com/es-es/about/legal",
       "reason": "Chargemap's generic robots rule disallows crawling and its terms withhold extraction, reproduction, and reuse rights absent written authorization. Volta therefore retains no Chargemap station evidence.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
       "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review."
     },
     {
       "id": "consum-locator-reuse-permission",
       "family": "Consum store locator",
-      "source_family_terms": ["consum store locator"],
-      "origin_hosts": ["consum.es"],
+      "source_family_terms": [
+        "consum store locator"
+      ],
+      "origin_hosts": [
+        "consum.es"
+      ],
       "match_scope": "structured-source-origin-only",
       "status": "link-only-rights-blocked",
       "homepage_url": "https://www.consum.es/",
       "terms_url": "https://www.consum.es/aviso-legal-y-terminos-y-condiciones/",
       "reason": "Consum's public locator and same-site JSON surface do not provide an open reuse grant. The legal notice limits copying and storage and permits only conservative homepage linking absent written authorization.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
       "reintroduction_gate": "Written permission covering periodic retrieval, caching, transformation, redistribution, attribution, and deep links; homepage links alone are not station evidence."
     }
   ]
