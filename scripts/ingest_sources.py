@@ -27,7 +27,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 try:
     from .source_policy import (
@@ -140,8 +140,13 @@ ZARAGOZA_CATEGORY_URL = "https://www.zaragoza.es/sede/servicio/equipamiento/cate
 ZARAGOZA_REUSE_URL = "https://www.zaragoza.es/sede/portal/aviso-legal#condiciones"
 RED_MOVEM_TARIFF_URL = "https://www.dip-badajoz.es/toolsphp/descarga.php?fr=6&id=bop_2024-07-08000000_firmado.pdf"
 RED_MOVEM_CURRENT_URL = "https://sostenibilidad.dip-badajoz.es/entrada/noticias/la-diputacion-de-badajoz-inicia-los-trabajos-de-ampliacion-y-repotenciacion-de-la-red-provincial-de-recarga-de-vehiculos-electricos"
-RED_MOVEM_TARIFF_CHECKED_AT = "2026-07-15T00:00:00Z"
+RED_MOVEM_TARIFF_CHECKED_AT = "2026-10-20T00:00:00Z"
 RED_MOVEM_REVIEW_MAX_AGE_DAYS = 90
+# The operator's own tariff page. Each build re-reads it; while it still states the
+# regulated <=22 kW price, the review is current as of that fetch, so the manual date
+# above is only the fallback when the page cannot be read or no longer matches.
+RED_MOVEM_TARIFF_PAGE_URL = "https://www.movembadajoz.es/"
+RED_MOVEM_TARIFF_PAGE_PATTERN = re.compile(r"Hasta\s*22\s*kW\s*0[,.]25\s*€\s*/\s*kWh", re.I)
 MORALEJA_FREE_URL = "https://www.acciona.com/es/gsc"
 MORALEJA_VENUE_URL = "https://moralejagreen.com/servicios/"
 MORALEJA_EVIDENCE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60
@@ -1895,6 +1900,47 @@ def assert_reference_review_current(
         raise RuntimeError(f"{label} review is outside its {max_age_days}-day validity window")
 
 
+def red_movem_tariff_review(
+    *,
+    now: Optional[datetime] = None,
+    page_fetcher: Optional[Callable[[], FetchArtifact]] = None,
+) -> Dict[str, Any]:
+    """Decide once per build whether the Red MOVEM tariff may be attached.
+
+    Prefer a fresh read of the operator's tariff page: when it still states the
+    regulated <=22 kW price, the review is current as of that fetch. Otherwise fall
+    back to the dated manual review while it is inside its validity window. When
+    neither holds, the result is ``stale`` and callers withhold the tariff. A stale
+    tariff never fails the OSM source: dropping every OSM row for four priced rows
+    removed ~900 published IDs and blocked every refresh.
+    """
+    fetcher = page_fetcher or (lambda: cached_fetch(RED_MOVEM_TARIFF_PAGE_URL, "red_movem_tariff_page.html", ttl_hours=24, timeout=20))
+    page_detail = "not checked"
+    try:
+        artifact = fetcher()
+        text = html.unescape(re.sub(r"<[^>]+>", " ", artifact.decode("utf-8", "replace")))
+        if RED_MOVEM_TARIFF_PAGE_PATTERN.search(re.sub(r"\s+", " ", text)):
+            assert_reference_review_current(
+                artifact.fetched_at, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=now, label="Red MOVEM tariff page"
+            )
+            return {
+                "status": "page-verified",
+                "checked_at": artifact.fetched_at,
+                "url": RED_MOVEM_TARIFF_PAGE_URL,
+                "detail": "Operator tariff page states €0.25/kWh up to 22 kW.",
+            }
+        page_detail = "tariff page no longer states €0.25/kWh up to 22 kW"
+    except Exception as exc:  # network, cache or age failure: fall back to the manual review
+        page_detail = f"tariff page unavailable ({type(exc).__name__})"
+    try:
+        assert_reference_review_current(
+            RED_MOVEM_TARIFF_CHECKED_AT, RED_MOVEM_REVIEW_MAX_AGE_DAYS, now=now, label="Red MOVEM tariff"
+        )
+    except RuntimeError as exc:
+        return {"status": "stale", "checked_at": RED_MOVEM_TARIFF_CHECKED_AT, "url": RED_MOVEM_TARIFF_URL, "detail": f"{exc}; {page_detail}"}
+    return {"status": "manual", "checked_at": RED_MOVEM_TARIFF_CHECKED_AT, "url": RED_MOVEM_TARIFF_URL, "detail": page_detail}
+
+
 def source_osm(records: List[Dict[str, Any]]) -> None:
     # National (was VALENCIA_BBOX until 2026-07-15): the app went national in June but this
     # source never did, so Spain outside Valencia had no OSM evidence at all.
@@ -1921,6 +1967,7 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
     # which keeps the records the answering tiles did produce.
     if failures and not elements:
         raise RuntimeError(f"Overpass returned no usable elements; first failure: {failures[0]}")
+    movem_review: Optional[Dict[str, Any]] = None
     for el, body in elements:
         tags = el.get("tags") or {}
         fee = (tags.get("fee") or "").lower()
@@ -1991,14 +2038,20 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
         if is_red_movem:
             if movem_price is None:
                 continue
-            assert_reference_review_current(
-                RED_MOVEM_TARIFF_CHECKED_AT,
-                RED_MOVEM_REVIEW_MAX_AGE_DAYS,
-                label="Red MOVEM tariff",
-            )
-            price = movem_price
-            is_free = False
-            is_cheap = True
+            if movem_review is None:
+                movem_review = red_movem_tariff_review()
+                print(f"Red MOVEM tariff review: {movem_review['status']} ({movem_review['detail']})")
+            if movem_review["status"] == "stale":
+                # Withhold the tariff, keep the station. The network has charged since
+                # 2025, so a stale review never falls back to an OSM fee=no claim.
+                movem_price = None
+                price = None
+                is_free = False
+                is_cheap = False
+            else:
+                price = movem_price
+                is_free = False
+                is_cheap = True
         addr_parts = [tags.get("addr:street"), tags.get("addr:housenumber"), tags.get("addr:city")]
         address = " ".join(x for x in addr_parts if x) or tags.get("addr:full") or ""
         access = tags.get("access") or ""
@@ -2033,29 +2086,39 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
         photos = panoramax_photos_from_tags(tags, source_url)
         before_add = len(records)
         add_record(records, source="OpenStreetMap public tags", source_url=source_url, name=name, address=address, city=tags.get("addr:city") or "", lat=lat, lon=lon, price_min=0.0 if is_free else price, free_condition=free_condition, connector_labels=labels, max_power_kw=max_kw, status="VERIFY", reliability="community-free" if is_free else "community-cost" if price is not None else "community-price-unknown", evidence=evidence, parking_kind=parking_kind, parking_note="OSM location/hardware evidence and the separately attributed official tariff still require an onsite/provider check before routing." if movem_price is not None else "OSM community evidence; verify price, access and parking signs before routing.", raw={**tags, "osm_type": osm_type, "osm_id": osm_id, "osm_last_modified": el.get("timestamp"), "red_movem_tariff_match": movem_price is not None}, connectors=connector_rows, photos=photos, port_count=count_int(tags.get("capacity"), default=0), source_artifact=fetch_artifact_or_none(body))
-        if movem_price is not None and len(records) > before_add:
+        if movem_price is not None and movem_review is not None and len(records) > before_add:
             row = records[-1]
+            review_checked_at = movem_review["checked_at"]
             row["sources"].append({
                 "name": "Red MOVEM official public-price regulation",
                 "url": RED_MOVEM_TARIFF_URL,
                 "evidence": "BOP 129/2024 sets €0.25/kWh at connectors at or below 22 kW; higher-power connectors do not qualify.",
-                "checked_at": RED_MOVEM_TARIFF_CHECKED_AT,
-                "source_fetched_at": RED_MOVEM_TARIFF_CHECKED_AT,
+                "checked_at": review_checked_at,
+                "source_fetched_at": review_checked_at,
             })
-            row["sources"].append({
-                "name": "Red MOVEM current-network confirmation",
-                "url": RED_MOVEM_CURRENT_URL,
-                "evidence": "Diputación de Badajoz confirms the network remains current while upgrades can change connector power.",
-                "checked_at": RED_MOVEM_TARIFF_CHECKED_AT,
-                "source_fetched_at": RED_MOVEM_TARIFF_CHECKED_AT,
-            })
+            if movem_review["status"] == "page-verified":
+                row["sources"].append({
+                    "name": "Red MOVEM current-network confirmation",
+                    "url": RED_MOVEM_TARIFF_PAGE_URL,
+                    "evidence": "The operator's tariff page currently states €0.25/kWh up to 22 kW; upgrades can change connector power.",
+                    "checked_at": review_checked_at,
+                    "source_fetched_at": review_checked_at,
+                })
+            else:
+                row["sources"].append({
+                    "name": "Red MOVEM current-network confirmation",
+                    "url": RED_MOVEM_CURRENT_URL,
+                    "evidence": "Diputación de Badajoz confirms the network remains current while upgrades can change connector power.",
+                    "checked_at": review_checked_at,
+                    "source_fetched_at": review_checked_at,
+                })
             row["charge_claim"] = {
                 "type": "cheap",
                 "source": "Red MOVEM official public-price regulation",
                 "url": RED_MOVEM_TARIFF_URL,
                 "price_min": 0.25,
                 "summary": free_condition,
-                "checked_at": RED_MOVEM_TARIFF_CHECKED_AT,
+                "checked_at": review_checked_at,
             }
             row["source_fetched_at"] = oldest_contributing_source_timestamp([row]) or row.get("source_fetched_at")
             row["primary_source"] = primary_source_for(row)
