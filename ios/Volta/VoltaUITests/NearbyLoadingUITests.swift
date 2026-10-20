@@ -35,7 +35,19 @@ final class NearbyLoadingUITests: XCTestCase {
 
     private func locateFlow(appearance: String) {
         let app = XCUIApplication()
+        // Reset only after terminating the previous app, so its MapKit location provider
+        // cannot raise a permission dialog while the next test is launching.
+        app.terminate()
         app.resetAuthorizationStatus(for: .location)
+        var permissionGranted = false
+        let permissionMonitor = addUIInterruptionMonitor(withDescription: "Location permission") { alert in
+            let allow = alert.buttons["Allow While Using App"]
+            guard allow.exists else { return false }
+            allow.tap()
+            permissionGranted = true
+            return true
+        }
+        defer { removeUIInterruptionMonitor(permissionMonitor) }
         app.launchArguments = [
             "-voltaBaseURL", server.baseURLString,
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
@@ -50,12 +62,32 @@ final class NearbyLoadingUITests: XCTestCase {
         let started = ContinuousClock.now
         locate.tap()
 
-        let allow = app.alerts.buttons["Allow While Using App"]
-        if allow.waitForExistence(timeout: 5) { allow.tap() }
-        XCTAssertTrue(known.waitForExistence(timeout: 10), "Known chargers waited on the held live response")
+        // A prompt raised after the tap may not trigger an interruption monitor until the
+        // next interaction. Read SpringBoard directly rather than the app's own alerts.
+        if !permissionGranted {
+            let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+                .alerts.buttons["Allow While Using App"]
+            XCTAssertTrue(allow.waitForExistence(timeout: 5), "The system location permission dialog did not appear")
+            allow.tap()
+        }
+        let appeared = known.waitForExistence(timeout: 10)
+        if !appeared {
+            let requests = XCTAttachment(string: "NEARBY_REQUESTS\n" + server.recordedRequestPaths().joined(separator: "\n"))
+            requests.lifetime = .keepAlways
+            add(requests)
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "nearby-app-hierarchy"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+            let failure = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            failure.name = "nearby-failure-\(appearance.lowercased())"
+            failure.lifetime = .keepAlways
+            add(failure)
+        }
+        XCTAssertTrue(appeared, "Known chargers waited on the held live response")
         XCTAssertTrue(known.label.localizedCaseInsensitiveContains("Not live"))
         XCTAssertFalse(known.label.localizedCaseInsensitiveContains("Go now"))
-        let timing = XCTAttachment(string: "Locate tap to known nearby row, including permission interaction: \(ContinuousClock.now - started)")
+        let timing = XCTAttachment(string: "Locate tap to known nearby row: \(ContinuousClock.now - started)")
         timing.lifetime = .keepAlways
         add(timing)
 
