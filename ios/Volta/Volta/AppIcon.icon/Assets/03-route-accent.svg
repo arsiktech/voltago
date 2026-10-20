@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="coral" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff805c"/>
-      <stop offset="1" stop-color="#ff563d"/>
-    </linearGradient>
-  </defs>
-  <path fill="url(#coral)" d="M720 151c68 31 119 82 150 148l-94 58c-21-43-55-76-99-98Z"/>
-</svg>

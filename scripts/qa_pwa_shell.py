@@ -126,11 +126,15 @@ def main() -> int:
         check(re.fullmatch(r"#[0-9a-fA-F]{6}", manifest.get("background_color", "")) is not None, "manifest background_color missing solid hex", failures)
         icons = manifest.get("icons") or []
         check(bool(icons), "manifest icons list is empty", failures)
-        icon = icons[0] if icons else {}
-        check(bool(icon.get("src")), "manifest icon src missing", failures)
-        check("512x512" in icon.get("sizes", ""), "manifest icon must advertise 512x512", failures)
-        purpose_tokens = set(icon.get("purpose", "").split())
-        check({"any", "maskable"}.issubset(purpose_tokens), "manifest icon purpose must include any and maskable", failures)
+        check(all(i.get("src") for i in icons), "manifest icon src missing", failures)
+        # A maskable icon is cropped by the launcher, so it must be a separate asset from the
+        # regular icon (combining "any maskable" in one file makes one of them look wrong).
+        def has_icon(purpose: str) -> bool:
+            return any("512x512" in i.get("sizes", "") and purpose in i.get("purpose", "any").split() for i in icons)
+        check(has_icon("any"), "manifest needs a 512x512 icon with purpose any", failures)
+        check(has_icon("maskable"), "manifest needs a separate 512x512 maskable icon", failures)
+        check(not any({"any", "maskable"} <= set(i.get("purpose", "").split()) for i in icons),
+              "manifest icons must not combine any and maskable in one file", failures)
 
         svg_root = ET.fromstring(icon_text)
         check(svg_root.tag.endswith("svg"), "volta icon is not valid SVG", failures)

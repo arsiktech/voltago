@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <defs>
-    <linearGradient id="electric" x1="0.15" y1="0" x2="0.8" y2="1">
-      <stop offset="0" stop-color="#e8ff36"/>
-      <stop offset="1" stop-color="#a7e900"/>
-    </linearGradient>
-  </defs>
-  <path fill="url(#electric)" d="m570 218-220 352h150l-72 256 244-374H520Z"/>
-</svg>

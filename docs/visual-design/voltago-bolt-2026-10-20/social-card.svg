@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+  <defs><linearGradient id="sg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1A2519"/><stop offset="1" stop-color="#0C120B"/></linearGradient>
+  <radialGradient id="sh" cx="0.82" cy="0.5" r="0.55"><stop offset="0" stop-color="#C8F03C" stop-opacity="0.16"/><stop offset="1" stop-color="#C8F03C" stop-opacity="0"/></radialGradient>
+  <clipPath id="sc"><path d="M224 0h576c124 0 224 100 224 224v576c0 124-100 224-224 224H224C100 1024 0 924 0 800V224C0 100 100 0 224 0Z"/></clipPath></defs>
+  <rect width="1200" height="630" fill="url(#sg)"/><rect width="1200" height="630" fill="url(#sh)"/>
+  <g transform="translate(830,165) scale(0.293)"><g clip-path="url(#sc)"><defs><linearGradient id="bgd" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1A2519"/><stop offset="1" stop-color="#0C120B"/></linearGradient></defs><rect width="1024" height="1024" fill="url(#bgd)"/>
+  <defs><filter id="dg" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="26"/></filter></defs>
+  <g transform="translate(512,512) scale(1.06) translate(-512,-512)">
+    <path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z" fill="#C8F03C" opacity="0.55" filter="url(#dg)"/>
+    <path d="M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z" fill="#C8F03C"/>
+  </g></g>
+    <path d="M224 0h576c124 0 224 100 224 224v576c0 124-100 224-224 224H224C100 1024 0 924 0 800V224C0 100 100 0 224 0Z" fill="none" stroke="#C8F03C" stroke-opacity="0.18" stroke-width="10"/></g>
+  <text x="84" y="268" font-family="-apple-system,'SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="96" font-weight="700" letter-spacing="-2.5" fill="#EEF2E6">Volta Go</text>
+  <text x="88" y="350" font-family="-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="38" font-weight="500" fill="#C8F03C">Find a charger you can trust</text>
+  <text x="88" y="400" font-family="-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="38" font-weight="500" fill="#C8F03C">before you drive.</text>
+  <text x="88" y="540" font-family="-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="28" font-weight="500" fill="#A9B3A2">voltago.app</text>
+</svg>

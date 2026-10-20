@@ -739,7 +739,9 @@ export default function App() {
       </MapErrorBoundary>
       <header className="app-header">
         <a href="/" className="brand-lockup" aria-label="Volta Go home">
-          <img src="/volta-icon.svg" alt="" className="h-9 w-9" />
+          {/* The mark follows the site theme, not the OS preference the favicon uses. */}
+          <img src="/volta-icon-light.svg" alt="" className="h-9 w-9 dark:hidden" />
+          <img src="/volta-icon-dark.svg" alt="" className="hidden h-9 w-9 dark:block" />
           <span>Volta <span className="font-normal">Go</span><span className="brand-period">.</span></span>
         </a>
         <p className="hidden text-sm text-muted md:block">Good stops. Less guesswork.</p>
