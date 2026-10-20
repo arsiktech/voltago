@@ -128,8 +128,8 @@ class IngestionCanaryTests(unittest.TestCase):
             path = pathlib.Path(tmp) / "db.json"
             path.write_text(json.dumps({"records": [
                 {
-                    "source": "Electromaps web-map API",
-                    "sources": [{"name": "Electromaps web-map API"}],
+                    "source": "Consum store locator",
+                    "sources": [{"name": "Consum store locator"}],
                 },
                 {
                     "source": "OpenChargeMap public snapshot",
@@ -150,15 +150,35 @@ class IngestionCanaryTests(unittest.TestCase):
     def test_source_family_threshold_ignores_explicit_policy_exclusions(self):
         failures, checked = qa_ingestion_canary.source_family_threshold_failures(
             [["OpenChargeMap public snapshot", 100]],
-            [["Electromaps web-map API", 189], ["OpenChargeMap public snapshot", 100]],
+            [["Consum store locator", 189], ["Electromaps web-map API", 233],
+             ["Chargemap public map API", 20], ["OpenChargeMap public snapshot", 100]],
             min_ratio=0.85,
             min_count=5,
             label="baseline",
         )
 
         self.assertEqual(failures, [])
+        self.assertNotIn("Consum store locator", checked)
         self.assertNotIn("Electromaps web-map API", checked)
+        self.assertNotIn("Chargemap public map API", checked)
         self.assertIn("OpenChargeMap public snapshot", checked)
+
+    def test_typed_price_annotations_cannot_supply_station_family_coverage(self):
+        claims = [
+            {"kind": "electromaps_community", "source": "Electromaps",
+             "source_url": "https://www.electromaps.com/mapi/v2/locations/1"},
+            {"kind": "chargemap_pass", "source": "Chargemap",
+             "source_url": "https://map.chargemap.com/pool-prices/v3/prices/2"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "db.json"
+            path.write_text(json.dumps({"records": [
+                {"source": "Official registry", "sources": [{"name": "Official registry"}],
+                 "price_evidence": claims},
+                {"source": "Electromaps web-map API", "price_evidence": claims},
+                {"source": "Chargemap public map API", "price_evidence": claims},
+            ]}), encoding="utf-8")
+            self.assertEqual(dict(qa_ingestion_canary.source_evidence_counts(path)), {"Official registry": 1})
 
     def test_existing_candidate_skips_rebuild_and_audits_exact_path(self):
         candidate = pathlib.Path("/tmp/exact-candidate.json")

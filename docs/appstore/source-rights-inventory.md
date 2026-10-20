@@ -3,12 +3,20 @@
 Status: **owner certification required before public distribution or monetization**.
 This inventory is not a legal opinion and does not infer permission from technical access.
 
-Research update 2026-07-15: `docs/source-research-2026-07-15-national.md` records current
-official URLs, access observations, and conservative product verdicts. It is evidence for the
-owner's decision, **not** the owner's certification. Plan 011 implemented the conservative
-verdicts: Electromaps and Consum are link-only, Chargemap is removed, and the canonical database
-contains no direct or nested station/claim/media evidence from those families. Reintroduction
-requires written permission plus a new source-policy and adapter review.
+Collection-policy update 2026-10-20: the owner authorized bounded, anonymous public
+GET collection from Repsol, Electromaps and Chargemap for Spain-only additive price
+annotations on existing rows. The Electromaps and Chargemap station-evidence exclusions
+remain enforced. Only their exact corresponding `price_evidence` kinds are exempt
+from their own exclusion's origin check. Other excluded origins inside annotations
+still block the row. The owner decision is **not a provider licence or rights clearance**.
+Consum remains excluded without an annotation exception. See
+[the price-evidence contract](../price-evidence.md) for scope and budgets.
+
+The 2026-07-15 research remains a dated rights finding, not the owner's certification.
+The owner must separately review provider reuse/redistribution rights and
+[Apple App Store Guideline 5.2.2](https://developer.apple.com/app-store/review/guidelines/#intellectual-property)
+before submitting a build that uses third-party source content. Anonymous access and an
+owner policy record do not establish the provider permission that Apple may request.
 
 Volta's public/read-only collection boundary protects users and providers from private
 API or transaction abuse. It does **not** answer whether a database, page, status field,
@@ -42,8 +50,9 @@ Acceptable owner decisions are: `APPROVED WITH CONDITIONS`, `WRITTEN PERMISSION`
 | MapaREVE | Public OCPI/web API; live bounded-area fetch | Station identity, coordinates, tariff/status/connectors/operator fields | **UNVERIFIED FOR APP REDISTRIBUTION/COMMERCIAL USE** — review [MapaREVE](https://www.mapareve.es/), endpoint terms, OCPI producer rights, and operator-field provenance | N/A unless media appears | `[FILL]` | `[REQUIRED]` |
 | Gaia Charge | Public start-session HTML pages; GET-only parsing; no session start or payment | Seeded station, connector status, tariff/session-display facts | **UNVERIFIED** — public availability is not permission; request written API/export permission if terms do not authorize reuse | N/A in current direct parser unless added later | `[FILL]` | `[REQUIRED]` |
 | Feníe Energía Recarga | **Permitted (owner-attested) offline snapshot, 2026-10-06.** Anonymous GET of the public map for a session/CSRF value, then one read-only marker-list POST; the owner approved that single POST as a narrow exception enforced by `scripts/source_transport.py` (exact host/path, empty body, no redirects, bounded budget). Only Feníe's own `gratuito=1`, in-service, non-test stations are ingested; rows are cached snapshots, never live | Station identity, coordinates, connectors, free flag, parking count from Feníe's own public map (no status as live) | Owner attested on 2026-07-18 to written redistribution permission retained off-repo (not independently verified in this workspace); the request-method block was lifted by the owner on 2026-10-06. The permission record in `data/source_policy_exclusions.json` `granted_reuse` is the revocation gate. | No Feníe photos/logos are copied | Attribution `Feníe Energía — Red de recarga (public map)` is stamped on each row; weekly snapshot, no live status inferred; withdrawal restores the exclusion record | `OWNER-ATTESTED PERMISSION + READ-ONLY POST EXCEPTION 2026-10-06; RE-CERTIFY BEFORE RELEASE` |
-| Electromaps | **Link-only in this build.** Direct ingestion/live-refresh adapters are disabled; structured source-origin policy excludes direct and nested evidence | Conventional homepage/source attribution only; zero station/location/price/status/connector/media records | **2026-07-15 RESEARCH VERDICT IMPLEMENTED: LINK-ONLY pending express permission.** Current terms reserve exploitation/reuse rights; reachable endpoints/robots rules are not a reuse grant. | None from Electromaps | Preserve only conventional external links; reintroduce data/media only with express written permission covering caching, transformation, and redistribution | `LINK-ONLY IMPLEMENTED 2026-07-15; WRITTEN PERMISSION + SEPARATE ADAPTER/MEDIA REVIEW REQUIRED TO REINTRODUCE` |
-| Chargemap | **Removed in this build.** Direct ingestion is disabled and structured source-origin policy excludes direct and nested evidence | No station/location/status/connector/media records; zero retained evidence | **2026-07-15 RESEARCH VERDICT IMPLEMENTED: SKIP without written API/data permission.** Generic robots rules disallow crawling and the current CGU withholds extraction/reuse absent authorization. | None from Chargemap | No extraction or copied content; a future adapter requires written permission and a fresh GET-only/source-policy review | `REMOVED 2026-07-15; WRITTEN PERMISSION REQUIRED TO REINTRODUCE` |
+| Repsol published network tariff | **Active additive price-only collection, Spain only.** One anonymous public tariff-page GET each build | Full published normal/fast/ultrafast guide on rows with exact registry operator REPSOL SOLUCIONES ENERGÉTICAS SA; fast is **from** €0.48/kWh and stations may differ; no invented kW bands | **OWNER COLLECTION POLICY, 2026-10-20; NOT A PROVIDER LICENCE.** [Repsol legal notice](https://www.repsol.es/particulares/aviso-legal/) restricts extraction/reuse. No provider permission was established by this activation | No media is copied | Revalidate the complete contextual table and station caveat on every build; withhold only this annotation if the page is unavailable or changed; no station-price verification | `ACTIVE NETWORK GUIDE; PROVIDER RIGHTS + APPLE 5.2.2 REVIEW OPEN` |
+| Electromaps | **Active additive price-only collection, bounded Spain pilot.** Anonymous GET list/detail via `source_transport`; historical pin/live/photo adapters stay disabled | Dated community `charge_price` and separate parking metadata on existing rows; no copied usernames, photos or reviews; no primary/free/live authority | **OWNER COLLECTION POLICY, 2026-10-20; NOT A PROVIDER LICENCE.** [Published terms](https://www.electromaps.com/es/terms-and-conditions) reserve sharing/reuse rights. Station evidence remains excluded; only `price_evidence.kind=electromaps_community` has a collection exception. Provider permission remains unverified | No media is copied | Preserve the source update date, fetch date, raw tariff text and uncertainty. Withhold claims without a valid source date. Review caching, transformation, redistribution and commercial-use basis separately | `ACTIVE PRICE-ONLY COLLECTION; PROVIDER RIGHTS + APPLE 5.2.2 REVIEW OPEN` |
+| Chargemap | **Active additive price-only collection, bounded Spain pilot.** Anonymous GET map list and pool-price HTML via `source_transport`; historical pin adapter stays disabled | Explicit **Chargemap Pass** payment-route tariff and billing/idle-fee terms on existing rows; no direct-operator price or primary/free/live authority | **OWNER COLLECTION POLICY, 2026-10-20; NOT A PROVIDER LICENCE.** [Current terms](https://community-optins.chargemap.com/conditions/3/document?locale=es_ES) reserve extraction/reuse rights. Station evidence remains excluded; only `price_evidence.kind=chargemap_pass` has a collection exception. Public readability does not grant redistribution permission | No media is copied | Preserve per-started-kWh billing, idle trigger/grace, numeric fees, source/fetch dates and tariff text. List `is_free` cannot create a free claim | `ACTIVE PRICE-ONLY COLLECTION; PROVIDER RIGHTS + APPLE 5.2.2 REVIEW OPEN` |
 | OpenChargeMap | Public snapshot/API-derived intelligence | Station/location/cost/status/connectors and possible photos | **UNVERIFIED** — capture the exact current [OpenChargeMap](https://openchargemap.org/site/develop/api) license/attribution/API conditions and upstream contributor terms | Verify each photo license/author/attribution; do not assume the station-data license covers media | `[FILL]` | `[REQUIRED]` |
 | OpenStreetMap | Public-tag snapshot/intelligence | Station/location/tags | **UNVERIFIED IN THIS KIT** — capture current [OSM copyright and license](https://www.openstreetmap.org/copyright), database/Produced Work analysis, attribution, and share-alike decision | N/A unless linked media is later used | `[FILL]` | `[REQUIRED]` |
 | València OpenData | Public municipal dataset | Station/location/public infrastructure facts | **UNVERIFIED** — record exact dataset page, publisher, version, license, attribution, update date, and commercial-use permission | N/A unless dataset includes media | `[FILL]` | `[REQUIRED]` |
@@ -66,10 +75,12 @@ Acceptable owner decisions are: `APPROVED WITH CONDITIONS`, `WRITTEN PERMISSION`
   basis and the revocation gate (remove it and restore the exclusion to turn Feníe off).
   Public-facing submission text (review notes, release runbook, goal status) still describes
   Feníe as link-only until a Feníe-bearing data promotion is actually made.
-- Electromaps and Consum remediation is implemented as link-only, and Chargemap is removed.
-  Their adapters, runtime promotion, cached/assembled responses, generated records, nested
-  claims/media/connectors, and public source metadata are policy-partitioned. The canonical
-  Plan 011 database has zero retained evidence from all three families.
+- The 2026-10-20 owner policy activates only bounded Spain price annotations for Repsol,
+  Electromaps and Chargemap. It does not activate historical directory-pin, live-refresh,
+  photo or review adapters. Consum remains link-only and policy-excluded.
+- Provider rights and Apple Guideline 5.2.2 review remain open for these annotations.
+  Record the actual reviewed source/data revision before public distribution. Do not label
+  this owner collection policy as a provider-granted licence or a completed release gate.
 - If factual-data reuse is uncertain, prefer a user-verifiable **link-only lead** with no
   copied protected text/media, or remove the source until permission is documented.
 - If photo rights are uncertain, omit the photo even if the station facts remain usable.

@@ -23,6 +23,7 @@ from scripts.intelligence_index import APPLICATION_ID, SCHEMA_VERSION, Intellige
 from scripts.json_recordset import load_json_recordset
 from scripts.global_source_catalog import ADAPTER_IDS
 from scripts.source_policy import load_source_policy_exclusions, partition_records
+from scripts.price_evidence import price_evidence_counts
 
 
 def _health_summaries(path: Path, metadata: dict, summaries: dict, seeds_path: Path) -> None:
@@ -113,6 +114,7 @@ def build_index(source: str | Path, output: str | Path, *, policy_path: str | Pa
     os.close(descriptor)
     temporary = Path(temporary)
     count = excluded = 0
+    evidence_counts = price_evidence_counts(())
     summaries = {"global_source_counts": {"gaia_total": 0, "gaia_free": 0, "adapters": {}}, "fenie_origin_records": 0}
     gaia_pattern = re.compile(r"\bgaia\b", re.I)
     connection = None
@@ -139,6 +141,8 @@ def build_index(source: str | Path, output: str | Path, *, policy_path: str | Pa
             if not kept:
                 return None
             row = kept[0]
+            for key, value in price_evidence_counts([row]).items():
+                evidence_counts[key] += value
             identifier = str(row.get("id") or "")
             canonical = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
             connection.execute("INSERT INTO stations VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -176,7 +180,7 @@ def build_index(source: str | Path, output: str | Path, *, policy_path: str | Pa
             digest.update(zlib.decompress(payload))
         digest.update(b"]")
         metadata.update(total_records=count, recordset_records=count, recordset_sha256=digest.hexdigest(),
-                        source_policy_excluded_records=excluded)
+                        source_policy_excluded_records=excluded, price_evidence_counts=evidence_counts)
         metadata["index_manifest"] = {
             "schema_version": SCHEMA_VERSION, "record_encoding": "canonical-json-zlib",
             "records": count, "source_sha256": source_sha256, "policy_sha256": policy_sha256,

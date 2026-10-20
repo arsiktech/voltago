@@ -24,6 +24,7 @@ struct StationCard: View {
                 }
             }
 
+            StationPriceEvidence(station: station)
             StationBadges(station: station)
             StationParkingAccessFacts(station: station)
             AvailabilityLine(station: station, showFreshness: true)
@@ -359,6 +360,7 @@ struct StationDetailView: View {
                     }
                     StationBadges(station: station)
                     StationPriceBlock(station: station, alignment: .leading, large: true)
+                    StationPriceEvidence(station: station, showsSourceLinks: true)
                     AvailabilityLine(station: station)
                     // An out-of-service report is already the strongest warning; a second,
                     // hedged "verify before routing" note would only blur it.

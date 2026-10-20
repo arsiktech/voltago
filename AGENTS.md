@@ -60,7 +60,10 @@ than after every edit. Report the result, checks run, and material remaining gap
   marker list), enforced in `scripts/source_transport.py` (exact HTTPS host/path/body, no
   redirects, bounded budget); any other POST must raise `SourcePolicyBlocked`, so prefer
   GET (e.g. Overpass `?data=`) and never widen the allowlist without a new owner decision.
-  Preserve source exclusions (Electromaps, Chargemap, Consum); no authenticated scraping,
+  Preserve source exclusions, including Consum. The owner permits only Spain-only,
+  anonymous GET price annotations from Repsol, Electromaps and Chargemap, attached after
+  existing-row dedupe/merge with no new pins or primary price/live authority. This collection
+  policy is not a provider licence; see `docs/price-evidence.md`. No authenticated scraping,
   login bypass, or provider session/payment actions.
 - Python backend/scripts/tests use only the standard library; iOS uses native
   frameworks only. Keep frontend dependencies purposeful and the list usable without maps.

@@ -118,6 +118,15 @@ TRUST_SOURCE_LOCALIZATION_KEYS = {
     "Transformation: %@",
 }
 
+PRICE_EVIDENCE_LOCALIZATION_KEYS = {
+    "Repsol published tariff · station may differ",
+    "Electromaps community price · %@",
+    "Price with Chargemap Pass",
+    "Checked: %@",
+    "Date unknown",
+    "Parking: %@",
+}
+
 
 class IOSDesignContractTests(unittest.TestCase):
     @classmethod
@@ -386,6 +395,28 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertIn("claim.sourceLabel", self.station_views)
         self.assertIn("claim.sourceURL", self.station_views)
 
+    def test_additive_price_evidence_is_shared_plain_text_on_cards_and_details(self):
+        evidence = (IOS / "PriceEvidence.swift").read_text(encoding="utf-8")
+        self.assertIn("var priceEvidence: [PriceEvidence]? = nil", self.models)
+        self.assertIn("struct PriceEvidence: Codable, Hashable, Identifiable", evidence)
+        self.assertIn("var sourceUpdatedAt: String?", evidence)
+        self.assertIn("var fetchedAt: String?", evidence)
+        self.assertIn("PublicWebURL.validated(sourceUrl)", evidence)
+        self.assertIn("ForEach(items) { item in", evidence)
+        self.assertIn("Text(verbatim: item.label)", evidence)
+        self.assertIn("Text(verbatim: item.text)", evidence)
+        self.assertIn(".fixedSize(horizontal: false, vertical: true)", evidence)
+        self.assertIn(".accessibilityElement(children: .combine)", evidence)
+        self.assertNotIn("Theme.go", evidence)
+        self.assertNotIn("MiniBadge", evidence)
+        self.assertNotIn("enumerated()", evidence)
+        self.assertIn("StationPriceEvidence(station: station)", self.station_views)
+        self.assertIn("StationPriceEvidence(station: station, showsSourceLinks: true)", self.station_views)
+        # The value is confined to display; primary pricing, estimates, map prices,
+        # discovery filters and route actions keep their existing evidence inputs.
+        for filename in ("AppState.swift", "VehicleModels.swift", "RootView.swift", "StationActions.swift"):
+            self.assertNotIn("priceEvidence", (IOS / filename).read_text(encoding="utf-8"))
+
     def test_row_card_shows_freshness_fact_gated_on_presence_not_lead_status(self):
         """DIR-03: the ROW card (StationRow/AvailabilityLine) must show evidence age / live
         freshness for BOTH live and lead rows, gated only on freshnessText's presence --
@@ -626,11 +657,12 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertEqual(len(PAYWALL_LOCALIZATION_KEYS), 89)
         self.assertTrue(PAYWALL_LOCALIZATION_KEYS.issubset(strings))
         self.assertTrue(TRUST_SOURCE_LOCALIZATION_KEYS.issubset(strings))
+        self.assertTrue(PRICE_EVIDENCE_LOCALIZATION_KEYS.issubset(strings))
         self.assertTrue({"", "%lld"}.isdisjoint(strings))
         sheet_status_keys = {"%lld leads", "%lld live · %lld leads"}
         self.assertTrue(sheet_status_keys.issubset(strings))
         placeholder_pattern = re.compile(r"%(?:\d+\$)?(lld|@)")
-        for key in PAYWALL_LOCALIZATION_KEYS | TRUST_SOURCE_LOCALIZATION_KEYS | sheet_status_keys:
+        for key in PAYWALL_LOCALIZATION_KEYS | TRUST_SOURCE_LOCALIZATION_KEYS | PRICE_EVIDENCE_LOCALIZATION_KEYS | sheet_status_keys:
             entry = strings[key]
             self.assertEqual(entry.get("extractionState"), "manual")
             source_placeholders = sorted(placeholder_pattern.findall(key))

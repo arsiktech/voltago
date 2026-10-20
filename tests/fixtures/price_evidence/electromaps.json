@@ -1,0 +1,62 @@
+{
+  "id": 757380,
+  "name": "Iberdrola Avda. Gaspar Aguilar 1-7",
+  "latitude": 39.459062306723,
+  "longitude": -0.388613504299,
+  "charge_price": "0,36€/KWh",
+  "parking_price": "0€, están en la acera",
+  "updated_at": "2025-08-16T19:12:42+0000",
+  "address": {
+    "address": "Av. de Gaspar Aguilar, 7, Jesús, 46007 València, Valencia, España",
+    "street": "Avinguda de Gaspar Aguilar",
+    "street_number": "7",
+    "postal_code": "46007",
+    "city": "46007",
+    "area_lvl1": "Comunidad Valenciana",
+    "area_lvl2": "Valencia",
+    "country_code": "ES"
+  },
+  "cpo": null,
+  "connectors": [
+    {
+      "id": 4294362,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    },
+    {
+      "id": 4294363,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    },
+    {
+      "id": 4294364,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    },
+    {
+      "id": 4294365,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    },
+    {
+      "id": 4294366,
+      "type": "IEC_62196_T2",
+      "kw": 3.6
+    },
+    {
+      "id": 4294367,
+      "type": "IEC_62196_T2",
+      "kw": 3.6
+    },
+    {
+      "id": 4294368,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    },
+    {
+      "id": 4294369,
+      "type": "IEC_62196_T2",
+      "kw": 22
+    }
+  ]
+}

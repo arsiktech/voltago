@@ -67,6 +67,7 @@ class InclusionTests(unittest.TestCase):
 
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(ing, "ACTIVE_SOURCE_ADAPTERS", (registry_source,)))
+            stack.enter_context(mock.patch.object(ing, "enrich_price_evidence", return_value={}))
             payload = ing.build_payload()
 
         self.assertEqual(len(payload["records"]), 1)

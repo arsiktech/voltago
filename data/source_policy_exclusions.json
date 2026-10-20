@@ -1,13 +1,18 @@
 {
-  "version": 6,
-  "updated_at": "2026-10-06",
+  "version": 7,
+  "updated_at": "2026-10-20",
   "normalization": "unicode-casefold-strip-diacritics",
   "granted_reuse": [
     {
       "id": "fenie-owner-attested-permission",
       "family": "Feníe Energía Recarga",
-      "source_family_terms": ["fenie", "fenieenergia"],
-      "origin_hosts": ["recarga.fenieenergia.es"],
+      "source_family_terms": [
+        "fenie",
+        "fenieenergia"
+      ],
+      "origin_hosts": [
+        "recarga.fenieenergia.es"
+      ],
       "status": "permitted",
       "basis": "owner-attested express written permission covering public redistribution",
       "granted_on": "2026-07-18",
@@ -24,41 +29,162 @@
     {
       "id": "electromaps-reuse-rights",
       "family": "Electromaps",
-      "source_family_terms": ["electromaps"],
-      "origin_hosts": ["electromaps.com"],
+      "source_family_terms": [
+        "electromaps"
+      ],
+      "origin_hosts": [
+        "electromaps.com"
+      ],
       "match_scope": "structured-source-origin-only",
-      "status": "link-only-rights-blocked",
+      "status": "station-evidence-blocked-price-annotations-permitted",
       "homepage_url": "https://www.electromaps.com/",
       "terms_url": "https://www.electromaps.com/es/terms-and-conditions",
-      "reason": "Electromaps' public terms reserve extraction, sharing, and exploitation rights absent express permission. Public GET access and permissive robots rules do not grant storage, transformation, or redistribution rights.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
-      "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence."
+      "reason": "Station evidence remains excluded. The owner permits only the corresponding typed price_evidence annotations under owner_collection_decisions. This collection policy does not grant a provider reuse licence or rights clearance.",
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
+      "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence.",
+      "permitted_price_evidence_kinds": [
+        "electromaps_community"
+      ]
     },
     {
       "id": "chargemap-reuse-and-robots",
       "family": "Chargemap",
-      "source_family_terms": ["chargemap public map api"],
-      "origin_hosts": ["chargemap.com"],
+      "source_family_terms": [
+        "chargemap public map api"
+      ],
+      "origin_hosts": [
+        "chargemap.com"
+      ],
       "match_scope": "structured-source-origin-only",
-      "status": "removed-rights-blocked",
+      "status": "station-evidence-blocked-price-annotations-permitted",
       "homepage_url": "https://chargemap.com/",
       "terms_url": "https://chargemap.com/es-es/about/legal",
-      "reason": "Chargemap's generic robots rule disallows crawling and its terms withhold extraction, reproduction, and reuse rights absent written authorization. Volta therefore retains no Chargemap station evidence.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
-      "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review."
+      "reason": "Station evidence remains excluded. The owner permits only the corresponding typed price_evidence annotations under owner_collection_decisions. This collection policy does not grant a provider reuse licence or rights clearance.",
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
+      "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review.",
+      "permitted_price_evidence_kinds": [
+        "chargemap_pass"
+      ]
     },
     {
       "id": "consum-locator-reuse-permission",
       "family": "Consum store locator",
-      "source_family_terms": ["consum store locator"],
-      "origin_hosts": ["consum.es"],
+      "source_family_terms": [
+        "consum store locator"
+      ],
+      "origin_hosts": [
+        "consum.es"
+      ],
       "match_scope": "structured-source-origin-only",
       "status": "link-only-rights-blocked",
       "homepage_url": "https://www.consum.es/",
       "terms_url": "https://www.consum.es/aviso-legal-y-terminos-y-condiciones/",
       "reason": "Consum's public locator and same-site JSON surface do not provide an open reuse grant. The legal notice limits copying and storage and permits only conservative homepage linking absent written authorization.",
-      "scope": ["runtime-stations", "intelligence-records", "ingestion-output", "source-family-canaries"],
+      "scope": [
+        "runtime-stations",
+        "intelligence-records",
+        "ingestion-output",
+        "source-family-canaries"
+      ],
       "reintroduction_gate": "Written permission covering periodic retrieval, caching, transformation, redistribution, attribution, and deep links; homepage links alone are not station evidence."
+    }
+  ],
+  "owner_collection_decisions": [
+    {
+      "status": "active-additive-price-only-bounded",
+      "decision_type": "owner-collection-policy-not-provider-licence",
+      "decided_on": "2026-10-20",
+      "country_codes": [
+        "ES"
+      ],
+      "http_methods": [
+        "GET"
+      ],
+      "access": "anonymous-public-only-via-source_transport",
+      "purpose": "Attach dated price_evidence to existing canonical rows after dedupe and cross-source merge; never create directory pins.",
+      "authority_limit": "No primary charging or parking price, free/cheap, verification, live availability or route-ready authority; existing official/live evidence remains unchanged.",
+      "provider_reuse_licence_granted": false,
+      "release_review": "Separate provider reuse/redistribution and Apple App Store Guideline 5.2.2 review remains required; owner collection policy is not rights clearance.",
+      "id": "repsol-published-network-tariff",
+      "family": "Repsol",
+      "source_family_terms": [
+        "repsol"
+      ],
+      "origin_hosts": [
+        "www.repsol.es"
+      ],
+      "endpoint_templates": [
+        "https://www.repsol.es/particulares/vehiculos/movilidad-electrica/recarga-fuera-de-casa/"
+      ],
+      "terms_url": "https://www.repsol.es/particulares/aviso-legal/"
+    },
+    {
+      "status": "active-additive-price-only-bounded",
+      "decision_type": "owner-collection-policy-not-provider-licence",
+      "decided_on": "2026-10-20",
+      "country_codes": [
+        "ES"
+      ],
+      "http_methods": [
+        "GET"
+      ],
+      "access": "anonymous-public-only-via-source_transport",
+      "purpose": "Attach dated price_evidence to existing canonical rows after dedupe and cross-source merge; never create directory pins.",
+      "authority_limit": "No primary charging or parking price, free/cheap, verification, live availability or route-ready authority; existing official/live evidence remains unchanged.",
+      "provider_reuse_licence_granted": false,
+      "release_review": "Separate provider reuse/redistribution and Apple App Store Guideline 5.2.2 review remains required; owner collection policy is not rights clearance.",
+      "id": "electromaps-community-price",
+      "family": "Electromaps",
+      "source_family_terms": [
+        "electromaps"
+      ],
+      "origin_hosts": [
+        "www.electromaps.com"
+      ],
+      "endpoint_templates": [
+        "https://www.electromaps.com/mapi/v2/locations",
+        "https://www.electromaps.com/mapi/v2/locations/{id}"
+      ],
+      "terms_url": "https://www.electromaps.com/es/terms-and-conditions"
+    },
+    {
+      "status": "active-additive-price-only-bounded",
+      "decision_type": "owner-collection-policy-not-provider-licence",
+      "decided_on": "2026-10-20",
+      "country_codes": [
+        "ES"
+      ],
+      "http_methods": [
+        "GET"
+      ],
+      "access": "anonymous-public-only-via-source_transport",
+      "purpose": "Attach dated price_evidence to existing canonical rows after dedupe and cross-source merge; never create directory pins.",
+      "authority_limit": "No primary charging or parking price, free/cheap, verification, live availability or route-ready authority; existing official/live evidence remains unchanged.",
+      "provider_reuse_licence_granted": false,
+      "release_review": "Separate provider reuse/redistribution and Apple App Store Guideline 5.2.2 review remains required; owner collection policy is not rights clearance.",
+      "id": "chargemap-pass-price",
+      "family": "Chargemap",
+      "source_family_terms": [
+        "chargemap"
+      ],
+      "origin_hosts": [
+        "map.chargemap.com"
+      ],
+      "endpoint_templates": [
+        "https://map.chargemap.com/mappy/charging_pools.json",
+        "https://map.chargemap.com/pool-prices/v3/prices/{id}?locale=es-es&noBootstrap=true&noFooter=true"
+      ],
+      "terms_url": "https://community-optins.chargemap.com/conditions/3/document?locale=es_ES"
     }
   ]
 }

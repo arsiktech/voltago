@@ -328,6 +328,12 @@ class IndexedRuntimeTests(unittest.TestCase):
         self.rows = [directory("global_ocm_tokyo"), directory("global_ocm_sydney", -33.87, 151.21, "AU", "AUD"),
                      directory("east", 0, 179.9, "FJ", "FJD"), directory("west", 0, -179.9, "FJ", "FJD")]
         self.rows[0]["merged_ids"] = ["tokyo-alias"]
+        # Additive counters must be computed during indexing, not by scanning at request time.
+        self.rows[1]["price_evidence"] = [{"kind": "chargemap_pass", "source": "Chargemap",
+            "label": "Price with Chargemap Pass", "text": "Synthetic tariff fixture",
+            "source_url": "https://map.chargemap.com/pool-prices/v3/prices/1",
+            "source_updated_at": None, "fetched_at": "2026-10-20T12:00:00Z",
+            "price_per_kwh": None, "currency": "EUR"}]
         self.source = self.folder / "source.json"
         self.source.write_text(json.dumps({"records": self.rows, "generated_at": "2026-10-13T00:00:00Z"}))
         self.index_path = self.folder / "catalogue.sqlite"
@@ -352,6 +358,8 @@ class IndexedRuntimeTests(unittest.TestCase):
         self.assertEqual(len(raw["records"]), 4)
         health = server.source_health_summary()
         self.assertEqual(health["intelligence"]["by_country"], {"AU": 1, "FJ": 2, "JP": 1})
+        self.assertEqual(health["intelligence"]["price_evidence_counts"]["chargemap_pass"], 1)
+        self.assertEqual(server.requested_source_strategy()["price_evidence_counts"]["total"], 1)
         self.assertEqual(server.global_source_counts(raw["records"])["adapters"], {"ocm": 2})
         self.assertEqual(server.fenie_origin_record_count(raw["records"]), 0)
         self.assertEqual(server.intelligence_counts(raw)["free_records"], 0)

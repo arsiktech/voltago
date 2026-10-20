@@ -78,9 +78,27 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
         self.assertEqual(result["delta"]["missing_ids"], 1)
         self.assertEqual(result["delta"]["merged_ids"], 0)
 
+    def test_permitted_price_annotation_cannot_replace_a_missing_station_id(self) -> None:
+        old = row("old", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
+        other = row("other", "OpenChargeMap", "https://openchargemap.io/site/poi/details/3")
+        keep = row("kept", "OpenChargeMap", "https://openchargemap.io/site/poi/details/2")
+        claim = {"kind": "electromaps_community", "source": "Electromaps",
+                 "source_url": "https://www.electromaps.com/mapi/v2/locations/1"}
+        old["price_evidence"] = [claim]
+        other["price_evidence"] = [claim]
+        keep["price_evidence"] = [claim]
+        keep["merged_ids"] = ["old", "other"]
+        # Two missing IDs exceed the existing gate's one-ID allowance.
+        run, result = self._run({"records": [old, other, keep]}, {"records": [keep]})
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["policy_exclusions"]["baseline"]["records"], 0)
+        self.assertEqual(result["delta"]["missing_ids"], 2)
+        self.assertEqual(result["delta"]["merged_ids"], 0)
+
     def test_intentional_exclusion_is_removed_from_baseline_before_delta(self) -> None:
         safe = row("safe", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
-        excluded = row("blocked", "Electromaps web-map API", "https://www.electromaps.com/es/punto-de-carga/1")
+        excluded = row("blocked", "Consum web-map API", "https://www.consum.es/es/punto-de-carga/1")
         run, result = self._run(
             {"records": [safe, excluded], "errors": []},
             {"records": [safe], "errors": []},
@@ -95,7 +113,7 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
 
     def test_rebuilt_candidate_with_excluded_origin_fails_closed(self) -> None:
         safe = row("safe", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
-        excluded = row("blocked", "Directory", "https://www.electromaps.com/es/punto-de-carga/1")
+        excluded = row("blocked", "Directory", "https://www.consum.es/es/punto-de-carga/1")
         run, result = self._run(
             {"records": [safe], "errors": []},
             {"records": [safe, excluded], "errors": []},

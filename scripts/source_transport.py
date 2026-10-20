@@ -22,6 +22,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import math
+import re
 import threading
 import time
 import urllib.parse
@@ -216,3 +217,55 @@ def policy_urlopen(
         raise _blocked("POST exception timeout must be positive and bounded")
     _charge_budget(exception_id)
     return _build_post_opener(cookiejar).open(request, timeout=timeout)
+
+
+def public_price_urlopen(request: urllib.request.Request, *, timeout: float) -> Any:
+    """Anonymous, non-redirecting GET for the three additive price sources only."""
+    try:
+        parsed = urllib.parse.urlsplit(request.full_url)
+        port = parsed.port
+    except ValueError as exc:
+        raise _blocked("Price evidence URL is malformed") from exc
+    headers = {name.lower() for name in (*request.headers, *request.unredirected_hdrs)}
+    if (request.get_method() != "GET" or request.data is not None
+            or parsed.scheme != "https" or parsed.username or parsed.password
+            or port not in (None, 443) or parsed.fragment
+            or headers & _FORBIDDEN_POST_HEADERS or not 0 < timeout <= 12):
+        raise _blocked("Price evidence requires anonymous bounded HTTPS GET")
+    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    allowed = False
+    if parsed.hostname == "www.repsol.es":
+        allowed = parsed.path == "/particulares/vehiculos/movilidad-electrica/recarga-fuera-de-casa/" and not query
+    elif parsed.hostname == "www.electromaps.com":
+        allowed = bool(re.fullmatch(r"/mapi/v2/locations/\d{1,12}", parsed.path)) and not query
+        if parsed.path == "/mapi/v2/locations":
+            fixed = {"realtime": "false", "connectors": "", "types": "ON_STREET,PARKING,AIRPORT,CAMPING,HOTEL,RESTAURANT,SHOP,WORKSHOP,FUEL_STATION,CAR_DEALER,MALL,TAXI", "power": "3", "app": "false", "rfid": "false", "favorites": "false", "skipAuthTokenValidation": "true"}
+            allowed = all(query.get(k) == [v] for k, v in fixed.items()) and set(query) == set(fixed) | {"latNE", "lngNE", "latSW", "lngSW"}
+            if allowed:
+                allowed = _ordered_price_bbox(query, ("latSW", "lngSW", "latNE", "lngNE"))
+    elif parsed.hostname == "map.chargemap.com":
+        if parsed.path == "/mappy/charging_pools.json" and set(query) == {"NW", "SE"}:
+            try:
+                n, w = map(float, query["NW"][0].split(";"))
+                s, e = map(float, query["SE"][0].split(";"))
+                allowed = len(query["NW"]) == len(query["SE"]) == 1 and _price_bbox(s, w, n, e)
+            except (ValueError, IndexError):
+                pass
+        elif re.fullmatch(r"/pool-prices/v3/prices/\d{1,12}", parsed.path):
+            allowed = query == {"locale": ["es-es"], "noBootstrap": ["true"], "noFooter": ["true"]}
+    if not allowed:
+        raise _blocked("Unreviewed price-evidence GET endpoint or query")
+    # A fresh opener cannot carry cookies or follow a redirect into authentication,
+    # payment or another source. No POST exceptions are invoked here.
+    return urllib.request.build_opener(_NoRedirect()).open(request, timeout=timeout)
+
+
+def _price_bbox(s: float, w: float, n: float, e: float) -> bool:
+    return all(math.isfinite(x) for x in (s, w, n, e)) and 27 <= s < n <= 44.5 and -18.5 <= w < e <= 5
+
+
+def _ordered_price_bbox(query: Dict[str, list], keys: tuple) -> bool:
+    try:
+        return all(len(query[k]) == 1 for k in keys) and _price_bbox(*(float(query[k][0]) for k in keys))
+    except (ValueError, IndexError):
+        return False

@@ -156,7 +156,7 @@ class StationSummaryTests(unittest.TestCase):
 
     def test_missing_excluded_rejected_and_ambiguous_ids_return_no_station(self):
         self.rows += [
-            directory_row("excluded", source="Chargemap", source_url="https://chargemap.com/station"),
+            directory_row("excluded", source="Consum", source_url="https://www.consum.es/station"),
             directory_row("removed", name="This charging station does not exist", status="UNAVAILABLE"),
             directory_row("duplicate", lat=28.7), directory_row("duplicate", lat=28.8),
         ]

@@ -184,6 +184,7 @@ class CachedFetchProvenanceTests(unittest.TestCase):
 
         with ExitStack() as stack:
             stack.enter_context(mock.patch.object(ing, "ACTIVE_SOURCE_ADAPTERS", (cached_source,)))
+            stack.enter_context(mock.patch.object(ing, "enrich_price_evidence", return_value={}))
             stack.enter_context(mock.patch.object(ing, "fetch", side_effect=TimeoutError("offline")))
             payload = ing.build_payload()
 

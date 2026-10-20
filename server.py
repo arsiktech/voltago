@@ -46,6 +46,7 @@ import hmac
 from scripts.json_recordset import load_json_recordset
 from scripts.global_source_catalog import ADAPTERS as GLOBAL_ADAPTERS, ADAPTER_IDS as GLOBAL_ADAPTER_IDS
 from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_sha256
+from scripts.price_evidence import price_evidence_counts
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from station_truth import (
@@ -65,6 +66,13 @@ ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
 SOURCE_POLICY_EXCLUSIONS = load_source_policy_exclusions(DATA / "source_policy_exclusions.json")
 VEHICLES = vehicle_store.VehicleConnections()
+PRICE_EVIDENCE_SOURCE_STATUS = "active-additive-price-only-bounded"
+PRICE_EVIDENCE_DECISION_TYPE = "owner-collection-policy-not-provider-licence"
+PRICE_EVIDENCE_POLICY = (
+    "Owner policy permits bounded anonymous public GET collection in Spain for additive price evidence on existing stations only. "
+    "It is not a provider licence or rights clearance. Apple App Store Guideline 5.2.2 review remains separate. "
+    "Claims cannot set primary charging or parking prices, free/cheap filters, live verification or route-ready status."
+)
 
 
 def source_policy_record_allowed(record: Dict[str, Any]) -> bool:
@@ -2092,6 +2100,27 @@ def source_rows_union(primary: Dict[str, Any], secondary: Dict[str, Any]) -> Lis
     return rows[:10]
 
 
+def preserve_price_evidence(primary: Dict[str, Any], secondary: Dict[str, Any]) -> None:
+    """Retain additive annotations when an existing merge drops/replaces a row.
+
+    These objects never enter ``sources``: their URLs, prices and timestamps must
+    not affect station identity, corroboration, primary pricing or live authority.
+    Existing merge predicates and their winning row remain unchanged.
+    """
+    evidence: List[Dict[str, Any]] = []
+    seen = set()
+    for station in (primary, secondary):
+        for claim in station.get("price_evidence") or []:
+            if not isinstance(claim, dict):
+                continue
+            key = json.dumps(claim, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+            if key not in seen:
+                seen.add(key)
+                evidence.append(deepcopy(claim))
+    if evidence:
+        primary["price_evidence"] = evidence
+
+
 # plans/007 step 3: spatial+identity bucketing for the three O(n*m) pairwise matchers
 # above/below (merge_gaia_stations, remove_duplicate_leads,
 # merge_nearby_source_stations). The matchers themselves (likely_same_station, and the
@@ -2191,10 +2220,12 @@ def merge_gaia_stations(stations: List[Dict[str, Any]], gaia_stations: List[Dict
             # provenance; a stale Gaia-only site is still appended and demoted below.
             previous["sources"] = source_rows_union(previous, gaia)
             previous["source_count"] = len(previous["sources"])
+            preserve_price_evidence(previous, gaia)
             _index_add(index, match_index, previous)
             continue
         gaia["sources"] = source_rows_union(gaia, previous)
         gaia["source_count"] = len(gaia["sources"])
+        preserve_price_evidence(gaia, previous)
         merged[match_index] = gaia
         _index_add(index, match_index, gaia)  # gaia's own id/coords/urls now live at this slot
     return merged
@@ -2216,6 +2247,7 @@ def remove_duplicate_leads(leads: List[Dict[str, Any]], stations: List[Dict[str,
             match = stations[match_index]
             match["sources"] = source_rows_union(match, lead)
             match["source_count"] = len(match["sources"])
+            preserve_price_evidence(match, lead)
             # A later lead may share a URL with THIS lead (now folded into match) even
             # if it doesn't share one with match's original sources -- keep it findable.
             _index_add(index, match_index, match)
@@ -2257,6 +2289,7 @@ def merge_nearby_source_stations(stations: List[Dict[str, Any]], secondary_stati
             # the promoted secondary row as corroborating evidence.
             match["sources"] = source_rows_union(match, f)
             match["source_count"] = len(match["sources"])
+            preserve_price_evidence(match, f)
             _index_add(index, match_index, match)
     return merged
 
@@ -2315,6 +2348,8 @@ def _is_epoch_ts(ts: Any) -> bool:
 
 def _electromaps_detail(loc_id: str) -> Optional[Dict[str, Any]]:
     """Fetch a location detail (current real-time connector status), cached short by id."""
+    if not ELECTROMAPS_DIRECT_ENABLED:
+        return None
     now = time.time()
     with _CACHE_LOCKS["electromaps"]:
         cached = ELECTROMAPS_CACHE.get(loc_id)
@@ -2407,6 +2442,7 @@ def build_electromaps_station(lead: Dict[str, Any], detail: Dict[str, Any], fetc
         "navigation": lead.get("navigation"),
         "electromaps_id": str(detail.get("id")),
     }
+    preserve_price_evidence(record, lead)
     attach_connector_summary(record)
     if record.get("available", 0) > 0:
         record["status"] = "AVAILABLE"
@@ -2424,6 +2460,8 @@ def build_electromaps_station(lead: Dict[str, Any], detail: Dict[str, Any], fetc
 def fetch_electromaps_live(targets: List[Dict[str, Any]], *, max_price: float, fetched_at: str) -> Dict[str, Any]:
     """Refresh real-time status for the given in-view Electromaps free/cheap leads (concurrent,
     per-id cached). Returns the live stations plus the ids we checked and the ids we promoted."""
+    if not ELECTROMAPS_DIRECT_ENABLED:
+        return {"stations": [], "checked_ids": set(), "promoted_ids": set(), "dead_ids": set()}
     pairs: List[Tuple[str, Dict[str, Any]]] = []
     seen_ids = set()
     for lead in targets:
@@ -3320,6 +3358,7 @@ def load_intelligence_meta() -> Dict[str, Any]:
             payload = load_json_recordset(p, object_pairs_hook=_interning_object_hook(), record_transform=clean_record)
             allowed = payload.get("records") or []
             payload["total_records"] = len(allowed)
+            payload["price_evidence_counts"] = price_evidence_counts(allowed)
             payload["recordset_sha256"] = runtime_recordset_sha256(allowed)
             payload["recordset_records"] = len(allowed)
             payload["source_policy_excluded_records"] = excluded_count
@@ -3525,7 +3564,7 @@ def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, An
     intel_records, intel_coords, seed_records, seed_coords = _scoped_intelligence_pool(bbox)
     intel = deepcopy(_filter_by_coords(intel_records, intel_coords, bbox))
     manual = deepcopy(_filter_by_coords(seed_records, seed_coords, bbox))
-    seen = set()
+    seen: Dict[Any, Dict[str, Any]] = {}
     out: List[Dict[str, Any]] = []
     for lead in intel + manual:
         lat = safe_float(lead.get("lat"))
@@ -3535,8 +3574,9 @@ def load_all_leads(bbox: Optional[Dict[str, float]] = None) -> List[Dict[str, An
         else:
             key = ("name", str(lead.get("name", "")).lower()[:48])
         if key in seen:
+            preserve_price_evidence(seen[key], lead)
             continue
-        seen.add(key)
+        seen[key] = lead
         out.append(lead)
     # Finding 4: refresh the two time-derived fields on the final (post-dedup)
     # in-view subset -- see _refresh_time_derived_fields's docstring.
@@ -3890,7 +3930,7 @@ SUMMARY_OVERVIEW_FIELDS = frozenset("""
     price_min price_max current_price_min price_currency price_native_unit price_label is_free is_cheap free_condition price_claim_type
     tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
     status available total_evse source source_url source_label primary_source source_count reliability confidence
-    claim_conflict parking access verification decision pricing price_window_status tariff_details
+    claim_conflict parking access verification decision pricing price_window_status tariff_details price_evidence
     freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
 """.split())
 SUMMARY_SOURCE_FIELDS = frozenset({"name", "url", "license", "license_url", "attribution"})
@@ -4076,6 +4116,7 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
     payload = {
         "stations": [],
         "leads": out,
+        "price_evidence_counts": price_evidence_counts(out),
         "meta": {
             "scope": "worldwide",
             "mode": "overview",
@@ -4467,8 +4508,8 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     stations, excluded_rows = partition_records(payload.get("stations") or [], SOURCE_POLICY_EXCLUSIONS)
     dropped["source_policy_excluded"] += len(excluded_rows)
     if (payload.get("cache") or {}).get("stale"):
-        # Mark only rows originating in the stale MapaREVE payload. Fresh Gaia/
-        # Electromaps rows merged below remain eligible for route-ready status.
+        # Mark only rows originating in the stale MapaREVE payload. Fresh Gaia
+        # rows merged below remain eligible for route-ready status.
         for station in stations:
             station["_volta_stale_live_cache"] = True
 
@@ -4645,9 +4686,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
             dropped["duplicate_leads"] += max(0, before_dedupe - len(leads))
             engine_record_stage(engine_stages, request_started, stage_started, "leads", loaded=before_dedupe, remaining=len(leads))
 
-        # Historical Electromaps refresh code remains available for tests and for a future permissioned
-        # adapter review, but direct station fetching is hard-disabled by the structured source-rights
-        # policy. Runtime partitioning also removes any stale primary or nested Electromaps evidence.
+        # Historical Electromaps live refresh stays hard-disabled. The separate
+        # ingestion adapter may attach only dated additive price evidence; owner
+        # collection policy does not authorize live promotion or provider reuse.
         electromaps_did_work = False
         if include_leads and ELECTROMAPS_DIRECT_ENABLED:
             fresh_em: List[Dict[str, Any]] = []
@@ -4873,6 +4914,7 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         payload["warning"] = f"{existing_warning} {policy_warning}".strip() if existing_warning else policy_warning
 
     payload["stations"] = stations
+    payload["price_evidence_counts"] = price_evidence_counts(stations + payload["leads"])
     payload["gaia"] = {
         "live_stations": len(gaia_payload.get("stations", [])),
         "live_connectors": gaia_payload.get("raw_count", 0),
@@ -4889,14 +4931,14 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         "revocation_gate": "Withdrawing the owner-attested permission restores the Feníe exclusion record; cached Feníe rows are then partitioned out.",
     }
     payload["electromaps"] = {
-        "status": "link-only-rights-blocked",
-        "station_evidence_records": 0,
+        "status": PRICE_EVIDENCE_SOURCE_STATUS,
+        "price_evidence_records": payload["price_evidence_counts"]["electromaps_community"],
         "checked_leads": 0,
         "promoted_live": 0,
         "out_of_service_dropped": 0,
+        "runtime_live_enabled": False,
         "source_url": "https://www.electromaps.com/",
-        "policy": "Conventional homepage link only. Direct and nested station evidence, media, connector details, and live refresh are excluded by reuse-rights policy.",
-        "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review.",
+        "policy": PRICE_EVIDENCE_POLICY + " Community prices retain the source update date; a fresh fetch is not a new observation. Historical live refresh remains disabled.",
     }
     payload["intel"] = {
         "generated_at": intel_meta.get("generated_at"),
@@ -4911,16 +4953,18 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         "price_cap_eur_kwh": max_price,
         "live_source": "MapaREVE public OCPI API (viewport bbox) plus permitted Gaia public pages",
         "refresh_policy": f"Server cache {CACHE_TTL_SECONDS}s; client refreshes every 60s.",
-        "important_caveat": "Provider app pricing and onsite parking signs override all aggregator data. Proprietary apps without public API are linked/attributed but not scraped.",
+        "important_caveat": "Provider app pricing and onsite parking signs override additive price evidence. Public directory price annotations are separate from primary prices, parking and live authority.",
         "coverage": dict(coverage, supported=True),
         "live_sources": geography,
         "named_provider_strategy": {
             "Google Maps": "deep links/navigation only in this build; Places API requires key/billing and its EV fields do not expose €/kWh tariffs",
-            "Electromaps": "conventional homepage link only; direct and nested station evidence is excluded until express written reuse permission and a separate GET-only adapter review",
+            "Repsol": "bounded Spain-only additive published network tariff; station may differ; exact registry operator match only; no primary price or live authority",
+            "Electromaps": "bounded Spain-only anonymous public GET price annotations with mandatory source update date; no primary price, new pins or live promotion; owner policy is not a provider licence",
+            "Chargemap": "bounded Spain-only anonymous public GET Chargemap Pass prices; payment-route billing and fees remain separate from direct operator prices; owner policy is not a provider licence",
             "Gaia Charge": "implemented for the seeded Alboraia free charger through public start-session HTML pages, with conservative sibling connector probing and short cache TTL; MapaREVE/public directories remain secondary coverage",
             "Feníe Energía Recarga": "offline ingestion of Feníe's own gratuito public-map stations under the owner-attested written redistribution permission, via one anonymous read-only marker-list POST exception; cached rows are never live",
             "LetMeCharge/EuroCharger": "public websites/app-store metadata verified; no unauthenticated station-price map API found on the web surfaces. Use only official API/export or underlying CPO public feeds.",
-            "Iberdrola/Acciona/GIC/Miio": "covered only when MapaREVE/OCPI or independent OSM/OpenChargeMap evidence publishes usable facts; retired commercial map evidence is not used",
+            "Iberdrola/Acciona/GIC/Miio": "primary facts come from MapaREVE/OCPI or other admitted source evidence; additive directory prices cannot override official/live prices",
         },
     }
     payload["meta"]["engine"] = engine_quality_meta(
@@ -5207,6 +5251,7 @@ def source_health_summary() -> Dict[str, Any]:
         "intelligence": {
             "generated_at": intel.get("generated_at"),
             "total_records": len(raw_records),
+            "price_evidence_counts": intel.get("price_evidence_counts") or price_evidence_counts(raw_records),
             **inventory,
             "official_map_coverage": {
                 "map_eligible": official_map,
@@ -5222,11 +5267,12 @@ def source_health_summary() -> Dict[str, Any]:
             "fenie": fenie_policy,
             "electromaps": {
                 "name": "Electromaps real-time detail cache",
-                "status": "link-only-rights-blocked",
+                "status": PRICE_EVIDENCE_SOURCE_STATUS,
                 "cached_details": 0,
                 "has_payload": False,
+                "runtime_live_enabled": False,
                 "source_url": "https://www.electromaps.com/",
-                "policy": "Direct station fetching and cached station evidence are disabled pending express reuse permission.",
+                "policy": "Historical runtime live fetching stays disabled. " + PRICE_EVIDENCE_POLICY,
             },
         },
         "engine": {
@@ -5296,6 +5342,7 @@ def requested_source_strategy() -> Dict[str, Any]:
     intel = load_intelligence_meta()
     records = intel.get("records", [])
     source_counts = global_source_counts(records)
+    evidence_counts = intel.get("price_evidence_counts") or price_evidence_counts(records)
     live_owner_counts: Dict[str, int] = {}
     cached_payload = CACHE.get("payload") or {}
     for station in cached_payload.get("stations", []) if isinstance(cached_payload, dict) else []:
@@ -5317,7 +5364,9 @@ def requested_source_strategy() -> Dict[str, Any]:
         }
     return {
         "generated_at": now_iso(),
-        "policy": "No login bypass, captcha bypass, private-token extraction, or MITM scraping. Only rights-permitted public endpoints, official/open APIs, public datasets, and official exports may supply station evidence.",
+        "policy": "No login bypass, captcha bypass, private-token extraction, or MITM scraping. Existing source exclusions remain in force except the narrow owner collection decisions described here. " + PRICE_EVIDENCE_POLICY,
+        "price_evidence_counts": evidence_counts,
+        "price_evidence_scope": "Actual retained annotations, not national price coverage or new directory stations.",
         "requested_apps": [
             {
                 "name": "Google Maps",
@@ -5328,12 +5377,22 @@ def requested_source_strategy() -> Dict[str, Any]:
                 "risk": "Google Maps opens externally for navigation, reviews and place details; ratings/reviews are not fetched into Volta. Provider/source pages and onsite signs remain tariff/parking authority.",
             },
             {
+                "name": "Repsol",
+                "status": PRICE_EVIDENCE_SOURCE_STATUS,
+                "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
+                "method": "Every build checks the anonymous official public tariff page by GET. Attach the full qualitative network table only to existing Spanish registry rows whose actual operator is REPSOL SOLUCIONES ENERGÉTICAS SA; station tariffs may differ. No invented kW bands or station-specific numeric price.",
+                "records_now": {"additive_price_evidence": evidence_counts["repsol_network_tariff"], "direct_station_records": 0, "live_stations": 0},
+                "source_url": "https://www.repsol.es/particulares/vehiculos/movilidad-electrica/recarga-fuera-de-casa/",
+                "risk": PRICE_EVIDENCE_POLICY + " An unavailable or changed table withholds this annotation only.",
+            },
+            {
                 "name": "Electromaps",
-                "status": "link-only-rights-blocked",
-                "method": "Conventional homepage link only. Direct and nested station evidence, connector payloads, status, ratings, and media are excluded.",
-                "records_now": {"direct_station_records": 0, "nested_station_evidence_records": 0},
+                "status": PRICE_EVIDENCE_SOURCE_STATUS,
+                "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
+                "method": "Bounded Spain-only anonymous public map-list/detail GETs attach dated community price text to uniquely matched existing stations. Source updated_at is mandatory and remains distinct from fetch time. Snapshots retain only required matching and price fields, without user profiles, reviews, photos or media. Historical live refresh remains disabled.",
+                "records_now": {"additive_price_evidence": evidence_counts["electromaps_community"], "direct_station_records": 0, "live_stations": 0},
                 "source_url": "https://www.electromaps.com/",
-                "risk": "Express written reuse permission and a separate GET-only adapter review are required before station evidence can return.",
+                "risk": PRICE_EVIDENCE_POLICY + " Old source dates stay old after retrieval; ambiguity withholds the claim.",
             },
             {
                 "name": "Gaia Charge",
@@ -5351,11 +5410,12 @@ def requested_source_strategy() -> Dict[str, Any]:
             },
             {
                 "name": "Chargemap",
-                "status": "removed-rights-blocked",
-                "method": "No station ingestion or retained nested evidence. The generic robots rule and reuse terms require written API/data permission.",
-                "records_now": {"direct_station_records": 0, "nested_station_evidence_records": 0},
+                "status": PRICE_EVIDENCE_SOURCE_STATUS,
+                "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
+                "method": "Bounded Spain-only anonymous public map-list and price-HTML GETs attach Price with Chargemap Pass evidence to uniquely matched existing stations. Preserve started-unit billing, idle triggers, grace periods and numeric fees. List is_free never supplies free evidence.",
+                "records_now": {"additive_price_evidence": evidence_counts["chargemap_pass"], "direct_station_records": 0, "live_stations": 0},
                 "source_url": "https://chargemap.com/",
-                "risk": "Written API/data permission and a separate public-adapter review are required before any station evidence can return.",
+                "risk": PRICE_EVIDENCE_POLICY + " This is a payment-route price, not a direct operator quote; directory statuses never grant live authority.",
             },
             {
                 "name": "Consum store locator",
@@ -5447,7 +5507,7 @@ def source_catalog_payload() -> Dict[str, Any]:
             "Iberdrola/Acciona/GIC/Miio -> MapaREVE/OCPI or independent OSM/OpenChargeMap evidence when present",
         ],
         "official_api_needed": ["LetMeCharge direct app database", "EuroCharger direct app database"],
-        "policy": "This build uses rights-permitted public/open or user-verifiable pages. Proprietary app data and rights-blocked commercial locator/map data are not copied without permission, login bypass, private tokens, or MITM.",
+        "policy": "Existing source exclusions and authentication boundaries remain. " + PRICE_EVIDENCE_POLICY,
         "scope": "worldwide",
         "global_adapters": global_adapter_catalog(),
         "source_manifest": (load_intelligence_meta().get("global_coverage") or {}).get("source_manifests") or load_intelligence_meta().get("source_manifest") or {},

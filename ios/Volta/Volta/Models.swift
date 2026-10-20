@@ -95,6 +95,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var priceLabel: String?
     var isFree: Bool?
     var isCheap: Bool?
+    /// Additional published/community/pass claims only. Never a verified station tariff.
+    var priceEvidence: [PriceEvidence]? = nil
 
     var teslaOk: Bool?
     var fast: Bool?
@@ -162,7 +164,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case id, name
         case operatorName = "operator"
         case owner, city, address, lat, lon
-        case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap
+        case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap, priceEvidence
         case teslaOk, fast, maxPowerKw, connectorLabels, connectors, connectorSummary
         case status, available, totalEvse
         case source, sourceUrl, sources, primarySource, reliability

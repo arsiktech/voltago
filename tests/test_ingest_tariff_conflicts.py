@@ -50,6 +50,7 @@ class FullPipelineTariffConflictTests(unittest.TestCase):
         # Exercise build_payload itself, not just the second merge stage. No collector
         # runs, and an accidental transport call fails rather than accessing the network.
         with mock.patch.object(ing, "ACTIVE_SOURCE_ADAPTERS", (fixture_source,)), \
+                mock.patch.object(ing, "enrich_price_evidence", return_value={}), \
                 mock.patch.object(ing, "policy_urlopen", side_effect=AssertionError("No network in fixture build")), \
                 redirect_stdout(io.StringIO()):
             payload = ing.build_payload()
