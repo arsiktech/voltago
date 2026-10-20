@@ -51,9 +51,10 @@ Nearby discovery loads the bounded stored catalogue in parallel with live provid
 Catalogue rows stay marked “Not live”; a late catalogue response cannot replace a completed
 live response. A recent Core Location fix (at most 15 seconds old, accuracy within 500 m)
 can recenter immediately; other requests use 100 m desired accuracy for neighbourhood lookup.
-Programmatic locate/search camera moves do not restart the live request when their animation
-ends. `NearbyLoadingUITests` taps the real location control with live responses held for 30 s,
-checks that known nearby rows appear first, and checks that only one live request starts.
+Identical pending lookups are coalesced; when MapKit fits a larger visible region, both queries
+refresh to include its edges. `NearbyLoadingUITests` taps the real location control with live
+responses held for 30 s, checks that known nearby rows appear first, and checks that identical
+pending live queries do not restart.
 Run it serially on the Simulator whose location was set above so Xcode does not create an
 unconfigured parallel Simulator clone.
 

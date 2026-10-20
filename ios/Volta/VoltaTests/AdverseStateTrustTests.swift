@@ -380,6 +380,58 @@ final class AppStateAdverseTrustTests: XCTestCase {
         await waitUntilSettled(state)
     }
 
+    func testFittedCameraBoundsKeepEdgeChargersAfterLiveCompletes() async throws {
+        let requested = MKCoordinateRegion(center: .init(latitude: 39.47, longitude: -0.37),
+                                          latitudinalMeters: 1_200, longitudinalMeters: 1_200)
+        let fitted = MKCoordinateRegion(center: requested.center,
+                                       span: .init(latitudeDelta: 0.04, longitudeDelta: 0.04))
+        let edge = try TestDecode.station(#"{"id":"fitted-edge","name":"Edge charger","lat":39.48,"lon":-0.37,"lead":true}"#)
+        XCTAssertFalse(requested.bbox.contains(edge))
+        XCTAssertTrue(fitted.bbox.contains(edge))
+        let initialStarted = expectation(description: "Initial area's live request")
+        let fittedStarted = expectation(description: "Both queries cover the fitted region")
+        fittedStarted.expectedFulfillmentCount = 2
+        let isFitted: (URLRequest) -> Bool = { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "bbox" })?.value == fitted.bbox.queryValue
+        }
+        let edgeJSON = """
+        {"stations":[],"leads":[{"id":"fitted-edge","name":"Edge charger",
+          "lat":39.48,"lon":-0.37,"lead":true}],
+         "warning":"Fitted area refreshed.","cache":{"fresh_live_authority":true}}
+        """
+        AdverseURLProtocol.delay = { request in
+            isFitted(request) && !Self.isOverviewRequest(request) ? 0.4 : 0.01
+        }
+        let state = makeState { request in
+            if isFitted(request) {
+                fittedStarted.fulfill()
+                return Self.response(request, status: 200, body: edgeJSON)
+            }
+            if !Self.isOverviewRequest(request) { initialStarted.fulfill() }
+            return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.visibleRegion = requested
+        state.loadNearby(reason: "locate")
+        await fulfillment(of: [initialStarted], timeout: 2)
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.liveState, .ok)
+
+        // The camera settles on a wider region after the initial lookup already finished.
+        state.visibleRegion = fitted
+        state.loadNearby(reason: "pan")
+        await fulfillment(of: [fittedStarted], timeout: 2)
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.listRows.map(\.id), [edge.id])
+        XCTAssertEqual(state.liveState, .loading)
+        XCTAssertFalse(try XCTUnwrap(state.listRows.first).isRouteReady)
+
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.liveState, .ok)
+        XCTAssertEqual(state.listRows.map(\.id), [edge.id])
+        XCTAssertEqual(state.warning, "Fitted area refreshed.")
+    }
+
     func testLocateReusesARecentFixAndDoesNotRestartTheSamePendingLookup() async throws {
         let manager = NearbyLocationManager()
         manager.cachedLocation = Self.location(age: 1, accuracy: 40)

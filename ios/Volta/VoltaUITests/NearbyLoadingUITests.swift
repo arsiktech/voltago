@@ -60,7 +60,9 @@ final class NearbyLoadingUITests: XCTestCase {
         add(timing)
 
         let liveRequests = server.recordedRequestPaths().filter(Self.isLive)
-        XCTAssertEqual(liveRequests.count, 1, "The camera animation restarted the same live lookup")
+        XCTAssertFalse(liveRequests.isEmpty)
+        XCTAssertEqual(Set(liveRequests).count, liveRequests.count,
+                       "The same pending live query restarted without a change in bounds")
         XCTAssertTrue(server.deliveredResponsePaths().filter(Self.isLive).isEmpty,
                       "Known chargers must appear before live providers return")
         XCTAssertFalse(app.buttons["stationRow-uitest-live-go"].exists)

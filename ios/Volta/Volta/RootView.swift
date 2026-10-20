@@ -171,11 +171,12 @@ struct MapLayer: View {
         .onMapCameraChange(frequency: .onEnd) { ctx in
             let areaChanged = state.visibleRegion.bbox != ctx.region.bbox
             state.visibleRegion = ctx.region
-            // Locate/search already started their lookup. Their camera animation must not
-            // cancel and restart it when MapKit finishes fitting the requested region.
-            if state.mode == .live {
-                if areaChanged, state.camera.positionedByUser { state.loadNearby(reason: "pan") }
-            } else if areaChanged { Task { await state.loadOverview() } }
+            // MapKit can expand a requested region to fit the screen. Refresh those actual
+            // bounds too, so chargers near the fitted edges are included.
+            if areaChanged {
+                if state.mode == .live { state.loadNearby(reason: "pan") }
+                else { Task { await state.loadOverview() } }
+            }
         }
         // Sparing: pin and cluster taps are the only map haptic; pan, zoom and locate stay silent.
         .sensoryFeedback(.selection, trigger: mapTapFeedback)
