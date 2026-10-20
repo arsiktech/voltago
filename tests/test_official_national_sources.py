@@ -6,7 +6,7 @@ import json
 import sys
 import unittest
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -484,19 +484,96 @@ class NarrowOfficialPolicyTests(unittest.TestCase):
         self.assertEqual(ingestion.osm_station_name({}), "OSM free charging station")
 
     def test_red_movem_manual_tariff_review_expires_fail_closed(self) -> None:
+        reviewed = datetime.fromisoformat(ingestion.RED_MOVEM_TARIFF_CHECKED_AT.replace("Z", "+00:00"))
         ingestion.assert_reference_review_current(
             ingestion.RED_MOVEM_TARIFF_CHECKED_AT,
             ingestion.RED_MOVEM_REVIEW_MAX_AGE_DAYS,
-            now=datetime(2026, 7, 15, 12, 0, tzinfo=timezone.utc),
+            now=reviewed + timedelta(hours=12),
             label="Red MOVEM tariff",
         )
         with self.assertRaises(RuntimeError):
             ingestion.assert_reference_review_current(
                 ingestion.RED_MOVEM_TARIFF_CHECKED_AT,
                 ingestion.RED_MOVEM_REVIEW_MAX_AGE_DAYS,
-                now=datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc),
+                now=reviewed + timedelta(days=ingestion.RED_MOVEM_REVIEW_MAX_AGE_DAYS + 1),
                 label="Red MOVEM tariff",
             )
+
+    @staticmethod
+    def _tariff_page(body: str, fetched_at: str = "2026-10-20T09:00:00Z"):
+        def fetcher():
+            return ingestion.FetchArtifact(
+                body=body.encode("utf-8"), url=ingestion.RED_MOVEM_TARIFF_PAGE_URL,
+                cache_name="red_movem_tariff_page.html", fetched_at=fetched_at,
+                age_seconds=0, hit=False, fallback=False, stale=False,
+            )
+        return fetcher
+
+    def test_red_movem_review_renews_from_the_operator_tariff_page(self) -> None:
+        page = "<h3>Hasta 22 kW</h3>\n<p>0,25&euro; / kWh</p><h3>Hasta 50 kW</h3><p>0,30€ / kWh</p>"
+        review = ingestion.red_movem_tariff_review(
+            now=datetime(2027, 6, 1, tzinfo=timezone.utc),
+            page_fetcher=self._tariff_page(page, fetched_at="2027-05-31T08:00:00Z"),
+        )
+        self.assertEqual(review["status"], "page-verified")
+        self.assertEqual(review["checked_at"], "2027-05-31T08:00:00Z")
+        self.assertEqual(review["url"], ingestion.RED_MOVEM_TARIFF_PAGE_URL)
+
+    def test_red_movem_review_rejects_a_changed_or_old_tariff_page(self) -> None:
+        changed = self._tariff_page("<p>Hasta 22 kW</p><p>0,35€ / kWh</p>")
+        old_cache = self._tariff_page("<p>Hasta 22 kW 0,25€ / kWh</p>", fetched_at="2026-01-01T00:00:00Z")
+        for fetcher in (changed, old_cache):
+            with self.subTest(fetcher=fetcher):
+                manual = ingestion.red_movem_tariff_review(now=datetime(2026, 10, 21, tzinfo=timezone.utc), page_fetcher=fetcher)
+                self.assertEqual(manual["status"], "manual")
+                stale = ingestion.red_movem_tariff_review(now=datetime(2027, 6, 1, tzinfo=timezone.utc), page_fetcher=fetcher)
+                self.assertEqual(stale["status"], "stale")
+
+    def test_red_movem_review_survives_an_unreachable_tariff_page(self) -> None:
+        def unreachable():
+            raise OSError("offline")
+        review = ingestion.red_movem_tariff_review(now=datetime(2027, 6, 1, tzinfo=timezone.utc), page_fetcher=unreachable)
+        self.assertEqual(review["status"], "stale")
+        self.assertIn("unavailable", review["detail"])
+
+    def test_stale_red_movem_review_withholds_the_tariff_but_keeps_osm_rows(self) -> None:
+        elements = [
+            {"type": "node", "id": 9100000001, "lat": 39.0475, "lon": -5.2389, "tags": {
+                "amenity": "charging_station", "name": "Red Movem Talarrubias", "operator": "Diputación de Badajoz",
+                "operator:website": "https://movembadajoz.es/", "socket:type2": "2", "socket:type2:output": "22 kW",
+                "fee": "no",
+            }},
+            {"type": "node", "id": 9100000002, "lat": 39.5726, "lon": -1.2109, "tags": {
+                "amenity": "charging_station", "name": "Plaza Mayor", "socket:type2": "1", "fee": "no",
+            }},
+        ]
+        body = json.dumps({"version": 0.6, "elements": elements}).encode("utf-8")
+        originals = (ingestion.cached_overpass, ingestion.OVERPASS_TILE_PAUSE_SECONDS, ingestion.red_movem_tariff_review)
+        self.addCleanup(lambda: (
+            setattr(ingestion, "cached_overpass", originals[0]),
+            setattr(ingestion, "OVERPASS_TILE_PAUSE_SECONDS", originals[1]),
+            setattr(ingestion, "red_movem_tariff_review", originals[2]),
+        ))
+        ingestion.cached_overpass = lambda query, cache_name, ttl_hours=12: body
+        ingestion.OVERPASS_TILE_PAUSE_SECONDS = 0
+        for status, expected_price in (("stale", None), ("page-verified", 0.25)):
+            with self.subTest(status=status):
+                ingestion.red_movem_tariff_review = lambda status=status: {
+                    "status": status, "checked_at": "2026-10-20T09:00:00Z",
+                    "url": ingestion.RED_MOVEM_TARIFF_PAGE_URL, "detail": "fixture",
+                }
+                records: list = []
+                ingestion.source_osm(records)  # a stale tariff must not fail the source
+                by_id = {row["raw"]["osm_id"]: row for row in records}
+                self.assertEqual(set(by_id), {9100000001, 9100000002})
+                movem = by_id[9100000001]
+                self.assertEqual(movem["price_min"], expected_price)
+                self.assertFalse(movem["is_free"])  # the network charges; fee=no never wins
+                self.assertTrue(by_id[9100000002]["is_free"])
+                if status == "stale":
+                    self.assertNotEqual((movem.get("charge_claim") or {}).get("source"), "Red MOVEM official public-price regulation")
+                else:
+                    self.assertEqual(movem["charge_claim"]["checked_at"], "2026-10-20T09:00:00Z")
 
     def test_canonical_red_movem_rows_attribute_price_to_the_official_regulation(self) -> None:
         payload = json.loads((ROOT / "data" / "free_intelligence.json").read_text(encoding="utf-8"))
