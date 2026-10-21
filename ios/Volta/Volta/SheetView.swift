@@ -214,7 +214,7 @@ struct SheetView: View {
                 Button {
                     searchFocused = false
                     state.pick(result)
-                    detent = .medium
+                    detent = dynamicTypeSize.isAccessibilitySize ? .large : .medium
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "mappin.circle.fill")

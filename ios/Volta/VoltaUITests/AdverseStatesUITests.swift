@@ -103,6 +103,7 @@ final class AdverseStatesUITests: XCTestCase {
         // fallback — a free-charger app must still show its database when live is down. It is
         // never route-ready and is clearly marked Not live.
         let lead = app.buttons["stationRow-uitest-lead-01"]
+        scrollUntilHittable(lead, in: app)
         XCTAssertTrue(lead.waitForExistence(timeout: 5), "Free lead should remain as the Not-live fallback when live fails")
         XCTAssertTrue(lead.label.localizedCaseInsensitiveContains("Not live"), "Fallback lead must be marked Not live")
         XCTAssertFalse(lead.label.localizedCaseInsensitiveContains("Go now"), "A lead must never present as Go now")
@@ -123,8 +124,10 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertFalse(row.label.contains("Go now"), "Stale station must not claim route readiness")
         XCTAssertFalse(row.label.contains("2 free"), "Stale connector counts must not appear current")
         // The complete list retains source-backed leads alongside explicitly stale stations.
+        scrollUntilHittable(app.buttons["stationRow-uitest-lead-01"], in: app)
         XCTAssertTrue(app.buttons["stationRow-uitest-lead-01"].waitForExistence(timeout: 5),
                       "Free lead should remain visible (Not live) when live status is stale")
+        scrollUntilHittable(row, in: app)
         row.tap()
         let source = app.buttons["stationSourceAction"]
         let maps = app.buttons["stationMapsAction"]
@@ -151,6 +154,7 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertTrue(fresh.label.localizedCaseInsensitiveContains("Go now"), "Fresh authority was demoted by a stale peer")
 
         let cached = app.buttons["stationRow-uitest-live-stale"]
+        scrollUntilHittable(cached, in: app)
         XCTAssertTrue(cached.exists, "Cached peers remain inspectable in the complete result list")
         XCTAssertTrue(cached.label.contains("Stale status"))
         XCTAssertFalse(cached.label.contains("Go now"), "Cached peer must not claim route readiness")

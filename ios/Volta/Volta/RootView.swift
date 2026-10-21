@@ -55,7 +55,9 @@ struct RootView: View {
                 .presentationDragIndicator(.visible)
                 .sheet(isPresented: $showingSettings) { SettingsView() }
                 .onChange(of: dynamicTypeSize, initial: true) { _, size in
-                    if size.isAccessibilitySize, selectedDetent == peekDetent { selectedDetent = .large }
+                    // The full-size prompt and filters need room for the result list
+                    // at accessibility sizes, including the initial medium detent.
+                    if size.isAccessibilitySize { selectedDetent = .large }
                 }
             }
             .onChange(of: state.locationState, initial: true) { _, locationState in

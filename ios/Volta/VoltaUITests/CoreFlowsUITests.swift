@@ -157,7 +157,7 @@ final class CoreFlowsUITests: XCTestCase {
         let connectors = app.buttons["Connector types"]
         XCTAssertTrue(connectors.waitForExistence(timeout: 3))
         connectors.tap()
-        let ccs = app.descendants(matching: .any)["CCS"]
+        let ccs = app.descendants(matching: .any)["CCS2"]
         let chademo = app.descendants(matching: .any)["CHAdeMO"]
         XCTAssertTrue(ccs.waitForExistence(timeout: 3))
         ccs.tap()
