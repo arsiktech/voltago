@@ -327,6 +327,9 @@ final class CoreFlowsUITests: XCTestCase {
 
         expandSheetToLargeDetent(in: app)
         let goNowRow = goNowStationRow(in: app)
+        for _ in 0..<8 where !goNowRow.isHittable {
+            app.collectionViews.firstMatch.swipeUp()
+        }
         XCTAssertTrue(goNowRow.waitForExistence(timeout: 15), "Fixture station row never appeared in the list")
         return goNowRow
     }

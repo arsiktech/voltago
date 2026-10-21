@@ -196,12 +196,12 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertEqual(fullIdentity.count, 1,
                        "AXXXL detail must expose exactly one full station identity")
 
-        let source = app.buttons["Source"]
+        let source = app.buttons["stationSourceAction"]
         scrollUntilHittable(source, in: app)
         XCTAssertTrue(source.waitForExistence(timeout: 3), "AXXXL detail omitted the public source action")
         XCTAssertTrue(source.isHittable, "AXXXL source action is not reachable")
 
-        let maps = app.buttons["Open in Maps"]
+        let maps = app.buttons["stationMapsAction"]
         scrollUntilHittable(maps, in: app)
         XCTAssertTrue(maps.waitForExistence(timeout: 3), "AXXXL detail omitted the Maps recovery action")
         XCTAssertTrue(maps.isHittable, "AXXXL Maps action is not reachable")
@@ -302,19 +302,17 @@ final class AdverseStatesUITests: XCTestCase {
         }
     }
 
-    /// Dynamic Type can preserve the prior Places-section scroll offset when that section is
-    /// replaced by station results. Search both directions until the station card is reachable;
-    /// the former decorative title is intentionally no longer part of the driver surface.
+    /// Target the list, not the window: a downward app swipe can collapse the sheet
+    /// and then pan the underlying map away from the fixture's actual coordinates.
     private func revealStationRowFromHeader(
         _ row: XCUIElement,
         in app: XCUIApplication,
         maxSwipes: Int = 8
     ) {
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 5))
         for _ in 0 ..< maxSwipes where !row.isHittable {
-            app.swipeDown()
-        }
-        for _ in 0 ..< maxSwipes where !row.isHittable {
-            app.swipeUp()
+            list.swipeUp()
         }
     }
 
