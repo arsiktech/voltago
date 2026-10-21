@@ -56,6 +56,11 @@ Debug builds share the Mac's loopback, so their default base URL
 location (`xcrun simctl location <sim> set 39.4699,-0.3763`) to see the live near-me mode.
 
 Nearby discovery loads the bounded stored catalogue in parallel with live providers.
+Opening the app requests the driver's location, including the first permission request;
+saved exploration remains usable while location is pending or unavailable. A fresh fix
+opens nearby chargers, while a newer city choice or map gesture keeps ownership of the
+map if the startup location arrives late. Startup and repeated Locate taps reuse the
+existing location/nearby pipeline rather than starting duplicate requests.
 Catalogue rows stay marked “Not live”; a late catalogue response cannot replace a completed
 live response. A recent Core Location fix (at most 15 seconds old, accuracy within 500 m)
 can recenter immediately; other requests use 100 m desired accuracy for neighbourhood lookup.
@@ -194,8 +199,9 @@ Volta/            synchronized folder — new .swift files are picked up automat
                            lives in AppState, including clearFilters recovery
   SheetView.swift   persistent city-search field, visible discovery filters, recovery/status
                     panels and the full vertical list of ranked in-view stations
-  AIConnectionView.swift  quiet pinned Connect AI action and native MCP setup sheet;
-                          public server address, verified clipboard feedback and read-only scope
+  AIConnectionView.swift  one-tap Copy AI prompt action, verified clipboard feedback and
+                          failure-only manual copy; bundles the same setup text as the web
+                          client from contracts/agent_connection_prompt.txt
   StationViews.swift  row card, availability breakdown (N free · M in use · K out),
                       decision pill / tier / corroboration badges, detail screen with
                       full provenance (claims, connectors, public sources, license,

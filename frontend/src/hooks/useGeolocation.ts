@@ -37,8 +37,8 @@ export function useGeolocation() {
         setStatus('granted')
         onLocated?.(nextCoords)
       },
-      () => {
-        if (id === requestId.current) setStatus('denied')
+      (error) => {
+        if (id === requestId.current) setStatus(error.code === 1 ? 'denied' : 'unavailable')
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     )

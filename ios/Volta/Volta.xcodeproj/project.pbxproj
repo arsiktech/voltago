@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A1000029000000000000001 /* agent_connection_prompt.txt in Resources */ = {isa = PBXBuildFile; fileRef = A1000028000000000000001 /* agent_connection_prompt.txt */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		A100001A000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -24,6 +28,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		A1000028000000000000001 /* agent_connection_prompt.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = ../../contracts/agent_connection_prompt.txt; sourceTree = SOURCE_ROOT; };
 		A1000005000000000000001 /* Volta.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Volta.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000013000000000000001 /* VoltaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoltaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A100001E000000000000001 /* VoltaUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VoltaUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -89,6 +94,7 @@
 		A1000003000000000000001 = {
 			isa = PBXGroup;
 			children = (
+				A1000028000000000000001 /* agent_connection_prompt.txt */,
 				A1000001000000000000001 /* Volta */,
 				A1000012000000000000001 /* VoltaTests */,
 				A100001D000000000000001 /* VoltaUITests */,
@@ -228,6 +234,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000029000000000000001 /* agent_connection_prompt.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

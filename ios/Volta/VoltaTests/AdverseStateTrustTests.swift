@@ -496,6 +496,146 @@ final class AppStateAdverseTrustTests: XCTestCase {
         await waitUntilSettled(state)
     }
 
+    func testStartupRequestsFirstPermissionOnceWhileShowingSavedExploration() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .notDetermined
+        let overview = expectation(description: "Startup fallback loads once")
+        overview.assertForOverFulfill = true
+        let state = makeState(locationManager: manager) { request in
+            XCTAssertTrue(Self.isOverviewRequest(request), "Live lookup needs a real location first")
+            overview.fulfill()
+            return Self.response(request, status: 200, body: Self.nearbyOverviewJSON)
+        }
+        state.start()
+        state.start()
+        XCTAssertEqual(manager.authorizationRequests, 1)
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertTrue(state.locating)
+        XCTAssertEqual(state.locationState, .requesting)
+        await fulfillment(of: [overview], timeout: 2)
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(state.mode, .overview)
+        XCTAssertFalse(state.leads.isEmpty)
+    }
+
+    func testStartupUsesFreshLocationWithoutDuplicatingItsNearbyPipeline() async {
+        let manager = NearbyLocationManager()
+        manager.cachedLocation = Self.location(age: 1, accuracy: 40)
+        let overview = expectation(description: "Nearby catalogue loads once")
+        let live = expectation(description: "Nearby live query loads once")
+        overview.assertForOverFulfill = true
+        live.assertForOverFulfill = true
+        let state = makeState(locationManager: manager) { request in
+            let query = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            XCTAssertEqual(query.first(where: { $0.name == "lat" })?.value, "39.47")
+            if Self.isOverviewRequest(request) { overview.fulfill() }
+            else { live.fulfill() }
+            return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        state.start()
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertEqual(state.locationState, .located)
+        XCTAssertEqual(state.mode, .live)
+        XCTAssertEqual(state.visibleRegion.center.latitude, 39.47)
+        await fulfillment(of: [overview, live], timeout: 2)
+        await waitUntilSettled(state)
+    }
+
+    func testFirstPermissionGrantRequestsOneFixAndThenOpensNearbyChargers() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .notDetermined
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        manager.testAuthorization = .authorizedWhenInUse
+        state.locationManagerDidChangeAuthorization(manager)
+        state.locationManagerDidChangeAuthorization(manager)
+        for _ in 0 ..< 100 where manager.locationRequests == 0 {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(manager.authorizationRequests, 1)
+        XCTAssertEqual(manager.locationRequests, 1)
+        state.locationManager(manager, didUpdateLocations: [Self.location(age: 0, accuracy: 40)])
+        for _ in 0 ..< 100 where state.locationState != .located {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(state.locationState, .located)
+        XCTAssertEqual(state.mode, .live)
+        XCTAssertEqual(state.visibleRegion.center.latitude, 39.47)
+        await waitUntilSettled(state)
+    }
+
+    func testDeniedStartupKeepsExplorationUsableWithoutRequestingLocation() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .denied
+        let state = makeState(locationManager: manager) { request in
+            XCTAssertTrue(Self.isOverviewRequest(request))
+            return Self.response(request, status: 200, body: Self.nearbyOverviewJSON)
+        }
+        state.start()
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(manager.authorizationRequests, 0)
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertEqual(state.locationState, .denied)
+        XCTAssertEqual(state.mode, .overview)
+        XCTAssertFalse(state.leads.isEmpty)
+    }
+
+    func testManualPlaceWinsOverAnUnresolvedStartupLocation() async {
+        let manager = NearbyLocationManager()
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        XCTAssertEqual(manager.locationRequests, 1)
+        state.pick(GeocodeResult(label: "Madrid", name: "Madrid", lat: 40.4168, lon: -3.7038, bbox: nil))
+        state.locationManager(manager, didUpdateLocations: [Self.location(age: 0, accuracy: 40)])
+        await waitUntilSettled(state)
+        XCTAssertEqual(manager.cancelledLocationRequests, 1)
+        XCTAssertEqual(state.visibleRegion.center.latitude, 40.4168)
+        XCTAssertEqual(state.visibleRegion.center.longitude, -3.7038)
+        XCTAssertNil(state.userCoordinate, "A cancelled callback must not silently become a new nearby lookup")
+        XCTAssertFalse(state.locating)
+    }
+
+    func testManualNavigationCancelsAnUnresolvedPermissionGrantWithoutRequestingAFix() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .notDetermined
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        state.cancelLocationForManualNavigation()
+        manager.testAuthorization = .authorizedWhenInUse
+        state.locationManagerDidChangeAuthorization(manager)
+        await waitForOverview(state, expected: .loaded)
+        XCTAssertEqual(manager.authorizationRequests, 1)
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertFalse(state.locating)
+        XCTAssertEqual(state.mode, .overview)
+    }
+
+    func testStartupLocationFailureKeepsSavedExplorationAndAllowsRetry() async {
+        let manager = NearbyLocationManager()
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.nearbyOverviewJSON)
+        }
+        state.start()
+        state.locationManager(manager, didFailWithError: NSError(domain: kCLErrorDomain, code: CLError.Code.locationUnknown.rawValue))
+        await waitForOverview(state, expected: .loaded)
+        for _ in 0 ..< 100 where state.locationState != .failed {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(state.locationState, .failed)
+        XCTAssertFalse(state.leads.isEmpty)
+        XCTAssertEqual(state.mode, .overview)
+        state.locate()
+        XCTAssertTrue(state.locating)
+        XCTAssertEqual(manager.locationRequests, 2)
+    }
+
     func testLocateRequestsNeighbourhoodAccuracyAndCoalescesTapsWithoutAFreshFix() async {
         let manager = NearbyLocationManager()
         manager.cachedLocation = Self.location(age: 60, accuracy: 40)
@@ -940,6 +1080,15 @@ final class AppStateAdverseTrustTests: XCTestCase {
         XCTAssertFalse(promptGrant.awaitingAuthorization)
     }
 
+    func testGrantFromSettingsCannotOverrideNewerManualDiscovery() {
+        let transition = AppState.authorizationTransition(
+            status: .authorizedWhenInUse, locationState: .denied,
+            locating: false, awaitingAuthorization: false, allowSettingsRecovery: false
+        )
+        XCTAssertFalse(transition.shouldRequestLocation)
+        XCTAssertFalse(transition.locating)
+    }
+
     func testLateLocationFailureDoesNotEraseAnAlreadyResolvedCoordinate() {
         XCTAssertEqual(
             AppState.locationFailureTransition(hasUsableCoordinate: true),
@@ -1312,10 +1461,14 @@ private final class NearbyLocationManager: CLLocationManager {
     var testAuthorization: CLAuthorizationStatus = .authorizedWhenInUse
     var cachedLocation: CLLocation?
     var locationRequests = 0
+    var authorizationRequests = 0
+    var cancelledLocationRequests = 0
 
     override var authorizationStatus: CLAuthorizationStatus { testAuthorization }
     override var location: CLLocation? { cachedLocation }
     override func requestLocation() { locationRequests += 1 }
+    override func requestWhenInUseAuthorization() { authorizationRequests += 1 }
+    override func stopUpdatingLocation() { cancelledLocationRequests += 1 }
 }
 
 private final class AdverseURLProtocol: URLProtocol {

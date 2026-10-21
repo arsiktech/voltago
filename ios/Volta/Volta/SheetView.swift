@@ -16,7 +16,6 @@ struct SheetView: View {
     @FocusState private var searchFocused: Bool
     @Binding var detent: PresentationDetent
     var onOpenSettings: () -> Void = {}
-    var onOpenAIConnection: () -> Void = {}
     var onSelect: (Station) -> Void = { _ in }
     var onPeekHeight: (CGFloat) -> Void = { _ in }
     /// Selection haptic for a station row tap. One shared toggle on the always-mounted list:
@@ -164,7 +163,7 @@ struct SheetView: View {
                 .accessibilityLabel("Close search")
                 .transition(.opacity)
             } else {
-                AIConnectionPrompt(action: onOpenAIConnection)
+                AIConnectionPrompt()
 
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape")

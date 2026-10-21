@@ -217,17 +217,17 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   (`Clear search` when a query is set).
 
 ## Footer
-- `button.agent-connect`, named `Connect AI agent`, stays pinned beside Data honesty,
-  outside the result scroller. It opens the native modal `dialog` named
-  `Connect your AI agent`; no dialog opens automatically. `aria-haspopup`,
-  `aria-expanded` and `aria-controls` expose its state. The footer and setup
-  modal respect the mobile bottom safe area.
-- The setup modal contains a read-only input named `Server address` with
-  `https://voltago.app/mcp`, and a `Copy address` button. A successful copy changes
-  the button to `Copied` and announces the next step through `role="status"`;
-  a clipboard failure explains manual copying. `Close connection setup` or Escape
-  closes the modal and returns focus to the permanent prompt. Copying never
-  claims the agent is connected, and closing/reopening resets the copy feedback.
+- `button.agent-connect`, named `Copy AI prompt` with `Paste into your AI chat`
+  underneath, stays pinned beside Data honesty outside the result scroller. One click
+  writes the shared `contracts/agent_connection_prompt.txt` to the clipboard without
+  opening a modal. The footer respects the mobile bottom safe area.
+- During copying the button is disabled. A successful copy shows `Prompt copied`
+  and announces the paste instruction through `role="status"`. It remains usable
+  for another copy and never claims the AI is connected.
+- If clipboard access fails, an inline read-only `textarea` named `AI setup prompt`
+  exposes the complete text for manual copying, selecting it on focus. The button
+  can retry copying. The prompt includes the remote MCP URL, transport, authentication,
+  Claude Code command, tool names and setup guidance for the receiving AI.
 - `button[aria-controls="data-honesty-panel"]` `Data honesty`, with `aria-expanded`. It is
   pinned below the result scroller, never after the last card: focusing an item at the end
   of the virtual list would scroll past every result.
@@ -259,7 +259,10 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 - Cluster badges and price pills are canvas images (NOT DOM) — do not assert them via DOM.
 
 ## Flows for tests
-- **Default open = Mainland inventory and map camera** (leads only, no geolocation prompt).
+- **Default open requests location once** and switches to `Near you`, nearby inventory
+  and the user's map position after a successful fix. Pending, denied or unavailable
+  location retains usable Mainland inventory and manual city/region navigation.
+  A newer explicit search or map choice invalidates the pending automatic fix.
   `nav[aria-label="Explore a region"]` provides `Mainland`, `Canary Islands`, `Balearic Islands`
   pressed-state buttons when the camera is centred near Spain. Outside that area a
   single `Spain` shortcut returns to the mainland scope. These are navigation shortcuts,
