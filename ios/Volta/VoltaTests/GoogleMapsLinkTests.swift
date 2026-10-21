@@ -47,7 +47,7 @@ final class GoogleMapsLinkTests: XCTestCase {
             XCTAssertNil(station.googleMapsListingURL, value)
             XCTAssertEqual(station.googleMapsActionLabel, "Search Google Maps", value)
             XCTAssertEqual(station.googleMapsActionURL?.host, "www.google.com", value)
-            XCTAssertEqual(station.googleMapsActionURL?.path, "/maps/search/", value)
+            XCTAssertEqual(station.googleMapsActionURL.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.percentEncodedPath }, "/maps/search/", value)
         }
     }
 

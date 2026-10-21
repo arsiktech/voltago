@@ -229,9 +229,10 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(openInMaps.waitForExistence(timeout: 10), "'Open in Maps' button never appeared")
         XCTAssertTrue(openInMaps.isHittable, "'Open in Maps' exists but is not hittable")
 
-        let source = app.buttons["Source"]
-        XCTAssertTrue(source.waitForExistence(timeout: 5), "'Source' button never appeared")
-        XCTAssertTrue(source.isHittable, "'Source' exists but is not hittable")
+        let source = app.buttons["stationSourceAction"]
+        XCTAssertTrue(source.waitForExistence(timeout: 5), "Exact station source action never appeared")
+        XCTAssertEqual(source.label, "Open MapaREVE")
+        XCTAssertTrue(source.isHittable, "Station source exists but is not hittable")
     }
 
     // MARK: - Detail-screen evidence capture (P3.6-fix)
