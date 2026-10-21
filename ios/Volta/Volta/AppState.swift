@@ -885,10 +885,12 @@ final class AppState: NSObject, ObservableObject {
     ) -> LocationAuthorizationTransition {
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
-            let recoveringFromSettings = allowSettingsRecovery && (locationState == .denied || locationState == .restricted)
-            let shouldRequestLocation = awaitingAuthorization || recoveringFromSettings
+            let recoveredPermission = locationState == .denied || locationState == .restricted
+            let shouldRequestLocation = awaitingAuthorization || (allowSettingsRecovery && recoveredPermission)
             return LocationAuthorizationTransition(
-                locationState: shouldRequestLocation ? .requesting : locationState,
+                // Permission presentation must recover even when a newer manual
+                // area owns the camera and intentionally suppresses a GPS lookup.
+                locationState: shouldRequestLocation ? .requesting : (recoveredPermission ? .idle : locationState),
                 locating: shouldRequestLocation ? true : locating,
                 awaitingAuthorization: false,
                 shouldRequestLocation: shouldRequestLocation
@@ -971,6 +973,9 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func locate() {
+        // An explicit Locate is newer than any earlier city or map choice, even
+        // when permission must first be recovered through Settings.
+        hasManualDiscoveryIntent = false
         #if DEBUG
         if let override = Self.debugLocationOverride {
             locating = false

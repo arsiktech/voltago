@@ -1087,6 +1087,50 @@ final class AppStateAdverseTrustTests: XCTestCase {
         )
         XCTAssertFalse(transition.shouldRequestLocation)
         XCTAssertFalse(transition.locating)
+        XCTAssertEqual(transition.locationState, .idle, "Allowed permission must not keep showing denied recovery")
+    }
+
+    func testSettingsGrantClearsDeniedUIWithoutMovingManualArea() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .denied
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        state.pick(GeocodeResult(label: "Madrid", name: "Madrid", lat: 40.4168, lon: -3.7038, bbox: nil))
+        manager.testAuthorization = .authorizedWhenInUse
+        state.locationManagerDidChangeAuthorization(manager)
+        await waitUntilSettled(state)
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(state.locationState, .idle)
+        XCTAssertFalse(state.locating)
+        XCTAssertEqual(manager.locationRequests, 0)
+        XCTAssertEqual(state.visibleRegion.center.latitude, 40.4168)
+    }
+
+    func testExplicitLocateAfterManualAreaOwnsSettingsRecoveryExactlyOnce() async {
+        let manager = NearbyLocationManager()
+        manager.testAuthorization = .denied
+        let state = makeState(locationManager: manager) { request in
+            Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.start()
+        state.pick(GeocodeResult(label: "Madrid", name: "Madrid", lat: 40.4168, lon: -3.7038, bbox: nil))
+        state.locate()
+        XCTAssertEqual(state.locationState, .denied)
+        manager.testAuthorization = .authorizedWhenInUse
+        state.locationManagerDidChangeAuthorization(manager)
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(state.locationState, .requesting)
+        XCTAssertEqual(manager.locationRequests, 1)
+        state.locationManagerDidChangeAuthorization(manager)
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(manager.locationRequests, 1)
+        state.locationManager(manager, didUpdateLocations: [Self.location(age: 0, accuracy: 40)])
+        try? await Task.sleep(for: .milliseconds(100))
+        await waitUntilSettled(state)
+        XCTAssertEqual(state.locationState, .located)
+        XCTAssertEqual(state.visibleRegion.center.latitude, 39.47)
     }
 
     func testLateLocationFailureDoesNotEraseAnAlreadyResolvedCoordinate() {
