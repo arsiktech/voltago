@@ -41,6 +41,9 @@ final class CoreFlowsUITests: XCTestCase {
         // production code change needed to point the app at the hermetic stub.
         app.launchArguments += ["-voltaBaseURL", stubServer.baseURLString]
         app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        // These are hermetic catalogue/search flows, not Core Location tests.
+        // A retained Simulator grant must not auto-recenter away from the stored fixture.
+        app.launchArguments += ["-VoltaUITestLocationState", "denied"]
         // Declare every test's text-size baseline explicitly for repeatable screenshots.
         if !extraLaunchArguments.contains("-UIPreferredContentSizeCategoryName") {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryL"]
@@ -125,6 +128,9 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(clear.exists, "Search interactions must preserve the active filter")
         XCTAssertTrue(app.staticTexts["No chargers in this view"].exists)
         clear.tap()
+        for _ in 0..<8 where !app.buttons["stationRow-uitest-lead-01"].isHittable {
+            app.collectionViews.firstMatch.swipeUp()
+        }
         XCTAssertTrue(app.buttons["stationRow-uitest-lead-01"].waitForExistence(timeout: 5))
         XCTAssertFalse(clear.exists)
     }
@@ -138,7 +144,7 @@ final class CoreFlowsUITests: XCTestCase {
         XCTAssertTrue(search.waitForExistence(timeout: 10))
         XCTAssertTrue(search.isHittable)
         let row = app.buttons["stationRow-uitest-lead-01"]
-        for _ in 0..<6 where !row.isHittable { app.swipeUp() }
+        for _ in 0..<6 where !row.isHittable { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(row.isHittable, "Large-text cards must be reachable by vertical scrolling")
         XCTAssertTrue(row.label.contains("Parking cost unknown"))
         attachEvidenceScreenshot(named: "discovery_dark_axxxl")
