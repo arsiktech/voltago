@@ -113,6 +113,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var sourceUrl: String?
     var sources: [SourceRef]?
     var primarySource: SourceRef?
+    /// Exact charger evidence action, selected independently of broader provenance.
+    var stationSource: SourceRef? = nil
     var reliability: String?
 
     var parking: ParkingProfile?
@@ -167,7 +169,7 @@ struct Station: Decodable, Identifiable, Hashable {
         case priceMin, priceCurrency, priceNativeUnit, priceLabel, isFree, isCheap, priceEvidence
         case teslaOk, fast, maxPowerKw, connectorLabels, connectors, connectorSummary
         case status, available, totalEvse
-        case source, sourceUrl, sources, primarySource, reliability
+        case source, sourceUrl, sources, primarySource, stationSource, reliability
         case parking, access, accessClaim, verification, decision, corroboration
         case priceWindowStatus, pricing, chargeClaim, parkingClaim, claimConflict
         case sourceReportedUnavailable
@@ -504,6 +506,108 @@ extension SourceRef {
         PublicWebURL.validated(licenseUrl)
     }
 
+    static func displayName(for url: URL, preferred: String?) -> String {
+        let host = (url.host ?? "").lowercased()
+        let providers: [(String, String)] = [
+            ("canariasterecarga.com", "Canarias te recarga"),
+            ("openchargemap.org", "OpenChargeMap"), ("openchargemap.io", "OpenChargeMap"),
+            ("openstreetmap.org", "OpenStreetMap"), ("mapareve.es", "MapaREVE"),
+            ("gaiacharge.com", "Gaia"), ("fenieenergia.es", "Feníe Energía"),
+            ("electromaps.com", "Electromaps"), ("chargemap.com", "Chargemap"),
+            ("repsol.es", "Repsol"), ("tesla.com", "Tesla"), ("telpark.com", "Telpark"),
+            ("interparking.es", "Interparking"), ("endollabarcelona.cat", "Endolla"),
+            ("wenea.com", "Wenea"), ("zunder.com", "Zunder"), ("lidl.es", "Lidl")
+        ]
+        if let provider = providers.first(where: { host == $0.0 || host.hasSuffix("." + $0.0) }) {
+            return provider.1
+        }
+        if let value = preferred?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !value.isEmpty, value.count <= 80,
+           !["source", "directory", "directory page", "public source", "official data", "live data", "live source", "live map", "provider", "provider page", "community", "map", "website"].contains(value.lowercased()),
+           value.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+            return value
+        }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    var displayName: String {
+        guard let url = safeURL else { return String(localized: "Source") }
+        return Self.displayName(for: url, preferred: name)
+    }
+
+    private static let genericPaths: Set<String> = [
+        "map", "mapa", "maps", "locations", "stations", "charging-stations", "chargers", "points",
+        "index", "index.html", "home", "contact", "contacto", "login", "about", "tariffs", "pricing",
+        "locator", "search", "puntos-de-recarga", "findus"
+    ]
+
+    var isOverviewURL: Bool {
+        guard let url = safeURL else { return false }
+        let segments = url.path.lowercased().split(separator: "/").map(String.init)
+        return segments.isEmpty || Self.genericPaths.contains(segments.last ?? "")
+            || segments.joined(separator: "/").range(of: #"^[a-z]{2}$"#, options: .regularExpression) != nil
+    }
+
+    /// Mirrors the backend's exact station routes. Known providers never fall through
+    /// to a metadata-only guess; feeds, regulations and arbitrary root queries stay references.
+    var exactStationURL: URL? {
+        guard let raw = self.url?.trimmingCharacters(in: .whitespacesAndNewlines), raw.count <= 4096,
+              raw.range(of: #"[\s\\\x00-\x1f\x7f]"#, options: .regularExpression) == nil,
+              let url = safeURL, let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.port == nil || components.port == 80 || components.port == 443,
+              let rawHost = url.host,
+              let decodedPath = components.percentEncodedPath.removingPercentEncoding,
+              decodedPath.range(of: #"[\\\x00-\x1f\x7f]"#, options: .regularExpression) == nil,
+              !decodedPath.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+        else { return nil }
+        let host = rawHost.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        guard !host.split(separator: ".").allSatisfy({ $0.allSatisfy(\.isNumber) }) else { return nil }
+        let domain = host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+        let path = components.percentEncodedPath
+        func matches(_ expression: String, ignoringCase: Bool = false) -> Bool {
+            path.range(of: expression, options: ignoringCase ? [.regularExpression, .caseInsensitive] : [.regularExpression]) != nil
+        }
+        let query = components.queryItems ?? []
+        func values(_ name: String) -> [String] { query.filter { $0.name == name }.compactMap(\.value) }
+        let exact: Bool
+        switch domain {
+        case "canariasterecarga.com":
+            exact = components.query?.isEmpty != false && matches(#"^/(?:es|en)/(?:(?:mapa/)?p\d{1,10}|punto-de-recarga-[a-z0-9-]+)/?$"#)
+        case "gaiacharge.com", "partner-next.gaiacharge.com":
+            exact = matches(#"^/cpo/jump/[^/]+/(?:[^/]+/)?[^/]+/?$"#)
+        case "openstreetmap.org":
+            exact = matches(#"^/(?:node|way|relation)/[1-9]\d*/?$"#)
+        case "openchargemap.org":
+            exact = matches(#"^/site/poi/details/[1-9]\d*/?$"#, ignoringCase: true)
+        case "map.openchargemap.io":
+            let ids = values("id"), pois = values("poi")
+            let identifiers = ids.isEmpty ? pois : ids
+            exact = (path.isEmpty || path == "/") && values("mode") == ["details"] && identifiers.count == 1
+                && (ids.isEmpty || pois.isEmpty || ids == pois)
+                && identifiers[0].range(of: #"^[1-9]\d*$"#, options: .regularExpression) != nil
+        case "electromaps.com", "map.electromaps.com":
+            exact = matches(#"^/(?:en|es|fr|pt)/p/[1-9]\d*(?:/[^/]+)*/?$"#)
+        case "chargemap.com":
+            exact = matches(#"^/(?!(?:index|map|contact|about|terms|privacy|pricing|tariffs)\.html$)[a-z0-9][a-z0-9-]*\.html$"#, ignoringCase: true)
+                || matches(#"^/[a-z]{2}(?:-[a-z]{2})?/charging-stations/[^/]+/?$"#, ignoringCase: true)
+        case "recarga.fenieenergia.es":
+            exact = matches(#"^/punto-recarga/(?!todos/?$)[a-zA-Z0-9_-]+/?$"#)
+        case "tesla.com":
+            exact = matches(#"^/(?:[a-z]{2}_[a-z]{2}/)?findus/location/(?:supercharger|destinationcharger)/[^/]+/?$"#, ignoringCase: true)
+        case "telpark.com":
+            exact = matches(#"^/[a-z]{2}/ciudades/[a-z0-9-]+/[a-z0-9-]+/?$"#)
+        case "interparking.es":
+            exact = matches(#"^/es/aparcamientos/[a-z0-9/_-]+/?$"#)
+        default:
+            let segments = decodedPath.lowercased().split(separator: "/").map(String.init)
+            exact = ["station_page", "start_page", "provider_station_page", "map_object"].contains(kind?.lowercased() ?? "")
+                && !segments.isEmpty && !Self.genericPaths.contains(segments.last ?? "")
+                && segments.joined(separator: "/").range(of: #"^[a-z]{2}(?:-[a-z]{2})?$"#, options: .regularExpression) == nil
+                && !matches(#"\.(?:json|geojson|csv|xml|pdf|zip|gz)$"#, ignoringCase: true)
+        }
+        return exact ? url : nil
+    }
+
     /// Provider-authored guidance is useful, but remains remote text: require one short,
     /// printable line and fall back to stable localized copy when malformed.
     var safeActionLabel: String {
@@ -522,6 +626,11 @@ struct ParkingProfile: Decodable, Hashable {
     var label: String?
     var paid: Bool?
     var note: String?
+}
+
+struct StationSourceReference {
+    let url: URL
+    let label: String
 }
 
 struct AccessProfile: Decodable, Hashable {
@@ -858,8 +967,20 @@ extension Station {
         return "—"
     }
 
+    /// All card/detail surfaces retain published conditions without granting price authority.
+    var displayPriceText: String {
+        if priceText != "—" { return priceText }
+        if let text = tariffDetails?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
+        return String(localized: "Unknown")
+    }
+
+    var chargingPriceLabel: String {
+        displayPriceText != String(localized: "Unknown") && !hasVerifiedPrice
+            ? String(localized: "Source price") : String(localized: "Charging price")
+    }
+
     /// List/provenance views can retain a source-reported price with their honesty labels,
-    /// but map price pills, selected-pin cards, and their VoiceOver values must not turn a
+    /// but map price pills and their VoiceOver values must not turn a
     /// directory/community/OSM lead into a verified tariff. Only the server's explicit
     /// price-verification bit authorizes those compact map price surfaces.
     var hasVerifiedPrice: Bool {
@@ -1081,12 +1202,70 @@ extension Station {
     }
 
     var sourceURL: URL? {
-        if let u = primarySource?.safeURL { return u }
-        return PublicWebURL.validated(sourceUrl)
+        exactStationSource?.exactStationURL
     }
 
     var sourceActionLabel: String {
-        primarySource?.safeActionLabel ?? String(localized: "Verify at source")
+        guard let selected = exactStationSource else { return String(localized: "Source unavailable") }
+        if ["start_page", "provider_station_page"].contains(selected.kind?.lowercased() ?? "") {
+            return String(localized: "Start/check \(selected.displayName)")
+        }
+        return String(localized: "Open \(selected.displayName)")
+    }
+
+    private var sourceCandidates: [SourceRef] {
+        var candidates = [stationSource, primarySource].compactMap { $0 }
+        if let details = sourceDetails {
+            candidates.append(SourceRef(name: details.sourceName, url: details.sourceUrl))
+        }
+        if let tariff = tariffDetails {
+            candidates.append(SourceRef(name: chargeClaim?.source, url: tariff.sourceUrl))
+        }
+        candidates.append(SourceRef(name: chargeClaim?.source, url: chargeClaim?.url))
+        candidates.append(SourceRef(name: source, url: sourceUrl))
+        candidates += sources ?? []
+        candidates += (connectors ?? []).map { SourceRef(name: source, url: $0.sourceUrl) }
+        return candidates
+    }
+
+    /// Backward-compatible with saved responses; new responses supply station_source.
+    private var exactStationSource: SourceRef? {
+        for var candidate in sourceCandidates {
+            guard let url = candidate.exactStationURL else { continue }
+            candidate.name = SourceRef.displayName(for: url, preferred: candidate.name)
+            let host = (url.host ?? "").lowercased().replacingOccurrences(of: "www.", with: "", options: .anchored)
+            switch host {
+            case "gaiacharge.com", "partner-next.gaiacharge.com": candidate.kind = "start_page"
+            case "recarga.fenieenergia.es": candidate.kind = "provider_station_page"
+            case "openstreetmap.org": candidate.kind = "map_object"
+            default: break
+            }
+            return candidate
+        }
+        return nil
+    }
+
+    /// A generic home/map reference may use the same source's existing charger page.
+    /// Specific tariff regulations and feed URLs retain their original provenance.
+    func sourceReference(_ value: String?, preferredName: String? = nil, tariff: Bool = false) -> StationSourceReference? {
+        guard let url = PublicWebURL.validated(value) else { return nil }
+        let original = SourceRef(name: preferredName, url: url.absoluteString)
+        var exact = original.exactStationURL != nil ? original : nil
+        if exact == nil {
+            let host = url.host?.lowercased().replacingOccurrences(of: "www.", with: "", options: .anchored)
+            exact = sourceCandidates.first { candidate in
+                guard let candidateURL = candidate.exactStationURL else { return false }
+                let sameHost = candidateURL.host?.lowercased().replacingOccurrences(of: "www.", with: "", options: .anchored) == host
+                return candidateURL == url || (original.isOverviewURL && sameHost)
+            }
+        }
+        let destination = exact?.exactStationURL ?? url
+        let name = SourceRef.displayName(for: destination, preferred: exact?.name ?? preferredName)
+        let label: String
+        if exact != nil { label = String(localized: "Open \(name)") }
+        else if tariff { label = String(localized: "Tariff reference: \(name)") }
+        else { label = String(localized: "General reference: \(name)") }
+        return StationSourceReference(url: destination, label: label)
     }
 
     /// Best-known eligible access path from verified fields only. Never invents an app, RFID,

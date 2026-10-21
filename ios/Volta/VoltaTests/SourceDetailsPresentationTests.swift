@@ -13,6 +13,8 @@ final class SourceDetailsPresentationTests: XCTestCase {
         XCTAssertNil(station.priceMin, "An hourly charge is not an energy price")
         XCTAssertFalse(station.isRouteReady)
         XCTAssertFalse(station.hasVerifiedPrice)
+        XCTAssertEqual(station.displayPriceText, "€2.00")
+        XCTAssertEqual(station.chargingPriceLabel, "Source price")
     }
 
     func testEnergyChargeKeepsMinimumAndExtraTimeConditions() throws {
@@ -106,5 +108,134 @@ final class SourceDetailsPresentationTests: XCTestCase {
         """)
         XCTAssertEqual(station.connectors?.first?.inventoryText, "2 × Type 2 · 22.1 kW")
         XCTAssertTrue(station.sourcePageConnectors.isEmpty)
+    }
+
+    func testConditionalTariffTextAndUnknownPriceStayDistinctFromVerifiedFreeEnergy() throws {
+        let conditional = try TestDecode.station("""
+        {"id":"condition","name":"N","lat":28,"lon":-16,"lead":true,
+         "tariff_details":{"text":"Free with a purchase; otherwise ask at reception","conditions":["Customers only"]}}
+        """)
+        XCTAssertEqual(conditional.displayPriceText, "Free with a purchase; otherwise ask at reception")
+        XCTAssertEqual(conditional.chargingPriceLabel, "Source price")
+        XCTAssertEqual(conditional.tariffNotes, ["Customers only"])
+        XCTAssertFalse(conditional.hasVerifiedPrice)
+        XCTAssertFalse(conditional.isRouteReady)
+
+        let unknown = try TestDecode.station("""
+        {"id":"unknown","name":"N","lat":28,"lon":-16}
+        """)
+        XCTAssertEqual(unknown.displayPriceText, "Unknown")
+        XCTAssertEqual(unknown.chargingPriceLabel, "Charging price")
+        XCTAssertNil(unknown.priceUnit)
+
+        let verified = try TestDecode.station("""
+        {"id":"free","name":"N","lat":28,"lon":-16,"price_min":0,
+         "verification":{"price_verified":true}}
+        """)
+        XCTAssertEqual(verified.displayPriceText, "Free")
+        XCTAssertEqual(verified.chargingPriceLabel, "Charging price")
+    }
+
+    func testNamedStationSourceOpensExactChargerInsteadOfPrimaryHomepage() throws {
+        let station = try TestDecode.station("""
+        {"id":"exact","name":"N","lat":28,"lon":-16,"lead":true,
+         "primary_source":{"name":"Directory page","kind":"provider_homepage","url":"https://canariasterecarga.com/"},
+         "station_source":{"name":"Directory page","kind":"station_page","url":"https://canariasterecarga.com/es/mapa/p53018/"}}
+        """)
+        XCTAssertEqual(station.sourceURL?.absoluteString, "https://canariasterecarga.com/es/mapa/p53018/")
+        XCTAssertEqual(station.sourceActionLabel, "Open Canarias te recarga")
+        XCTAssertEqual(station.primarySource?.url, "https://canariasterecarga.com/", "Broader evidence is retained independently")
+        XCTAssertFalse(station.isRouteReady)
+    }
+
+    func testSavedDetailPageFallbackNamesTheSourceAndAvoidsGenericHomepages() throws {
+        let station = try TestDecode.station("""
+        {"id":"saved","name":"N","lat":28,"lon":-16,
+         "primary_source":{"name":"Directory page","kind":"directory","url":"https://canariasterecarga.com/es/mapa/"},
+         "source_details":{"source_name":"Canarias te recarga public map","source_url":"https://canariasterecarga.com/es/p00246/"}}
+        """)
+        XCTAssertEqual(station.sourceURL?.absoluteString, "https://canariasterecarga.com/es/p00246/")
+        XCTAssertEqual(station.sourceActionLabel, "Open Canarias te recarga")
+
+        let generic = try TestDecode.station("""
+        {"id":"generic","name":"N","lat":28,"lon":-16,
+         "source_url":"https://canariasterecarga.com/es/mapa/",
+         "primary_source":{"name":"Directory page","kind":"station_page","url":"https://canariasterecarga.com/"}}
+        """)
+        XCTAssertNil(generic.sourceURL, "A homepage does not become a station link from its metadata label")
+        XCTAssertEqual(generic.sourceActionLabel, "Source unavailable")
+    }
+
+    func testExactSourceSelectionRejectsUnsafeURLsAndKeepsSpecificStartLinks() throws {
+        let station = try TestDecode.station("""
+        {"id":"start","name":"N","lat":28,"lon":-16,
+         "station_source":{"name":"Gaia","kind":"start_page","url":"https://partner-next.gaiacharge.com/cpo/jump/site-1/connector-2"}}
+        """)
+        XCTAssertEqual(station.sourceURL?.absoluteString, "https://partner-next.gaiacharge.com/cpo/jump/site-1/connector-2")
+        XCTAssertEqual(station.sourceActionLabel, "Start/check Gaia")
+
+        let unsafe = try TestDecode.station("""
+        {"id":"unsafe","name":"N","lat":28,"lon":-16,
+         "station_source":{"name":"Unsafe","kind":"station_page","url":"javascript:alert(1)"},
+         "sources":[{"name":"OpenStreetMap","kind":"map_object","url":"https://www.openstreetmap.org/node/1234"}]}
+        """)
+        XCTAssertEqual(unsafe.sourceURL?.absoluteString, "https://www.openstreetmap.org/node/1234")
+        XCTAssertEqual(unsafe.sourceActionLabel, "Open OpenStreetMap")
+    }
+
+    func testEverySupportedProviderRetainsItsExactChargerLink() throws {
+        let cases = [
+            ("https://map.openchargemap.io/?mode=details&id=123", "Open OpenChargeMap"),
+            ("https://map.openchargemap.io/?mode=details&poi=123", "Open OpenChargeMap"),
+            ("https://recarga.fenieenergia.es/punto-recarga/ABC123", "Start/check Feníe Energía"),
+            ("https://www.tesla.com/es_es/findus/location/supercharger/valencia", "Open Tesla"),
+            ("https://www.telpark.com/es/ciudades/madrid/plaza-mayor/", "Open Telpark"),
+            ("https://www.interparking.es/es/aparcamientos/madrid/example/", "Open Interparking"),
+            ("https://chargemap.com/en-gb/charging-stations/123", "Open Chargemap")
+        ]
+        for (url, label) in cases {
+            let station = try TestDecode.station("""
+            {"id":"exact","name":"N","lat":28,"lon":-16,
+             "station_source":{"name":"Directory page","kind":"station_page","url":"\(url)"}}
+            """)
+            XCTAssertEqual(station.sourceURL?.absoluteString, url)
+            XCTAssertEqual(station.sourceActionLabel, label)
+        }
+    }
+
+    func testExactMetadataCannotTurnGenericRootsFeedsOrKnownWrongRoutesIntoStationActions() {
+        for url in [
+            "https://example.org/?id=123", "https://example.org/map?id=123",
+            "https://example.org/feed/data.csv", "https://example.org/regulations/prices.pdf",
+            "https://chargemap.com/index.html", "https://chargemap.com/contact.html",
+            "https://canariasterecarga.com/es/mapa/?id=123", "https://www.openstreetmap.org/search?id=123",
+            "https://map.openchargemap.io/?mode=details", "https://map.openchargemap.io/?mode=details&id=123&poi=456",
+            "https://recarga.fenieenergia.es/punto-recarga/todos", "https://www.tesla.com/es_es/findus"
+        ] {
+            let source = SourceRef(name: "Provider", url: url, kind: "station_page")
+            XCTAssertNil(source.exactStationURL, url)
+        }
+    }
+
+    func testGenericReferencesUseExistingSameSourceChargerButRegulationsKeepTheirURLs() throws {
+        let station = try TestDecode.station("""
+        {"id":"references","name":"N","lat":28,"lon":-16,
+         "source_url":"https://canariasterecarga.com/es/mapa/",
+         "station_source":{"name":"Canarias te recarga","kind":"station_page","url":"https://canariasterecarga.com/es/p123/"}}
+        """)
+        let charger = try XCTUnwrap(station.sourceReference("https://canariasterecarga.com/es/mapa/", preferredName: "Directory page"))
+        XCTAssertEqual(charger.url.absoluteString, "https://canariasterecarga.com/es/p123/")
+        XCTAssertEqual(charger.label, "Open Canarias te recarga")
+
+        let regulationURL = "https://canariasterecarga.com/regulations/prices.pdf"
+        let regulation = try XCTUnwrap(station.sourceReference(regulationURL, preferredName: "Directory page", tariff: true))
+        XCTAssertEqual(regulation.url.absoluteString, regulationURL)
+        XCTAssertEqual(regulation.label, "Tariff reference: Canarias te recarga")
+
+        let mapURL = "https://www.mapareve.es/"
+        let general = try XCTUnwrap(station.sourceReference(mapURL, preferredName: "Live data"))
+        XCTAssertEqual(general.url.absoluteString, mapURL)
+        XCTAssertEqual(general.label, "General reference: MapaREVE")
+        XCTAssertNil(station.sourceReference("javascript:alert(1)"))
     }
 }

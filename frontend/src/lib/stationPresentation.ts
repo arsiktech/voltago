@@ -1,5 +1,5 @@
 import type { Connector, Station } from '../types'
-import { availability, hasVerifiedPrice, isParkingRisk, powerText, privateAccess, sanePowerKw, tariffWindow } from './format'
+import { availability, hasVerifiedPrice, isParkingRisk, powerText, priceText, priceUnit, privateAccess, sanePowerKw, tariffNotes, tariffWindow } from './format'
 
 export interface CardCaution {
   label: string
@@ -53,4 +53,17 @@ export function mapPinPreview(st: Station): { price: string; detail: string } | 
     : st.price_min != null && Number.isFinite(st.price_min) && st.price_min >= 0 ? `€${st.price_min.toFixed(2)}` : null
   if (!price) return null
   return { price, detail: powerText(st.connector_summary?.max_power_kw ?? st.max_power_kw) }
+}
+
+/** A popup can explain a published tariff without granting it verified map-pin authority. */
+export function stationPrice(st: Station): { label: string; value: string; notes: string[] } {
+  const price = priceText(st)
+  const value = price === '—'
+    ? st.tariff_details?.text?.trim() || 'Unknown'
+    : [price, priceUnit(st)].filter(Boolean).join(' ')
+  return {
+    label: value !== 'Unknown' && !hasVerifiedPrice(st) ? 'Source price' : 'Charging price',
+    value,
+    notes: tariffNotes(st),
+  }
 }

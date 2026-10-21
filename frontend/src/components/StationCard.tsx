@@ -1,4 +1,5 @@
-import { providerHandoff, stationTitle } from '../lib/provider'
+import { stationTitle } from '../lib/provider'
+import { stationSourceAction } from '../lib/stationSource'
 import { Component, lazy, memo, Suspense, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
@@ -22,12 +23,10 @@ import {
   powerText,
   priceText,
   priceUnit,
-  remoteStartAction,
   sourceTier,
   stationAgeText,
   TIER_META,
   tariffWindow,
-  tariffNotes,
 } from '../lib/format'
 import {
   countSwap,
@@ -42,7 +41,7 @@ import {
 } from '../lib/motion'
 import { DecisionPill } from './DecisionPill'
 import { ConnectorChips } from './ConnectorChips'
-import { cardCautions } from '../lib/stationPresentation'
+import { cardCautions, stationPrice } from '../lib/stationPresentation'
 const StationDetails = lazy(() => import('./StationDetails'))
 
 /** Keep the card and its source/Maps actions usable if the optional chunk fails. */
@@ -209,12 +208,13 @@ function StationCardBase({
   const caution = cautions[0]
   const tier = sourceTier(st)
   const tierLabel = tier === 'live' && !availability(st).live ? 'Source data' : TIER_META[tier].label
-  const startAction = remoteStartAction(st)
+  const source = stationSourceAction(st)
   const windowInfo = tariffWindow(st)
   const routeReady = isRouteReady(st)
   const googleMaps = googleMapsLink(st)
   const formattedPrice = priceText(st)
-  const price = formattedPrice === '—' ? 'Unknown' : formattedPrice
+  const priceInfo = stationPrice(st)
+  const price = formattedPrice === '—' ? priceInfo.value : formattedPrice
   const unit = priceUnit(st)
   const actionClass =
     'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand'
@@ -232,38 +232,22 @@ function StationCardBase({
       transition={pressSpring}
       className={routeReady ? primaryActionClass : `flex-1 ${secondaryActionClass}`}
     >
-      <MapPin size={15} /> Open in Maps
+      <MapPin size={15} className="flex-none" /> Open in Maps
     </motion.a>
   )
-  const sourceAction = startAction ? (
+  const sourceAction = source ? (
     <motion.a
-      href={startAction.href}
+      href={source.href}
+      data-station-source={source.name}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={startAction.ariaLabel}
-      title={startAction.title}
+      aria-label={source.ariaLabel}
+      title={source.title}
       whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       transition={pressSpring}
       className={routeReady ? `flex-1 ${secondaryActionClass}` : sourcePrimaryClass}
     >
-      <ExternalLink size={14} /> {startAction.label}
-    </motion.a>
-  ) : null
-  // The operator's own client. Only renders where the source publishes no start page of
-  // its own, so the row never carries two competing provider destinations.
-  const handoff = startAction ? null : providerHandoff(st)
-  const providerAction = handoff ? (
-    <motion.a
-      href={handoff.href}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label={handoff.ariaLabel}
-      title={handoff.title}
-      whileTap={reduceMotion ? undefined : { scale: 0.96 }}
-      transition={pressSpring}
-      className={routeReady ? `flex-1 ${secondaryActionClass}` : sourcePrimaryClass}
-    >
-      <ExternalLink size={14} /> {handoff.label}
+      <ExternalLink size={14} className="flex-none" /> {source.label}
     </motion.a>
   ) : null
 
@@ -304,7 +288,7 @@ function StationCardBase({
             )}
           </div>
           <div className="max-w-[44%] flex-none text-right">
-            <span className="block text-[11px] font-medium text-muted">Charging price</span>
+            <span className="block text-[11px] font-medium text-muted">{priceInfo.label}</span>
             <span className="relative mt-0.5 inline-grid min-h-7 overflow-hidden align-baseline">
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
@@ -313,14 +297,14 @@ function StationCardBase({
                   initial="hidden"
                   animate="show"
                   exit="exit"
-                  className="inline-block text-xl font-semibold leading-tight tracking-tight text-fg [overflow-wrap:anywhere]"
+                  className={`inline-block ${formattedPrice === '—' && price !== 'Unknown' ? 'text-sm' : 'text-xl'} font-semibold leading-tight tracking-tight text-fg [overflow-wrap:anywhere]`}
                 >
                   {price}
                 </motion.span>
               </AnimatePresence>
             </span>
             {unit && <span className="block text-[11px] leading-snug text-muted">{unit}</span>}
-            {(windowInfo || tariffNotes(st).length > 0) && <span className="mt-1 block text-[11px] leading-snug text-muted">Conditions apply</span>}
+            {(windowInfo || priceInfo.notes.length > 0) && <span className="mt-1 block text-[11px] leading-snug text-muted">Conditions apply</span>}
           </div>
         </div>
 
@@ -365,15 +349,15 @@ function StationCardBase({
 
       {/* Actions. aria-labels carry the station name so a screen-reader links list is not
           just "Open in Maps" x N (found by qa_screen_reader_contract). */}
-      <motion.div className="relative z-10 mt-3 flex flex-wrap items-center gap-2" layout="position" transition={softSpring}>
+      <motion.div className="relative z-10 mt-3 flex flex-wrap items-stretch gap-2" layout="position" transition={softSpring}>
         {routeReady ? (
           <>
             {mapsAction}
-            {sourceAction ?? providerAction}
+            {sourceAction}
           </>
         ) : (
           <>
-            {sourceAction ?? providerAction}
+            {sourceAction}
             {mapsAction}
           </>
         )}

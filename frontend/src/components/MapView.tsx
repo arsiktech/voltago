@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { stationTitle, providerHandoff, boundedLabel } from '../lib/provider'
-import { mapPinPreview } from '../lib/stationPresentation'
+import { stationTitle, boundedLabel } from '../lib/provider'
+import { sourceName, stationSourceAction } from '../lib/stationSource'
+import { mapPinPreview, stationPrice } from '../lib/stationPresentation'
 import { guardBasemapShieldFilters } from '../lib/basemap'
 import * as maplibregl from 'maplibre-gl'
 import mapWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
@@ -15,11 +16,7 @@ import {
   mapsUrl,
   googleMapsLink,
   powerText,
-  priceText,
-  priceUnit,
   privateAccess,
-  publicWebUrl,
-  remoteStartAction,
   sanePowerKw,
 } from '../lib/format'
 
@@ -327,9 +324,7 @@ const escapeHtml = (s: string): string =>
 
 /** Click card: this charger only, anchored to the pin — not a side-list highlight. */
 function popupHTML(st: Station): string {
-  const verifiedPrice = hasVerifiedPrice(st)
-  const price = verifiedPrice ? priceText(st) : 'Unverified'
-  const unit = verifiedPrice ? priceUnit(st) : ''
+  const price = stationPrice(st)
   const cs = st.connector_summary
   const total = cs?.total ?? st.total_evse ?? st.connector_count ?? (st.connectors?.length || null)
   let avail: string
@@ -357,19 +352,17 @@ function popupHTML(st: Station): string {
   const accessNote = privateAccess(st)?.label
   const maps = notLive ? null : mapsUrl(st)
   const googleMaps = googleMapsLink(st)
-  const start = notLive ? null : remoteStartAction(st)
-  const handoff = notLive || start ? null : providerHandoff(st)
-  const source = publicWebUrl(st.primary_source?.url || st.source_url)
-  const provenance = (st.primary_source?.name || st.source_label || st.source || '').trim()
+  const source = stationSourceAction(st)
+  const provenance = source?.name || sourceName(st.primary_source?.url || st.source_url, st.primary_source?.name || st.source)
   const kicker = stale ? 'Cached · not live' : st.lead ? 'Not live' : avail
   const kickerColor = notLive ? 'var(--muted)' : 'var(--brand-strong)'
   const city = [st.address, st.city].filter(Boolean).join(' · ')
-  const access = notLive ? 'Verify on site' : accessNote || 'Public'
+  const access = accessNote || (notLive ? 'Verify on site' : 'Public')
   const row = (label: string, value: string) =>
     `<div style="display:grid;grid-template-columns:72px 1fr;gap:6px 8px;font-size:12px;line-height:1.4;padding:4px 0"><span style="color:var(--muted)">${escapeHtml(label)}</span><span style="font-weight:700;color:var(--fg);overflow-wrap:anywhere">${escapeHtml(value)}</span></div>`
 
-  const btn = (href: string, label: string, primary: boolean) =>
-    `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;flex:1;min-height:44px;padding:8px 10px;border-radius:10px;font-size:12px;font-weight:650;text-align:center;text-decoration:none;${
+  const btn = (href: string, label: string, primary: boolean, sourceAction = false) =>
+    `<a${sourceAction ? ` data-station-source="${escapeHtml(source?.name || '')}"` : ''} href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;justify-content:center;flex:1;min-height:44px;padding:8px 10px;border-radius:10px;font-size:12px;font-weight:650;text-align:center;text-decoration:none;${
       primary
         ? 'background:var(--brand);color:var(--brand-contrast)'
         : 'border:1px solid var(--border);color:var(--fg);background:var(--surface-2)'
@@ -377,15 +370,9 @@ function popupHTML(st: Station): string {
 
   const googleAction = btn(googleMaps.href, googleMaps.listing ? 'View Google Maps' : 'Search Google Maps', false)
   const actionMarkup = notLive
-    ? (source ? btn(source, 'Source', true) : '') + googleAction
+    ? (source ? btn(source.href, source.label, true, true) : '') + googleAction
     : (maps ? btn(maps, 'Open in Maps', true) : '') +
-      (start
-        ? btn(start.href, start.label, false)
-        : handoff
-        ? btn(handoff.href, handoff.label, false)
-        : source
-        ? btn(source, 'Source', false)
-        : '')
+      (source ? btn(source.href, source.label, false, true) : '')
 
   return (
     `<div class="volta-pin-card" data-station-id="${escapeHtml(st.id)}" style="min-width:0;width:min(268px,calc(100vw - 72px));overflow-wrap:anywhere">` +
@@ -393,7 +380,8 @@ function popupHTML(st: Station): string {
     `<div style="font-weight:750;font-size:16px;line-height:1.2;letter-spacing:-.02em;margin-bottom:4px">${escapeHtml(stationTitle(st))}</div>` +
     (city ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">${escapeHtml(city)}</div>` : '') +
     `<div style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:8px 0;margin-bottom:8px">` +
-    row('Price', unit ? `${price} ${unit}` : price) +
+    row(price.label, price.value) +
+    (price.notes.length ? row('Terms', price.notes.join(' · ')) : '') +
     row('Speed', speed) +
     row('Plugs', connectors) +
     row('Chargers', points) +

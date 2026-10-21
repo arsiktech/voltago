@@ -4,6 +4,21 @@ import type { Station } from '../types'
 import { SourceProvenance } from './SourceProvenance'
 
 describe('SourceProvenance source-rights disclosure', () => {
+  it('names the source and upgrades its overview reference to the existing charger page', () => {
+    const url = 'https://canariasterecarga.com/es/p61008/'
+    const station: Station = { id: 'hourly', name: 'Hourly charger', lat: 28.4, lon: -16.5,
+      station_source: { name: 'Canarias te recarga', url, kind: 'station_page' },
+      source_details: { source_name: 'Canarias te recarga', source_url: 'https://canariasterecarga.com/es/mapa/' },
+      tariff_details: { hour_eur: 2, minimum_eur: 2, text: '€2/hour, minimum €2', source_url: url },
+      charge_claim: { source: 'Canarias te recarga public map', url: 'https://canariasterecarga.com/es/mapa/', summary: 'Hourly rate' },
+    }
+    const markup = renderToStaticMarkup(<SourceProvenance st={station} />)
+    expect(markup.match(/Open Canarias te recarga/g)).toHaveLength(3)
+    expect(markup).not.toContain('href="https://canariasterecarga.com/es/mapa/"')
+    expect(markup).toContain('href="https://canariasterecarga.com/es/p61008/"')
+    expect(markup).toContain('Minimum charge €2.00')
+  })
+
   it('renders attribution, linked license, transformation, and source update metadata', () => {
     const station: Station = {
       id: 'endolla-license',

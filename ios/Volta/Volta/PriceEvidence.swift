@@ -177,14 +177,14 @@ struct StationPriceEvidence: View {
                             }
                         }
                         .accessibilityElement(children: .combine)
-                        if showsSourceLinks, let url = item.sourceURL {
-                            Link(destination: url) {
-                                Text("View price source")
+                        if showsSourceLinks, let reference = station.sourceReference(item.sourceURL?.absoluteString, tariff: true) {
+                            Link(destination: reference.url) {
+                                Text(reference.label)
                                     .underline()
                                     .frame(minHeight: 44)
                             }
                             .font(.caption)
-                            .accessibilityLabel(Text(verbatim: String(localized: "View price source: \(item.label)")))
+                            .accessibilityHint(Text(verbatim: item.label))
                         }
                     }
                     .fixedSize(horizontal: false, vertical: true)
