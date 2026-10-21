@@ -78,7 +78,8 @@ final class PriceEvidenceUITests: XCTestCase {
         XCTAssertEqual(appearance.value as? String, style.lowercased(), "Effective appearance must match the attachment name")
         let row = reveal(app.buttons.matching(identifier: "stationRow-\(Self.stationID)"), in: cards, app: app)
         XCTAssertTrue(row.label.contains(Self.stationName))
-        XCTAssertTrue(row.label.contains("—"), "The primary charging price must stay unknown")
+        XCTAssertTrue(row.label.contains("Unknown"), "The primary charging price must stay unknown")
+        XCTAssertFalse(row.label.contains("Para más información"), "Contact guidance must not become a card price")
         XCTAssertTrue(row.label.contains("Not live"), "Source prices must not grant live authority")
         XCTAssertTrue(row.label.contains("Price lead"))
         XCTAssertFalse(row.label.contains("Go now"))
@@ -102,7 +103,7 @@ final class PriceEvidenceUITests: XCTestCase {
         let detail = scrollingList(in: app)
         let primaryPrice = reveal(
             app.descendants(matching: .any).matching(NSPredicate(
-                format: "label BEGINSWITH[cd] %@ AND label CONTAINS %@", "Charging", "—"
+                format: "label BEGINSWITH[cd] %@ AND label CONTAINS %@", "Charging", "Unknown"
             )),
             in: detail, app: app
         )
@@ -223,6 +224,7 @@ final class PriceEvidenceUITests: XCTestCase {
             "lat": 39.4699, "lon": -0.3763,
             "lead": true, "status": "UNKNOWN",
             "price_min": null, "is_free": false,
+            "tariff_details": {"text": "Para más información sobre las tarifas llame al 630 034 636"},
             "reliability": "official_list",
             "decision": {"level": "lead", "label": "Price lead"},
             "verification": {

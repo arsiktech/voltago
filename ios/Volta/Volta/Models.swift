@@ -967,11 +967,19 @@ extension Station {
         return "—"
     }
 
-    /// All card/detail surfaces retain published conditions without granting price authority.
+    private var publishedTariffText: String? {
+        guard let text = tariffDetails?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        let freeStatement = #"^(?:(?:tariff|tarifa|charging|charge|energy|rate)\s*[:\-]?\s*)?(?:free|gratis|gratuit[oa]s?)\b|^first\s+(?:hour|\d+\s*(?:minutes?|hours?))\s+free\b"#
+        let explicitRate = #"(?:€\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:€|eur(?:os?)?))\s*(?:/|per\s+)\s*(?:kwh|hours?|horas?|h|minutes?|minutos?|min|sessions?|sesión)\b"#
+        let options: String.CompareOptions = [.regularExpression, .caseInsensitive]
+        return text.range(of: freeStatement, options: options) != nil
+            || text.range(of: explicitRate, options: options) != nil ? text : nil
+    }
+
+    /// Contact and booking guidance stays in source details, never in the price position.
     var displayPriceText: String {
         if priceText != "—" { return priceText }
-        if let text = tariffDetails?.text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty { return text }
-        return String(localized: "Unknown")
+        return publishedTariffText ?? String(localized: "Unknown")
     }
 
     var chargingPriceLabel: String {

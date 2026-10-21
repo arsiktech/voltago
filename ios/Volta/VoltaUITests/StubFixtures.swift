@@ -158,6 +158,7 @@ enum StubFixtures {
           "charge_claim": {"type": "free", "source": "MapaREVE live OCPI feed", "url": "https://example.com/mapareve/uitest-live-go", "price_min": 0.0, "summary": "Live feed reports this connector as free."},
           "parking_claim": {"type": "street", "source": "MapaREVE live OCPI feed", "url": "https://example.com/mapareve/uitest-live-go", "summary": "Public street bay, no time limit reported."},
           "primary_source": {"name": "MapaREVE", "url": "https://example.com/mapareve/uitest-live-go", "action": "Check MapaREVE", "kind": "live_feed"},
+          "station_source": {"name": "MapaREVE", "url": "https://example.com/stations/uitest-live-go", "kind": "station_page"},
           "source_url": "https://example.com/mapareve/uitest-live-go",
           "sources": [
             {"name": "MapaREVE", "url": "https://example.com/mapareve/uitest-live-go", "evidence": "Live OCPI status feed", "kind": "live_feed", "license": "CC BY 4.0", "license_url": "https://example.com/licenses/cc-by-4.0", "attribution": "UITest City Open Data", "transformation": "Coordinates normalized to WGS84.", "source_last_updated": "2026-07-15"},
