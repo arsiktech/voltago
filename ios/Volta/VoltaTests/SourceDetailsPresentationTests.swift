@@ -110,6 +110,35 @@ final class SourceDetailsPresentationTests: XCTestCase {
         XCTAssertTrue(station.sourcePageConnectors.isEmpty)
     }
 
+    func testContactAndBookingTextKeepsUnknownPrice() throws {
+        for text in [
+            "Para más información sobre las tarifas llame al 630 034 636",
+            "Call reception for tariff information",
+            "Contact us for free charging information",
+            "0 € Reservar"
+        ] {
+            let payload: [String: Any] = ["id": "contact", "name": "N", "lat": 28, "lon": -16,
+                                          "lead": true, "tariff_details": ["text": text]]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            let station = try TestDecode.station(try XCTUnwrap(String(data: data, encoding: .utf8)))
+            XCTAssertEqual(station.displayPriceText, "Unknown", text)
+            XCTAssertEqual(station.chargingPriceLabel, "Charging price", text)
+            XCTAssertFalse(station.hasVerifiedPrice)
+            XCTAssertFalse(station.isRouteReady)
+        }
+    }
+
+    func testExplicitSourceRateTextIsRetained() throws {
+        for text in ["€0.35/kWh", "2 EUR/hour after the first hour"] {
+            let payload: [String: Any] = ["id": "rate", "name": "N", "lat": 28, "lon": -16,
+                                          "lead": true, "tariff_details": ["text": text]]
+            let data = try JSONSerialization.data(withJSONObject: payload)
+            let station = try TestDecode.station(try XCTUnwrap(String(data: data, encoding: .utf8)))
+            XCTAssertEqual(station.displayPriceText, text)
+            XCTAssertEqual(station.chargingPriceLabel, "Source price")
+        }
+    }
+
     func testConditionalTariffTextAndUnknownPriceStayDistinctFromVerifiedFreeEnergy() throws {
         let conditional = try TestDecode.station("""
         {"id":"condition","name":"N","lat":28,"lon":-16,"lead":true,

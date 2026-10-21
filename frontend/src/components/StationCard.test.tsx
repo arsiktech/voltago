@@ -131,6 +131,24 @@ describe('map popup prices', () => {
     } }))).toEqual({ label: 'Source price', value: 'Free with a purchase; otherwise ask at reception', notes: ['Customers only'] })
   })
 
+  it.each([
+    'Para más información sobre las tarifas llame al 630 034 636',
+    'Call reception for tariff information',
+    'Contact us for free charging information',
+    '0 € Reservar',
+  ])('keeps contact or booking text out of the price (%s)', (text) => {
+    const station = row({ price_min: null, tariff_details: { text } })
+    expect(stationPrice(station)).toEqual({ label: 'Charging price', value: 'Unknown', notes: [] })
+    expect(hasVerifiedPrice(station)).toBe(false)
+    expect(mapPinPreview(station)).toBeNull()
+    expect(isRouteReady(station)).toBe(false)
+  })
+
+  it.each(['€0.35/kWh', '2 EUR/hour after the first hour'])('retains explicit source rates (%s)', (text) => {
+    expect(stationPrice(row({ price_min: null, tariff_details: { text } })))
+      .toEqual({ label: 'Source price', value: text, notes: [] })
+  })
+
   it('labels an unverified numeric tariff as source reported', () => {
     expect(stationPrice(row({ verification: { price_verified: false } })))
       .toEqual({ label: 'Source price', value: '€0.22 /kWh', notes: [] })
