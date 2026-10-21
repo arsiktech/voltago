@@ -251,8 +251,10 @@ find a way to remove it.
 
 - **Useful before any input.** The app requests location on opening and shows nearby
   chargers once a fix arrives. Mainland inventory remains usable while location is
-  pending, unavailable or declined. A newer city, region or map choice wins over a
-  delayed automatic fix. No sign-in or onboarding is needed.
+  pending, unavailable or declined. A newer city, region, station or map choice wins
+  over a delayed automatic fix. The fixed cached catalogue remains available when a
+  nearby request fails; device-location and viewport queries are never stored offline.
+  No sign-in or onboarding is needed.
 - **One tap for the common filters.** Free and maximum price sit next to search; the
   full filter sheet holds the rest. A changed-filter summary and one-tap reset sit in
   view.
@@ -322,7 +324,7 @@ upgrade station availability, evidence or route readiness.
   Never truncate connector or operator prose into a pin.
 - Region shortcuts appear near Spain. Outside that area, offer one `Spain` shortcut
   back to mainland discovery without changing catalogue geography.
-- Location permission is never requested automatically.
+- Opening the app requests location once; a newer explicit discovery choice wins.
 - If tiles or WebGL fail, the list, search and region shortcuts keep working.
 
 ## 12. Copy

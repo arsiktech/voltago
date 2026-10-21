@@ -351,6 +351,11 @@ export default function App() {
   const [scrolled, setScrolled] = useState(false)
   const listOffsets = useListOffsets(headingRef, statusRef, bodyRef)
 
+  // Keep the one privacy-safe offline catalogue observed independently of GPS
+  // and viewport queries. Those queries are deliberately never persisted by SW.
+  const catalogue = useChargers({
+    filters: DEFAULT_FILTERS, overview: true, compact: true, bbox: REGIONS[0].bbox,
+  })
   const inventory = useChargers({
     filters: DEFAULT_FILTERS, overview: true, compact: true,
     bbox: committedBbox ?? viewport?.bbox ?? REGIONS[0].bbox,
@@ -379,13 +384,13 @@ export default function App() {
       chooseChargersData({
         overview,
         live: data,
-        instant: overview ? inventory.data : instant.data,
+        instant: (overview ? inventory.data : instant.data) ?? catalogue.data,
         isFetching: query.isFetching,
         isPlaceholder: query.isPlaceholderData,
         isError: query.isError,
         viewportBbox: overview ? (viewport?.bbox ?? null) : committedBbox,
       }),
-    [overview, data, inventory.data, instant.data, query.isFetching, query.isPlaceholderData, query.isError, viewport, committedBbox],
+    [overview, data, inventory.data, instant.data, catalogue.data, query.isFetching, query.isPlaceholderData, query.isError, viewport, committedBbox],
   )
   const responseNotLive = responseHasNoLiveAuthority(effectiveData)
   const responseMixedLive = responseHasMixedLiveAuthority(effectiveData)
@@ -418,6 +423,14 @@ export default function App() {
     }, 0)
     return () => window.clearTimeout(timer)
   }, [requestLocation])
+
+  const onStationSelect = (id: string | null) => {
+    if (id !== null) {
+      claimSearchArea()
+      geo.cancel()
+    }
+    setSelectedId(id)
+  }
 
   const onSearchChange = (value: string) => {
     claimSearchArea()
@@ -710,7 +723,7 @@ export default function App() {
       <StationList
         rows={panelRows}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={onStationSelect}
         scrollRef={listRef}
         scrollMargin={listOffsets.margin}
         scrollPaddingStart={listOffsets.heading}
@@ -727,7 +740,7 @@ export default function App() {
             <MapView
               stations={mapRows}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={onStationSelect}
               theme={theme}
               userCoords={geo.coords}
               onUserViewportIntent={geo.cancel}
