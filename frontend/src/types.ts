@@ -259,6 +259,7 @@ export interface Station {
   source_label?: string
   sources?: SourceRef[]
   primary_source?: SourceRef
+  station_source?: SourceRef | null
   source_integration?: Record<string, unknown>
   source_count?: number
   reliability?: string

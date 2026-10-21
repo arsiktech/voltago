@@ -2,7 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { Station } from '../types'
-import { cardCautions, mapPinPreview } from '../lib/stationPresentation'
+import { cardCautions, mapPinPreview, stationPrice } from '../lib/stationPresentation'
+import { DEFAULT_FILTERS, hasVerifiedPrice, isRouteReady, passesFilters } from '../lib/format'
 import { StationCard } from './StationCard'
 import StationDetails from './StationDetails'
 
@@ -24,7 +25,7 @@ describe('compact station cards', () => {
     expect(markup.match(/data-card-caution=/g)).toHaveLength(1)
     expect(markup).toContain('Restricted · +3 cautions')
     expect(markup).toContain('aria-label="Restricted; Sources disagree; Paid parking; Time-limited price. Open Details for all cautions."')
-    expect(markup).toContain('Charging price')
+    expect(markup).toContain('Source price')
     expect(markup).toContain('Conditions apply')
     expect(markup).toContain('Not live')
     expect(markup).not.toContain('>Charging<')
@@ -65,6 +66,33 @@ describe('compact station cards', () => {
     expect(markup).toContain('Unknown')
     expect(markup).not.toContain('>Free<')
   })
+
+  it('uses the same source tariff on the list card and popup, with a named exact charger action', () => {
+    const station = row({ price_min: null, verification: { price_verified: false },
+      source_url: 'https://canariasterecarga.com/es/mapa/',
+      primary_source: { name: 'Directory page', url: 'https://canariasterecarga.com/es/mapa/', kind: 'live_map' },
+      station_source: { name: 'Canarias te recarga', url: 'https://canariasterecarga.com/es/p61008/', kind: 'station_page' },
+      tariff_details: { hour_eur: 2, minimum_eur: 2 },
+    })
+    const markup = renderToStaticMarkup(<StationCard st={station} animateIn={false} />)
+    expect(markup).toContain('Source price')
+    expect(markup).toContain('€2.00')
+    expect(markup).toContain('/hour')
+    expect(markup).toContain('Conditions apply')
+    expect(markup).toContain('Open Canarias te recarga')
+    expect(markup).toContain('href="https://canariasterecarga.com/es/p61008/"')
+    expect(markup).not.toContain('href="https://canariasterecarga.com/es/mapa/"')
+    expect(stationPrice(station).value).toBe('€2.00 /hour')
+  })
+
+  it('retains a conditional tariff in the shared source price display', () => {
+    const markup = renderToStaticMarkup(<StationCard st={row({ price_min: null,
+      tariff_details: { text: 'Free for customers with a purchase' },
+    })} animateIn={false} />)
+    expect(markup).toContain('Source price')
+    expect(markup).toContain('Free for customers with a purchase')
+    expect(markup).not.toContain('Unknown')
+  })
 })
 
 describe('map pin labels', () => {
@@ -79,5 +107,59 @@ describe('map pin labels', () => {
   })
   it('allows a verified Free label and omits an unknown power hint', () => {
     expect(mapPinPreview(row({ price_min: 0, verification: { price_verified: true } }))).toEqual({ price: 'Free', detail: '' })
+  })
+})
+
+describe('map popup prices', () => {
+  it('shows a source hourly tariff and minimum without making it a verified energy price', () => {
+    const station = row({ price_min: null, verification: { price_verified: false }, tariff_details: {
+      hour_eur: 2, minimum_eur: 2, conditions: ['First hour free'],
+    } })
+    expect(stationPrice(station)).toEqual({
+      label: 'Source price', value: '€2.00 /hour',
+      notes: ['Minimum charge €2.00', 'First hour free'],
+    })
+    expect(hasVerifiedPrice(station)).toBe(false)
+    expect(mapPinPreview(station)).toBeNull()
+    expect(isRouteReady(station)).toBe(false)
+    expect(passesFilters(station, { ...DEFAULT_FILTERS, maxPrice: 0.25 }, '')).toBe(false)
+  })
+
+  it('retains conditional source text when there is no simple numeric price', () => {
+    expect(stationPrice(row({ price_min: null, tariff_details: {
+      text: 'Free with a purchase; otherwise ask at reception', conditions: ['Customers only'],
+    } }))).toEqual({ label: 'Source price', value: 'Free with a purchase; otherwise ask at reception', notes: ['Customers only'] })
+  })
+
+  it.each([
+    'Para más información sobre las tarifas llame al 630 034 636',
+    'Call reception for tariff information',
+    'Contact us for free charging information',
+    '0 € Reservar',
+  ])('keeps contact or booking text out of the price (%s)', (text) => {
+    const station = row({ price_min: null, tariff_details: { text } })
+    expect(stationPrice(station)).toEqual({ label: 'Charging price', value: 'Unknown', notes: [] })
+    expect(hasVerifiedPrice(station)).toBe(false)
+    expect(mapPinPreview(station)).toBeNull()
+    expect(isRouteReady(station)).toBe(false)
+  })
+
+  it.each(['€0.35/kWh', '2 EUR/hour after the first hour'])('retains explicit source rates (%s)', (text) => {
+    expect(stationPrice(row({ price_min: null, tariff_details: { text } })))
+      .toEqual({ label: 'Source price', value: text, notes: [] })
+  })
+
+  it('labels an unverified numeric tariff as source reported', () => {
+    expect(stationPrice(row({ verification: { price_verified: false } })))
+      .toEqual({ label: 'Source price', value: '€0.22 /kWh', notes: [] })
+  })
+
+  it.each([
+    [0.22, '€0.22 /kWh'],
+    [0, 'Free'],
+    [null, 'Unknown'],
+  ])('keeps verified and missing prices explicit (%s)', (price_min, value) => {
+    expect(stationPrice(row({ price_min, verification: { price_verified: true } })))
+      .toEqual({ label: 'Charging price', value, notes: [] })
   })
 })

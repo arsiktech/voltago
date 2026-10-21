@@ -166,13 +166,14 @@ describe('source detail inventory and links', () => {
       media: { photos: [{ url: 'https://canariasterecarga.com/photo.jpg', caption: 'Entrance', source_url: 'https://canariasterecarga.com/es/p123/' }] },
     })
     const markup = renderToStaticMarkup(createElement(StationDetails, { st: station }))
-    expect(markup.match(/View connector source/g)).toHaveLength(8)
+    const inventory = markup.match(/aria-label="Connector inventory"[\s\S]*?<\/section>/)?.[0] || ''
+    expect(inventory.match(/Open Canarias te recarga/g)).toHaveLength(8)
     expect(markup).toContain('3 × Type 2 · 7.4 kW')
     expect(markup).toContain('Unknown connector')
     expect(markup).toContain('08:00–22:00')
     expect(markup).toContain('Minimum charge €2.00')
     expect(markup).toContain('Check onsite signs')
-    expect(markup).toContain('View photo at public source')
+    expect(markup).toContain('View photo at Canarias te recarga')
     expect(markup).not.toContain('<img')
     expect(markup).not.toContain('javascript:')
   })

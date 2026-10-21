@@ -83,13 +83,13 @@ struct StationPriceBlock: View {
 
     var body: some View {
         VStack(alignment: alignment, spacing: 1) {
-            Text("Charging")
+            Text(station.chargingPriceLabel)
                 .font(.caption2.weight(.medium))
                 .textCase(.uppercase)
                 .foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(station.priceText)
-                    .font(muted
+                Text(station.displayPriceText)
+                    .font(station.priceText == "—" ? .subheadline : muted
                         ? .system(large ? .title3 : .subheadline, design: .rounded).weight(.semibold)
                         : .system(large ? .largeTitle : .title2, design: .rounded).weight(.bold))
                     .monospacedDigit()
@@ -427,8 +427,8 @@ struct StationDetailView: View {
                             }
                             // Label, quantity, power and status form one VoiceOver stop.
                             .accessibilityElement(children: .combine)
-                            if let source = c.safeSourceURL {
-                                Link("View connector source", destination: source)
+                            if let reference = station.sourceReference(c.sourceUrl, preferredName: station.primarySource?.name) {
+                                Link(reference.label, destination: reference.url)
                                     .font(.caption)
                                     .foregroundStyle(Theme.actionInk)
                                     .frame(minHeight: 44)
@@ -448,10 +448,13 @@ struct StationDetailView: View {
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     ForEach(Array(station.sourcePageConnectors.enumerated()), id: \.offset) { _, connector in
-                        if let source = connector.safeSourceURL {
-                            Link(destination: source) {
-                                Text(connector.inventoryText)
-                                    .fixedSize(horizontal: false, vertical: true)
+                        if let reference = station.sourceReference(connector.sourceUrl, preferredName: station.sourceDetails?.sourceName) {
+                            Link(destination: reference.url) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(connector.inventoryText)
+                                    Text(reference.label).font(.caption)
+                                }
+                                .fixedSize(horizontal: false, vertical: true)
                             }
                             .font(.subheadline)
                             .foregroundStyle(Theme.actionInk)
@@ -474,8 +477,8 @@ struct StationDetailView: View {
                         Text(note).font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let source = tariff.safeSourceURL {
-                        Link("View tariff source", destination: source)
+                    if let reference = station.sourceReference(tariff.sourceUrl, preferredName: station.chargeClaim?.source, tariff: true) {
+                        Link(reference.label, destination: reference.url)
                             .foregroundStyle(Theme.actionInk)
                             .frame(minHeight: 44)
                     }
@@ -509,8 +512,8 @@ struct StationDetailView: View {
                         Text(note).font(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let source = details.safeSourceURL {
-                        Link("View information source", destination: source)
+                    if let reference = station.sourceReference(details.sourceUrl, preferredName: details.sourceName) {
+                        Link(reference.label, destination: reference.url)
                             .foregroundStyle(Theme.actionInk)
                             .frame(minHeight: 44)
                     }
@@ -602,13 +605,13 @@ struct StationDetailView: View {
             if let photos = station.media?.photos, photos.contains(where: { $0.safeSourceURL != nil }) {
                 Section("Source photos") {
                     ForEach(Array(photos.enumerated()), id: \.offset) { _, photo in
-                        if let source = photo.safeSourceURL {
+                        if let reference = station.sourceReference(photo.safeSourceURL?.absoluteString, preferredName: photo.source) {
                             VStack(alignment: .leading, spacing: 3) {
                                 if let caption = photo.caption, !caption.isEmpty {
                                     Text(caption).font(.caption).foregroundStyle(.secondary)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
-                                Link("View source photo", destination: source)
+                                Link(reference.label, destination: reference.url)
                                     .foregroundStyle(Theme.actionInk)
                                     .frame(minHeight: 44)
                             }
@@ -621,9 +624,9 @@ struct StationDetailView: View {
                 Section("Public sources (\(sources.count))") {
                     ForEach(Array(sources.enumerated()), id: \.offset) { _, src in
                         VStack(alignment: .leading, spacing: 3) {
-                            if let url = src.safeURL {
-                                Link(destination: url) {
-                                    Text(src.name ?? "Source")
+                            if let reference = station.sourceReference(src.url, preferredName: src.name) {
+                                Link(destination: reference.url) {
+                                    Text(reference.label)
                                         .font(.subheadline.weight(.medium))
                                         .underline()
                                         .foregroundStyle(Theme.actionInk)
@@ -760,8 +763,8 @@ struct StationDetailView: View {
                 HStack(spacing: 4) {
                     Text("via \(claim.sourceLabel)")
                     Text("·")
-                    if let url = claim.sourceURL {
-                        Link("view source", destination: url)
+                    if let reference = station.sourceReference(claim.sourceURL?.absoluteString, preferredName: claim.source) {
+                        Link(reference.label, destination: reference.url)
                             .foregroundStyle(Theme.actionInk)
                     } else {
                         Text("view source").foregroundStyle(.tertiary)

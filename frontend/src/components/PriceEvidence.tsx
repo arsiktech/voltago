@@ -1,5 +1,6 @@
 import type { PriceEvidence as PriceEvidenceItem, PriceEvidenceRate } from '../types'
 import { evidenceEuro, publicWebUrl } from '../lib/format'
+import { sourceName } from '../lib/stationSource'
 
 /** Keep the source's calendar date, without replacing it with a download or local date. */
 function evidenceDate(value: string | null): string {
@@ -57,14 +58,15 @@ export function PriceEvidence({ items }: { items?: PriceEvidenceItem[] }) {
     <ul className="space-y-2">
       {claims.map(({ item, label }) => {
         const href = publicWebUrl(item.source_url)
+        const actionLabel = `View ${sourceName(href, item.source)} ${item.kind === 'repsol_network_tariff' ? 'tariff' : 'charger'}`
         const id = JSON.stringify([item.source_url, item.kind, item.source_updated_at, item.fetched_at])
         return <li key={id} data-price-evidence={item.kind}>
           <p className="font-medium">{label}</p>
           <p className="tabular-nums">{evidenceRateText(item)}</p>
           {item.parking_price && <p className="whitespace-pre-wrap">Parking: {item.parking_price}</p>}
           {item.kind !== 'electromaps_community' && <p>Checked: {evidenceDate(item.fetched_at)}</p>}
-          {href && <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`View price source: ${label}`}
-            className="inline-flex min-h-11 items-center font-medium text-brand-strong underline">View price source</a>}
+          {href && <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`${actionLabel}: ${label}`}
+            className="inline-flex min-h-11 items-center font-medium text-brand-strong underline">{actionLabel}</a>}
         </li>
       })}
     </ul>

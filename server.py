@@ -55,6 +55,7 @@ from station_truth import (
     normalize_connector_label,
     normalize_public_source_url,
     primary_source_for,
+    station_source_for,
     source_candidates,
 )
 
@@ -1124,6 +1125,7 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["parking"] = normalize_parking_profile(item)
     item["access"] = access_profile(item)
     item["primary_source"] = primary_source_for(item)
+    item["station_source"] = station_source_for(item)
     attach_google_maps_navigation(item)
     item["verification"] = verification_profile(item, live=live)
     item["tesla_ok"] = tesla_compatibility(item)
@@ -4167,7 +4169,7 @@ SUMMARY_OVERVIEW_FIELDS = frozenset("""
     id name operator owner city address lat lon
     price_min price_max current_price_min price_currency price_native_unit price_label is_free is_cheap free_condition price_claim_type
     tesla_ok fast max_power_kw connector_labels connectors connector_summary connector_count available_connectors
-    status available total_evse source source_url source_label primary_source source_count reliability confidence
+    status available total_evse source source_url source_label primary_source station_source source_count reliability confidence
     claim_conflict parking access verification decision pricing price_window_status tariff_details price_evidence
     freshness_minutes last_seen recommendation_score distance_km drive_eta_min_est navigation lead corroboration cache_stale
 """.split())

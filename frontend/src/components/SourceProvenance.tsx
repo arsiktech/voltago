@@ -4,6 +4,7 @@ import { ExternalLink, Plug, ShieldCheck, SquareParking, TriangleAlert } from 'l
 import type { Station } from '../types'
 import { connectorInventoryText, corroboration, publicWebUrl, sourcePageConnectors, sourcePhotoLinks, tariffNotes } from '../lib/format'
 import { fadeSlide } from '../lib/motion'
+import { sourceName, stationSourceReference } from '../lib/stationSource'
 
 function Ext({ href, children }: { href?: string | null; children: ReactNode }) {
   const safeHref = publicWebUrl(href)
@@ -19,6 +20,12 @@ function Ext({ href, children }: { href?: string | null; children: ReactNode }) 
       <ExternalLink size={11} />
     </a>
   )
+}
+
+function SourceLink({ st, url, name, scope }: { st: Station; url?: string | null; name?: string | null; scope: string }) {
+  const reference = stationSourceReference(st, url, name)
+  if (!reference) return <span>{sourceName(url, name)}</span>
+  return <Ext href={reference.url}>{reference.exact ? `Open ${reference.name}` : `${scope}: ${reference.name}`}</Ext>
 }
 
 export function SourceProvenance({ st }: { st: Station }) {
@@ -70,7 +77,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           {details.notes && details.notes.length > 0 && <ul className="list-disc space-y-1 pl-4">
             {details.notes.map((note, index) => <li key={index}>{note}</li>)}
           </ul>}
-          {publicWebUrl(details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><Ext href={details.source_url}>View information source</Ext></div>}
+          {publicWebUrl(details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><SourceLink st={st} url={details.source_url} name={details.source_name} scope="Information reference" /></div>}
         </section>
       )}
 
@@ -84,7 +91,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           <ul className="space-y-1">
             {pageConnectors.map((connector, index) => <li key={index}>
               {publicWebUrl(connector.source_url)
-                ? <Ext href={connector.source_url}>{connectorInventoryText(connector)}</Ext>
+                ? <><span>{connectorInventoryText(connector)}</span>{' · '}<SourceLink st={st} url={connector.source_url} name={details?.source_name} scope="Connector reference" /></>
                 : connectorInventoryText(connector)}
             </li>)}
           </ul>
@@ -98,7 +105,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           {conditions.length > 0 && <ul className="list-disc space-y-1 pl-4">
             {conditions.map((condition) => <li key={condition}>{condition}</li>)}
           </ul>}
-          {publicWebUrl(st.tariff_details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><Ext href={st.tariff_details.source_url}>View tariff source</Ext></div>}
+          {publicWebUrl(st.tariff_details.source_url) && <div className="inline-flex min-h-11 items-center text-xs"><SourceLink st={st} url={st.tariff_details.source_url} name={charge?.source} scope="Tariff reference" /></div>}
         </section>
       )}
 
@@ -109,7 +116,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           </div>
           <p className="text-fg-soft">{charge.summary}</p>
           <div className="mt-0.5 text-xs text-muted">
-            via {charge.source || 'source'} · <Ext href={charge.url}>view source</Ext>
+            <SourceLink st={st} url={charge.url} name={charge.source} scope="Charging reference" />
           </div>
         </div>
       )}
@@ -121,7 +128,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           </div>
           <p className="text-fg-soft">{parking.summary}</p>
           <div className="mt-0.5 text-xs text-muted">
-            via {parking.source || 'source'} · <Ext href={parking.url}>view source</Ext>
+            <SourceLink st={st} url={parking.url} name={parking.source} scope="Parking reference" />
           </div>
         </div>
       )}
@@ -142,7 +149,7 @@ export function SourceProvenance({ st }: { st: Station }) {
           <h3 className="font-semibold uppercase tracking-wide">Source photos</h3>
           {photoLinks.map((photo, index) => <div key={`${photo.href}:${index}`}>
             {photo.caption && <p>{photo.caption}</p>}
-            <div className="inline-flex min-h-11 items-center"><Ext href={photo.href}>View photo at {photo.source}</Ext></div>
+            <div className="inline-flex min-h-11 items-center"><Ext href={photo.href}>View photo at {sourceName(photo.href, photo.source)}</Ext></div>
           </div>)}
         </section>
       )}
@@ -172,7 +179,7 @@ export function SourceProvenance({ st }: { st: Station }) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.14, delay: Math.min(i, 6) * 0.025 }}
               >
-                <Ext href={s.url}>{s.name || 'source'}</Ext>
+                <SourceLink st={st} url={s.url} name={s.name} scope="General reference" />
                 {s.evidence && <div className="mt-0.5 text-muted">{s.evidence}</div>}
                 {(s.attribution || s.license) && (
                   <div className="mt-0.5 text-muted">

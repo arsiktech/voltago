@@ -71,6 +71,12 @@ both platforms. Do not invent new levels or reuse these colors for other meaning
 - Community input can annotate or downgrade a row, never upgrade it to `go`.
 - Source and freshness stay visible in plain words ("Official data · updated 3 h
   ago"), with detail behind a disclosure.
+- Published tariffs remain visible as `Source price` until verified, including hourly
+  rates and conditional text. Charging-price verification, price filters and live
+  availability keep their separate authority rules.
+- Source action buttons name the linked provider (`Open Canarias te recarga`) and
+  open that exact charger page. Generic provider homepages and map overviews stay
+  broader references in Details; they never stand in for an exact charger action.
 - The only celebration is the quiet iOS route-ready confirmation when a real live `go`
   row appears; never for directory, stale, manual or lead rows.
 

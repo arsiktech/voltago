@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+import urllib.parse
 from typing import Any, Dict, List, Optional
 
 
@@ -56,8 +57,8 @@ def normalize_connector_label(token: Any) -> Optional[str]:
 def normalize_public_source_url(url: Any) -> str:
     """Normalize a source handoff without turning arbitrary schemes into web links."""
     value = str(url or "").strip()
-    match = re.search(
-        r"https?://(?:www\.)?openchargemap\.org/site/poi/details/(\d+)",
+    match = re.fullmatch(
+        r"https?://(?:www\.)?openchargemap\.org/site/poi/details/(\d+)/?(?:[?#][^\s]*)?",
         value,
         re.I,
     )
@@ -258,3 +259,117 @@ def primary_source_for(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     primary = dict(ranked[0])
     primary.pop("score", None)
     return primary
+
+
+_EXACT_STATION_KINDS = frozenset({"station_page", "provider_station_page", "start_page", "map_object"})
+_GENERIC_SOURCE_NAMES = frozenset({"source", "directory page", "provider page", "official data", "live source", "map", "website"})
+_GENERIC_SOURCE_PATHS = frozenset({"map", "mapa", "maps", "locations", "stations", "charging-stations", "points", "index", "index.html", "home", "contact", "contacto", "login", "about", "tariffs", "pricing"})
+
+
+def _exact_station_source(source: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Validate an existing station link; general map/feed authority is insufficient."""
+    value = source.get("url")
+    if not isinstance(value, str) or not value.strip() or len(value) > 4096:
+        return None
+    value = value.strip()
+    if re.search(r"[\s\\\x00-\x1f\x7f]", value):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (parsed.scheme not in {"https", "http"} or parsed.username is not None or parsed.password is not None
+                or parsed.port not in {None, 80, 443} or ":" in host or host.endswith((".local", ".localhost", ".internal", ".home.arpa"))
+                or len(host) > 253 or not re.fullmatch(r"[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?", host)
+                or "." not in host or all(part.isdigit() for part in host.split("."))
+                or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part) for part in host.split("."))):
+            return None
+    except (ValueError, AttributeError):
+        return None
+    domain = host.removeprefix("www.")
+    path = parsed.path
+    decoded_path = urllib.parse.unquote(path)
+    if re.search(r"[\\\x00-\x1f\x7f]", decoded_path) or any(part in {".", ".."} for part in decoded_path.split("/")):
+        return None
+    name, kind = "", "station_page"
+    if domain == "canariasterecarga.com":
+        if parsed.query or not re.fullmatch(r"/(?:es|en)/(?:(?:mapa/)?p\d{1,10}|punto-de-recarga-[a-z0-9-]+)/?", path):
+            return None
+        name = "Canarias te recarga"
+    elif host in {"gaiacharge.com", "www.gaiacharge.com", "partner-next.gaiacharge.com"}:
+        if not re.fullmatch(r"/cpo/jump/[^/]+/(?:[^/]+/)?[^/]+/?", path):
+            return None
+        name, kind = "Gaia", "start_page"
+    elif domain == "openstreetmap.org":
+        if not re.fullmatch(r"/(?:node|way|relation)/[1-9]\d*/?", path):
+            return None
+        name, kind = "OpenStreetMap", "map_object"
+    elif domain == "openchargemap.org":
+        if not re.fullmatch(r"/site/poi/details/[1-9]\d*/?", path, re.I):
+            return None
+        name = "OpenChargeMap"
+    elif host == "map.openchargemap.io":
+        query = urllib.parse.parse_qs(parsed.query)
+        identifier = query.get("id") or query.get("poi") or []
+        if (path not in {"", "/"} or query.get("mode") != ["details"] or len(identifier) != 1
+                or (query.get("id") and query.get("poi") and query["id"] != query["poi"])
+                or not re.fullmatch(r"[1-9]\d*", identifier[0])):
+            return None
+        name = "OpenChargeMap"
+    elif domain == "electromaps.com" or host == "map.electromaps.com":
+        if not re.fullmatch(r"/(?:en|es|fr|pt)/p/[1-9]\d*(?:/[^/]+)*/?", path):
+            return None
+        name = "Electromaps"
+    elif domain == "chargemap.com":
+        if not (re.fullmatch(r"/(?!(?:index|map|contact|about|terms|privacy|pricing|tariffs)\.html$)[a-z0-9][a-z0-9-]*\.html", path, re.I)
+                or re.fullmatch(r"/[a-z]{2}(?:-[a-z]{2})?/charging-stations/[^/]+/?", path, re.I)):
+            return None
+        name = "Chargemap"
+    elif host == "recarga.fenieenergia.es":
+        if not re.fullmatch(r"/punto-recarga/(?!todos/?$)[a-zA-Z0-9_-]+/?", path):
+            return None
+        name, kind = "Feníe Energía", "provider_station_page"
+    elif domain == "tesla.com":
+        if not re.fullmatch(r"/(?:[a-z]{2}_[a-z]{2}/)?findus/location/(?:supercharger|destinationcharger)/[^/]+/?", path, re.I):
+            return None
+        name = "Tesla"
+    elif domain == "telpark.com":
+        if not re.fullmatch(r"/[a-z]{2}/ciudades/[a-z0-9-]+/[a-z0-9-]+/?", path):
+            return None
+        name = "Telpark"
+    elif domain == "interparking.es":
+        if not re.fullmatch(r"/es/aparcamientos/[a-z0-9/_-]+/?", path):
+            return None
+        name = "Interparking"
+    else:
+        # An adapter may explicitly identify another provider's exact station page.
+        # Never infer exactness from a deep path alone: datasets/regulations also have one.
+        kind = str(source.get("kind") or "").lower()
+        segments = [segment.casefold() for segment in path.split("/") if segment]
+        if (kind not in _EXACT_STATION_KINDS or not segments or segments[-1] in _GENERIC_SOURCE_PATHS
+                or re.fullmatch(r"[a-z]{2}(?:-[a-z]{2})?", "/".join(segments))
+                or re.search(r"\.(?:json|geojson|csv|xml|pdf|zip|gz)$", path, re.I)):
+            return None
+        name = " ".join(str(source.get("name") or "").split())
+        if not name or name.casefold() in _GENERIC_SOURCE_NAMES:
+            name = domain
+    return {"name": name, "url": value, "kind": kind}
+
+
+def station_source_for(item: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    """Select an exact named charger action without changing evidence or decisions."""
+    candidates: List[Dict[str, Any]] = []
+    primary = item.get("primary_source")
+    if isinstance(primary, dict):
+        candidates.append(primary)
+    candidates.append({"name": item.get("source"), "url": item.get("source_url")})
+    for key in ("source_details", "tariff_details", "charge_claim"):
+        details = item.get(key)
+        if isinstance(details, dict):
+            candidates.append({"name": details.get("source_name") or details.get("source") or item.get("source"),
+                               "url": details.get("source_url") or details.get("url")})
+    candidates.extend(source for source in item.get("sources") or [] if isinstance(source, dict))
+    candidates.extend({"name": item.get("source"), "url": connector.get("source_url")}
+                      for connector in item.get("connectors") or [] if isinstance(connector, dict))
+    exact = [result for candidate in candidates if (result := _exact_station_source(candidate))]
+    # Genuine station start/check links remain useful even if another directory is primary.
+    return next((source for source in exact if source["kind"] == "start_page"), exact[0] if exact else None)

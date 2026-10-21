@@ -49,14 +49,14 @@ struct StationActions: View {
     private func sourceAction(prominent: Bool, icons: Bool) -> some View {
         if let url = station.sourceURL {
             Button { openURL(url) } label: {
-                Label(prominent ? station.sourceActionLabel : String(localized: "Source"),
+                Label(station.sourceActionLabel,
                       systemImage: "arrow.up.right.square")
                     .labelStyle(VoltaActionLabelStyle(icons: icons))
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .buttonStyle(VoltaActionButtonStyle(prominent: prominent))
-            .accessibilityHint("Opens the public evidence page outside Volta")
+            .accessibilityHint("Opens this charger's public source page outside Volta")
             .accessibilityIdentifier("stationSourceAction")
         }
     }

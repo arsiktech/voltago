@@ -1,8 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Station } from '../types'
 import { stationDetailsQueryOptions, TransportError } from '../lib/api'
-import { connectorInventoryText, publicWebUrl, stationPhoto } from '../lib/format'
+import { connectorInventoryText, stationPhoto } from '../lib/format'
 import { stationTitle } from '../lib/provider'
+import { stationSourceReference } from '../lib/stationSource'
 import { SourceProvenance } from './SourceProvenance'
 import { VehicleEstimate } from './VehicleEstimate'
 import { PriceEvidence } from './PriceEvidence'
@@ -17,12 +18,12 @@ function Evidence({ st }: { st: Station }) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Connectors</h3>
         <ul className="space-y-1.5 text-sm text-fg-soft">
           {st.connectors.map((connector, index) => {
-            const source = publicWebUrl(connector.source_url)
+            const source = stationSourceReference(st, connector.source_url, st.source_details?.source_name || st.source)
             return <li key={`${connector.connector_id || 'connector'}:${index}`}>
               <span>{connectorInventoryText(connector)}</span>
               {connector.connector_id && <span className="block text-xs text-muted">Port {connector.connector_id}</span>}
-              {source && <a href={source} target="_blank" rel="noopener noreferrer"
-                className="ml-2 inline-flex min-h-11 items-center font-medium text-brand-strong underline">View connector source</a>}
+              {source && <a href={source.url} target="_blank" rel="noopener noreferrer"
+                className="ml-2 inline-flex min-h-11 items-center font-medium text-brand-strong underline">{source.exact ? `Open ${source.name}` : `Connector reference: ${source.name}`}</a>}
             </li>
           })}
         </ul>

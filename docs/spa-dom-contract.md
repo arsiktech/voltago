@@ -170,9 +170,12 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 - `[data-source-tier]` is plain source-tier and observation-age text, not a badge.
   Source counts, tariff schedules and additional directory/network prices live in Details.
 - Title: `h3` (station name); city/address `p` below.
-- Price: `Charging price` label and large `span` `Free`, `€0.NN` or `Unknown`,
+- Price: `Charging price` for verified or missing prices, `Source price` for a
+  published tariff awaiting verification, and large `span` `Free`, `€0.NN` or `Unknown`,
   with `/kWh` for energy rates or `/hour` for published hourly rates. Conditional
-  prices say `Conditions apply`; full fees and conditions are in Details. Hourly rates never become energy prices or unconditional Free.
+  tariff text is retained when no simple rate is available. Conditional prices say
+  `Conditions apply`; full fees and conditions are in Details. Hourly rates never
+  become energy prices or unconditional Free.
 - Availability row: exactly one visible `[data-availability="live"]` or
   `[data-availability="not-live"]` per card.
   Read its individual facts; whole-card textContent joins adjacent layout blocks without
@@ -185,9 +188,15 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   summing published quantities, for example `10 × Wall outlet, type not published · 3.6 kW`.
   Missing quantities stay unpublished. At most three groups appear, then `+N more types in Details`.
   Hardware summaries never imply live per-port occupancy. Details retains every original port.
-- Actions: `a` `Open in Maps` (Google/Apple maps href), `a` `Source` (provider page), both
+- Actions: `a` `Open in Maps` (Google/Apple maps href), optional `a` `Open <source name>`
+  or `Start/check <provider name>` for an exact charger/start page, both
   `target="_blank" rel="noopener noreferrer"`; visible `Details` button with
   `aria-label="Source details for <station title>"` and `aria-expanded`.
+  The API's `station_source` supplies the named exact action independently of general
+  provenance. Saved responses can use an existing exact station URL. Generic provider
+  homepages, map overviews and datasets never become charger actions. Broader evidence
+  remains in Details as a named reference; no charger URL or identifier is guessed.
+  `[data-station-source]` marks these exact named actions on cards and map popups.
 - Each card also has a full-width secondary `a[data-google-maps]`: `listing` is
   named `View <station> on Google Maps` and displays `View Google Maps`; `search`
   is named `Find <station> on Google Maps` and displays `Search Google Maps`.
@@ -243,6 +252,10 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   exact source-backed location with an unverified price remains a plain dot, not a price
   claim. Cached/stale popup cards say `Cached · not live` and expose a source check rather
   than an `Open in Maps` action.
+- Popup cards show published hourly or conditional tariffs as `Source price` when
+  no verified energy price is available, with minimum charges and conditions in `Terms`.
+  Missing prices say `Unknown`. Displaying a source tariff does not verify it for
+  price pins, per-kWh filters, or route readiness.
 - Cluster badges and price pills are canvas images (NOT DOM) — do not assert them via DOM.
 
 ## Flows for tests
