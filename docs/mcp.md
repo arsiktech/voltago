@@ -15,12 +15,17 @@ honesty rules the apps use.
 
 ## Connect
 
-In the web app, choose **Connect AI agent** beside **Data honesty** in the pinned
-discovery footer. On iOS, use the pinned **Connect AI** discovery action. The setup
-view provides a selectable server address and a copy button. Add a remote MCP
-server named Volta Go in your agent's integrations and paste the address there.
-Copy feedback confirms only that the address was copied; the agent completes
-the connection. The discovery prompt remains available after closing setup.
+In the web app, choose **Copy AI prompt** beside **Data honesty** in the pinned
+discovery footer. The iPhone app has the same one-tap copy action. Paste the result
+into ChatGPT, Claude, Grok or your AI chat. There is no setup popup in Volta Go.
+
+The shared [setup prompt](../contracts/agent_connection_prompt.txt) includes the
+remote MCP URL, transport, authentication, Claude Code command and available tools.
+It asks the receiving AI to configure the connection or guide manual setup, verify
+it with a tool call, and ask where and how you want to charge. AI apps that do not
+support remote MCP cannot connect through a pasted prompt; the prompt asks them to
+explain that limitation. Copy feedback confirms that the prompt was copied.
+If clipboard access fails, Volta Go exposes selectable text for manual copying.
 
 Claude Code:
 

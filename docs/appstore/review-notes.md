@@ -40,13 +40,13 @@ Support: [FINAL PUBLIC SUPPORT URL]
 No login or demo account is required. Volta creates no user account or account record, so there is no account-deletion flow in the app. The Privacy and Support pages explain how to request deletion of eligible retained service data.
 
 Suggested review path:
-1. Launch. Without location permission, the national overview shows source-backed leads marked Not live. If When In Use permission was already granted, launch requests location once and loads/ranks nearby chargers.
+1. Launch. The app requests When In Use location permission on first use and opens nearby chargers after a successful fix. While location is pending or unavailable, the national overview shows source-backed leads marked Not live.
 2. Search for “València” and select a result to request live data from the Service URL above.
 3. Open a station card to inspect charging and parking evidence, connector/access facts, freshness, and available public-source links.
 4. Select Open now. If current route-ready evidence is absent, the empty result is deliberate; stale or directory evidence is not promoted to available.
 5. Open Settings and test Privacy, Terms, and Support. Each opens its matching public HTTPS page above without login.
 
-Location is optional. With When In Use permission already granted, Volta requests one location at launch; it requests again when Locate is tapped. Coordinates go to the configured Volta Service for nearby results and ranking. City search remains available after denial.
+Location is optional. Volta requests it once at launch, asking for When In Use permission if needed; Locate allows another request. Coordinates go to the configured Volta Service for nearby results and ranking. City search remains available after denial, and a newer manual search or map choice takes priority over a delayed startup fix.
 
 Volta never starts a charging session, reserves a bay, makes a provider payment, bypasses login, uses private provider tokens, or calls private mobile APIs. Permitted public HTML pages are retrieved only with GET; Gaia connector/status pages are an example. Official/open read APIs use their documented read requests: MapaREVE's public locations query is a read-only POST, never a session or other write action. Provider apps/pages, posted signs, and onsite rules remain authoritative.
 
@@ -74,12 +74,12 @@ No login or demo account is required. Volta creates no account record, so it has
 
 Suggested review path:
 1. Launch without a verified entitlement to see Volta Plus. Use the App Store sandbox; no Volta credentials are needed. Test Restore Purchases, Terms, and Privacy. Terms and Privacy open their matching public HTTPS pages above without login.
-2. After entitlement, the charger experience opens. Without location permission, the national overview shows source-backed Not live leads. If When In Use permission was already granted, launch requests location once and loads/ranks nearby chargers.
+2. After entitlement, the charger experience requests When In Use location permission if needed and opens nearby chargers after a successful fix. While location is pending or unavailable, the national overview shows source-backed Not live leads.
 3. Search “València” to request live data from the Service URL, then open a card to inspect charging/parking evidence, connector/access facts, freshness, and public-source links.
 4. Select Open now. With no current route-ready evidence, the empty result is deliberate; stale/directory data is not promoted to available.
 5. Open Settings and test Privacy, Terms, and Support. Each opens its matching public HTTPS page above without login.
 
-Location is optional. When permission is granted, Locate requests it again when tapped. Coordinates go to the configured Service for nearby results/ranking; city search remains after denial.
+Location is optional. Volta requests it once when discovery opens, asking for When In Use permission if needed; Locate allows another request. Coordinates go to the configured Service for nearby results/ranking; city search remains after denial, and a newer manual search or map choice takes priority over a delayed startup fix.
 
 Volta never starts charging, reserves a bay, pays a provider, bypasses login, uses private tokens, or calls private mobile APIs. Permitted public HTML pages use GET only, including Gaia status pages. Official/open read APIs use documented read requests: MapaREVE's public locations query is a read-only POST, never a session/write action. Provider apps/pages, signs, and onsite rules remain authoritative.
 

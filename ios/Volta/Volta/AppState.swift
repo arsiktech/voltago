@@ -12,7 +12,7 @@ struct RouteMoment: Identifiable, Equatable {
 }
 
 /// App orchestration, mirroring the web client's honesty rules:
-/// - default = national leads-only overview (nothing pretends to be live),
+/// - default = request the driver's location, with a usable overview while it resolves,
 /// - live mode = viewport fetch near the user / a searched place,
 /// - instant leads paint while the live fetch runs,
 /// - FAIL-CLOSED: a failed live fetch never keeps stale live cards — fall back to leads.
@@ -138,6 +138,8 @@ final class AppState: NSObject, ObservableObject {
     private var refreshTimer: Timer?
     private var previousRouteReadyCount = 0
     private var awaitingLocationAuthorization = false
+    private var didStartDiscovery = false
+    private var hasManualDiscoveryIntent = false
 
     // MARK: - Cold-launch instrumentation
     //
@@ -149,17 +151,17 @@ final class AppState: NSObject, ObservableObject {
     //   `@StateObject` backing VoltaApp's WindowGroup during app launch, before the
     //   first view body is ever evaluated -- the earliest hook available without a
     //   custom AppDelegate/main.swift, and effectively equivalent to VoltaApp.init().
-    // - END: the FIRST time `loadOverview()` (called unconditionally from `start()`)
+    // - END: the FIRST time `loadOverview()` (for the nearby area or fallback overview)
     //   successfully resolves. That is the real first content the driver sees --
     //   `leads` populate `filteredRows`/`mapRows`/`listRows`, replacing the loading
     //   state with actual map pins and list rows -- matching this class's own
     //   documented "instant leads paint" architecture (the fast intelligence-only
-    //   query `start()` always fires first, before any live/location fetch).
+    //   query runs alongside live providers, including the nearby startup lookup).
     //
-    // Honest limitation: if location permission is already granted, `start()` also
+    // Honest limitation: once location resolves, `start()` also
     // fires `locate()` -> `fetchLive()` concurrently; on the rare run where THAT
     // resolves first, true first content is marginally earlier than what this
-    // records. `loadOverview()` is the documented always-runs fast path, so it is
+    // records. `loadOverview()` is the independent saved-evidence fast path, so it is
     // the correct, non-cherry-picked measurement anchor.
     //
     // The signpost itself is cheap and safe to ship in Release (standard
@@ -368,6 +370,7 @@ final class AppState: NSObject, ObservableObject {
     /// outside the visible part of the map (`visibleRegion` excludes the area under the
     /// sheet), and `moveMap` is false when the full-height sheet hides the map anyway.
     func select(_ station: Station, moveMap: Bool) {
+        cancelLocationForManualNavigation()
         focusedStationID = station.id
         selected = station
         guard moveMap, !visibleRegion.bbox.contains(station) else { return }
@@ -402,17 +405,24 @@ final class AppState: NSObject, ObservableObject {
     // MARK: - Fetching
 
     func start() {
-        Task { await loadOverview() }
+        guard !didStartDiscovery else { return }
+        didStartDiscovery = true
         #if DEBUG
         // UI tests can pin an adverse authorization state. Do not let an already-authorized
         // simulator immediately replace that state with a real location request.
-        if Self.debugLocationOverride != nil { return }
+        if Self.debugLocationOverride != nil {
+            Task { await loadOverview() }
+            return
+        }
         #endif
-        // Approved UX: near-me first when permission already exists, else the national
-        // overview invites locate/search (same default as the web client).
-        if locationManager.authorizationStatus == .authorizedWhenInUse
-            || locationManager.authorizationStatus == .authorizedAlways {
-            locate()
+        // Opening the app requests a location even on the first permission decision.
+        // A fresh cached fix starts the existing nearby pipeline immediately.
+        if !hasManualDiscoveryIntent { locate() }
+        if mode == .overview {
+            Task {
+                guard self.mode == .overview, self.overviewState == .idle else { return }
+                await self.loadOverview()
+            }
         }
     }
 
@@ -534,6 +544,7 @@ final class AppState: NSObject, ObservableObject {
 
     /// Enter/refresh live mode for the current viewport.
     func fetchLive(reason: String = "") {
+        if reason == "area" { cancelLocationForManualNavigation() }
         // Continental/world views use stored evidence; live providers have a local budget.
         guard visibleRegion.bbox.supportsLiveLookup else {
             overviewRequestID = UUID()
@@ -776,6 +787,9 @@ final class AppState: NSObject, ObservableObject {
     // MARK: - Search
 
     func searchChanged(_ text: String) {
+        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            cancelLocationForManualNavigation()
+        }
         searchTask?.cancel()
         searchResults = []
         let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -822,6 +836,7 @@ final class AppState: NSObject, ObservableObject {
     }
 
     func pick(_ result: GeocodeResult) {
+        cancelLocationForManualNavigation()
         clearSearch()
         let region: MKCoordinateRegion
         if let bb = result.bbox {
@@ -845,6 +860,7 @@ final class AppState: NSObject, ObservableObject {
     /// From an out-of-service charger: close its detail and show the chargers around it, so
     /// the driver's next step is an alternative rather than directions to a dead charger.
     func showChargersNear(_ station: Station) {
+        cancelLocationForManualNavigation()
         selected = nil
         focusedStationID = nil
         let region = MKCoordinateRegion(center: station.coordinate,
@@ -864,14 +880,17 @@ final class AppState: NSObject, ObservableObject {
         status: CLAuthorizationStatus,
         locationState: LocationState,
         locating: Bool,
-        awaitingAuthorization: Bool
+        awaitingAuthorization: Bool,
+        allowSettingsRecovery: Bool = true
     ) -> LocationAuthorizationTransition {
         switch status {
         case .authorizedAlways, .authorizedWhenInUse:
-            let recoveringFromSettings = locationState == .denied || locationState == .restricted
-            let shouldRequestLocation = awaitingAuthorization || recoveringFromSettings
+            let recoveredPermission = locationState == .denied || locationState == .restricted
+            let shouldRequestLocation = awaitingAuthorization || (allowSettingsRecovery && recoveredPermission)
             return LocationAuthorizationTransition(
-                locationState: shouldRequestLocation ? .requesting : locationState,
+                // Permission presentation must recover even when a newer manual
+                // area owns the camera and intentionally suppresses a GPS lookup.
+                locationState: shouldRequestLocation ? .requesting : (recoveredPermission ? .idle : locationState),
                 locating: shouldRequestLocation ? true : locating,
                 awaitingAuthorization: false,
                 shouldRequestLocation: shouldRequestLocation
@@ -943,7 +962,20 @@ final class AppState: NSObject, ObservableObject {
         announce(String(localized: "Location found. Loading nearby chargers."))
     }
 
+    /// Manual exploration owns the camera once chosen; a late startup fix cannot reclaim it.
+    func cancelLocationForManualNavigation() {
+        hasManualDiscoveryIntent = true
+        guard locating else { return }
+        locating = false
+        awaitingLocationAuthorization = false
+        locationState = userCoordinate == nil ? .idle : .located
+        locationManager.stopUpdatingLocation()
+    }
+
     func locate() {
+        // An explicit Locate is newer than any earlier city or map choice, even
+        // when permission must first be recovered through Settings.
+        hasManualDiscoveryIntent = false
         #if DEBUG
         if let override = Self.debugLocationOverride {
             locating = false
@@ -1008,7 +1040,8 @@ extension AppState: CLLocationManagerDelegate {
                 status: status,
                 locationState: self.locationState,
                 locating: self.locating,
-                awaitingAuthorization: self.awaitingLocationAuthorization
+                awaitingAuthorization: self.awaitingLocationAuthorization,
+                allowSettingsRecovery: !self.hasManualDiscoveryIntent
             )
             self.locationState = transition.locationState
             self.locating = transition.locating
@@ -1035,6 +1068,7 @@ extension AppState: CLLocationManagerDelegate {
                 return
             }
             #endif
+            guard self.locating else { return }
             self.showLocation(loc)
         }
     }
@@ -1049,6 +1083,7 @@ extension AppState: CLLocationManagerDelegate {
                 return
             }
             #endif
+            guard self.locating else { return }
             self.locating = false
             self.awaitingLocationAuthorization = false
             let nextState = Self.locationFailureTransition(

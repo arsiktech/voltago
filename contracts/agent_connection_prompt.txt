@@ -1,0 +1,16 @@
+Help me use Volta Go to find EV chargers.
+
+Add Volta Go as a remote MCP server:
+Server URL: https://voltago.app/mcp
+Transport: Streamable HTTP
+Authentication: none (no account or API key)
+Access: read-only charger lookup
+
+For Claude Code, the setup command is:
+claude mcp add --transport http voltago https://voltago.app/mcp
+
+If you can add the integration, do so. Otherwise, guide me through setup in this AI app. If this app cannot use remote MCP servers, explain that limitation. Do not claim the connection is ready until a tool call succeeds.
+
+Once connected, call get_data_status to check coverage and freshness. Use find_chargers to search and get_charger for full details.
+
+Ask where I want to charge and which connector my EV uses. Prefer free charging, then cheaper options. Include hourly rates, minimum charges and other tariff conditions. Explain parking costs and access separately, distinguish live availability from saved directory information, and link to each charger's exact source page when available.

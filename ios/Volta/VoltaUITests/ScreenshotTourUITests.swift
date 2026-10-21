@@ -43,6 +43,7 @@ final class ScreenshotTourUITests: XCTestCase {
             Self.isMapKitOwned(issue)
         }
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stationRow-'")).firstMatch
+        for _ in 0..<8 where !row.isHittable { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
         XCTAssertTrue(app.navigationBars["Charger details"].waitForExistence(timeout: 10))
@@ -94,6 +95,7 @@ final class ScreenshotTourUITests: XCTestCase {
         shot("03-city-\(tag)")
 
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stationRow-'")).firstMatch
+        for _ in 0..<8 where !row.isHittable { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
         XCTAssertTrue(app.navigationBars["Charger details"].waitForExistence(timeout: 10))

@@ -1,135 +1,121 @@
+import Foundation
 import SwiftUI
 import UIKit
 
-/// A persistent discovery action, with no extra row or notification permission.
+/// The web and native clients copy the same bundled setup prompt, trimming only outer whitespace.
+enum AgentConnectionPrompt {
+    static func load(from bundle: Bundle = .main) -> String? {
+        guard let url = bundle.url(forResource: "agent_connection_prompt", withExtension: "txt"),
+              let prompt = try? String(contentsOf: url, encoding: .utf8),
+              !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @MainActor
+    static func copy(_ prompt: String, to pasteboard: UIPasteboard) -> Bool {
+        pasteboard.string = prompt
+        return pasteboard.string == prompt
+    }
+}
+
+/// One tap copies setup instructions. Only a failed copy reveals a manual-copy fallback.
 struct AIConnectionPrompt: View {
-    var action: () -> Void
+    @State private var copySucceeded = false
+    @State private var copyError: String?
+    @State private var manualPrompt: String?
+
+    private var title: String {
+        copySucceeded ? String(localized: "Prompt copied") : String(localized: "Copy AI prompt")
+    }
+
+    private var subtitle: String { String(localized: "Paste into your AI chat") }
 
     var body: some View {
-        Button(action: action) {
-            Text("Connect AI")
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: copyPrompt) {
+                HStack(spacing: 7) {
+                    Image(systemName: copySucceeded ? "checkmark" : "doc.on.doc")
+                        .frame(width: 16, height: 16)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        ZStack(alignment: .leading) {
+                            // Both states reserve the same width, including translated labels.
+                            Text("Copy AI prompt").hidden().accessibilityHidden(true)
+                            Text("Prompt copied").hidden().accessibilityHidden(true)
+                            Text(title)
+                        }
+                        .font(.caption.weight(.semibold))
+                        Text(subtitle).font(.caption2)
+                    }
+                }
                 .foregroundStyle(Theme.actionInk)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
                 .frame(minWidth: 44, minHeight: 44)
                 .background(Theme.surface, in: .capsule)
                 .overlay { Capsule().strokeBorder(Theme.hairlineStrong, lineWidth: 1) }
-                // Preserve the quiet 44-point capsule while giving the system sheet's
-                // scaled presentation enough room for a full-size touch target.
                 .padding(.vertical, 2)
                 .contentShape(.capsule)
-        }
-        .buttonStyle(VoltaPressButtonStyle())
-        .accessibilityLabel("Connect AI agent")
-        .accessibilityHint("Opens instructions to add Volta Go to your AI agent")
-        .accessibilityIdentifier("connectAIAgentButton")
-    }
-}
+            }
+            .buttonStyle(VoltaPressButtonStyle())
+            .accessibilityLabel(Text(verbatim: title + ". " + subtitle))
+            .accessibilityHint("Copies a setup prompt for ChatGPT, Claude, Grok or another AI chat")
+            .accessibilityIdentifier("copyAIPromptButton")
 
-/// Setup is completed in the agent. Copying the address never implies a connection.
-struct AIConnectionView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var copySucceeded: Bool?
-
-    private static let endpoint = "https://voltago.app/mcp"
-    private static let claudeCodeCommand = "claude mcp add --transport http voltago https://voltago.app/mcp"
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Text("Ask your agent about nearby chargers, prices and charging speeds.")
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Section {
-                    Text("Add a remote MCP server in your agent’s integrations, then paste this address.")
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Text(verbatim: Self.endpoint)
-                        .font(.system(.subheadline, design: .monospaced))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel("MCP server address")
-                        .accessibilityValue(Self.endpoint)
-
-                    Button(action: copyAddress) {
-                        Label(copySucceeded == true ? String(localized: "Copied") : String(localized: "Copy address"),
-                              systemImage: copySucceeded == true ? "checkmark" : "doc.on.doc")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .buttonStyle(VoltaActionButtonStyle(prominent: true))
-                    .accessibilityIdentifier("copyMCPAddressButton")
-
-                    if copySucceeded == false {
-                        Text("Couldn’t copy. Select the address above and copy it.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Text("Use an agent that supports remote MCP (Streamable HTTP), such as Claude Code.")
-                        .font(.subheadline)
+            if let copyError {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(copyError)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                } header: {
-                    Text("MCP server")
-                } footer: {
-                    Text("No login or API key required.")
+                    if let manualPrompt {
+                        DisclosureGroup("Copy manually") {
+                            ScrollView {
+                                Text(verbatim: manualPrompt)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityLabel("AI setup prompt")
+                            }
+                            .frame(height: 160)
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("manualAIPromptCopy")
+                    }
                 }
-
-                Section("Claude Code") {
-                    Text("For Claude Code, run this in your terminal:")
-                        .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(verbatim: Self.claudeCodeCommand)
-                        .font(.system(.caption, design: .monospaced))
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityLabel("Claude Code command")
-                        .accessibilityValue(Self.claudeCodeCommand)
-                }
-
-                Section("Read-only access") {
-                    Text("Your agent can search chargers and read their details. It cannot start charging, take payments or submit reports.")
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Live availability depends on source coverage. Directory listings do not show whether a charger is available or occupied.")
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .scrollContentBackground(.hidden)
-            .background(Theme.canvas)
-            .navigationTitle("Connect your AI agent")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .accessibilityIdentifier("dismissAIConnectionButton")
-                }
+                .frame(maxWidth: 220)
             }
         }
-        .presentationBackground(Theme.canvas)
-        .presentationDragIndicator(.visible)
-        .accessibilityIdentifier("aiConnectionSheet")
     }
 
-    private func copyAddress() {
-        let pasteboard = UIPasteboard.general
-        pasteboard.string = Self.endpoint
-        let didCopy = pasteboard.string == Self.endpoint
-        copySucceeded = didCopy
+    private func copyPrompt() {
+        copyError = nil
+        manualPrompt = nil
+        guard let prompt = AgentConnectionPrompt.load() else {
+            copySucceeded = false
+            let error = String(localized: "The AI prompt is unavailable. Tap again to retry.")
+            copyError = error
+            announce(error)
+            return
+        }
+        copySucceeded = AgentConnectionPrompt.copy(prompt, to: .general)
+        if copySucceeded {
+            announce(String(localized: "Prompt copied. Paste it into your AI chat."))
+        } else {
+            let error = String(localized: "Couldn't copy. Tap again or copy the prompt manually.")
+            copyError = error
+            manualPrompt = prompt
+            announce(error)
+        }
+    }
+
+    private func announce(_ message: String) {
         guard UIAccessibility.isVoiceOverRunning else { return }
-        let message = didCopy
-            ? String(localized: "Address copied")
-            : String(localized: "Couldn’t copy. Select the address above and copy it.")
         UIAccessibility.post(notification: .announcement, argument: message)
     }
 }
 
 #Preview {
-    AIConnectionView()
+    AIConnectionPrompt()
 }

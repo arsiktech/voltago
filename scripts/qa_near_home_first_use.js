@@ -8,8 +8,9 @@
  *
  * Contract:
  *  - cold open exposes a visible >=44px "Use my location" CTA and address combobox;
- *  - no geolocation call happens before an explicit user action;
- *  - denied GPS leaves a clear address fallback;
+ *  - one startup geolocation request opens nearby results when it succeeds;
+ *  - pending or denied GPS keeps browsing usable with a clear address fallback;
+ *  - a late startup fix cannot replace a newer search or chosen region;
  *  - keyboard suggestions reset across queries, dismiss without selecting, and reopen;
  *  - explicit location results replace the origin once; a later place selection survives
  *    unrelated renders; late callbacks cannot overwrite a newer city, region or locate;
@@ -268,12 +269,110 @@ function bboxNumbers(url) {
   return values.length === 4 && values.every(Number.isFinite) ? values : null;
 }
 
+async function checkStartupLocation(browser) {
+  const checks = [];
+  for (const intent of ["location", "search", "region"]) {
+    const context = await browser.newContext({ viewport, reducedMotion: "reduce", serviceWorkers: "block" });
+    const page = await context.newPage();
+    const requests = [];
+    let releaseData;
+    const dataReady = intent === "location" ? new Promise(resolve => { releaseData = resolve; }) : Promise.resolve();
+    try {
+      await page.addInitScript(() => {
+        window.__voltaStartupLocationCalls = 0;
+        Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+          getCurrentPosition(success, error) {
+            window.__voltaStartupLocationCalls += 1;
+            window.__voltaStartupLocation = { success, error };
+          },
+        } });
+      });
+      await installDeterministicBasemap(page);
+      await page.route("**/api/chargers?*", async route => {
+        requests.push(route.request().url());
+        const overview = new URL(route.request().url()).searchParams.get("overview") === "true";
+        await dataReady;
+        await route.fulfill({ json: overview ? response([], nearbyLeads) : response(nearbyStations, nearbyLeads) });
+      });
+      await page.route("**/api/geocode?*", route => route.fulfill({ json: { results: [] } }));
+      await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 20000 });
+      if (intent === "location") {
+        // Hold data until the real map class is observed, as in qa_maplibre_runtime.
+        // The production engine and its camera remain unmocked.
+        const manifestResponse = await page.request.get(`${baseUrl}/.vite/manifest.json`);
+        if (!manifestResponse.ok()) throw new Error("Production Vite manifest is unavailable for startup camera check");
+        const manifest = await manifestResponse.json();
+        const mapChunk = Object.values(manifest).map(entry => entry.file).find(file => /^assets\/maplibre-(?!gl-worker-)[^/]+\.js$/.test(file));
+        if (!mapChunk) throw new Error("Production manifest is missing the map engine chunk");
+        await page.evaluate(async chunk => {
+          const module = await import(new URL(chunk, location.origin).href);
+          const MapClass = Object.values(module).find(value => typeof value === "function" && typeof value.prototype?.getSource === "function" && typeof value.prototype?.getCanvas === "function");
+          if (!MapClass) throw new Error("Map engine chunk did not export the real map class");
+          const addSource = MapClass.prototype.addSource;
+          MapClass.prototype.addSource = function (...args) {
+            window.__voltaStartupMap = this;
+            return addSource.apply(this, args);
+          };
+        }, `/${mapChunk}`);
+        releaseData();
+      }
+      await page.waitForFunction(() => window.__voltaStartupLocationCalls === 1);
+      await page.getByText("Finding chargers near you", { exact: true }).waitFor();
+      await page.locator("[data-station]").first().waitFor();
+      const initialMode = (await page.locator("[data-search-area]").textContent()).trim();
+      if (initialMode !== "Explore chargers") throw new Error(`Pending startup location removed fallback browsing: ${initialMode}`);
+      if (intent === "location") await page.waitForFunction(() => window.__voltaStartupMap?.isStyleLoaded());
+
+      if (intent === "search") {
+        await page.getByRole("combobox", { name: "Enter home address or city" }).fill("Another city");
+      } else if (intent === "region") {
+        const regionRequest = page.waitForRequest(request => {
+          const url = new URL(request.url());
+          const bbox = url.searchParams.get("bbox")?.split(",").map(Number) || [];
+          return url.pathname === "/api/chargers" && bbox.length === 4 && bbox[0] < 30;
+        });
+        await page.getByRole("navigation", { name: "Explore a region" }).getByRole("button", { name: "Canary Islands", exact: true }).click();
+        await regionRequest;
+      }
+
+      await page.evaluate(({ lat, lon }) => window.__voltaStartupLocation.success({ coords: { latitude: lat, longitude: lon } }), home);
+      if (intent === "location") {
+        await page.getByText("Near you", { exact: true }).waitFor();
+        await page.waitForFunction(() => document.querySelector('[data-station="go-near"]') != null);
+        const nearby = requests.map(url => new URL(url)).find(url => url.searchParams.get("overview") !== "true" && url.searchParams.has("lat"));
+        if (!nearby || Number(nearby.searchParams.get("lat")) !== home.lat || Number(nearby.searchParams.get("lon")) !== home.lon) {
+          throw new Error("Startup location did not query nearby chargers at the returned coordinates");
+        }
+        await page.waitForFunction(({ lat, lon }) => {
+          const map = window.__voltaStartupMap;
+          const center = map?.getCenter();
+          return center && !map.isMoving() && Math.abs(center.lat - lat) < 0.0001 && Math.abs(center.lng - lon) < 0.0001 && Math.abs(map.getZoom() - 16) < 0.0001;
+        }, home);
+      } else {
+        await page.waitForTimeout(150);
+        if (requests.some(url => new URL(url).searchParams.has("lat"))) throw new Error(`Late startup location overrode ${intent} intent`);
+        if ((await page.locator("[data-search-area]").textContent()).trim() !== "Explore chargers") throw new Error(`Late startup location changed ${intent} browsing mode`);
+        if (intent === "region" && await page.getByRole("button", { name: "Canary Islands", exact: true }).getAttribute("aria-pressed") !== "true") {
+          throw new Error("Late startup location replaced the selected region");
+        }
+        if (intent === "search" && await page.getByRole("combobox").inputValue() !== "Another city") throw new Error("Late startup location discarded the typed city");
+      }
+      const calls = await page.evaluate(() => window.__voltaStartupLocationCalls);
+      if (calls !== 1) throw new Error(`Startup ${intent} scenario requested geolocation ${calls} times`);
+      const camera = intent === "location" ? await page.evaluate(() => ({ center: window.__voltaStartupMap.getCenter().toArray(), zoom: window.__voltaStartupMap.getZoom() })) : undefined;
+      checks.push({ intent, geolocationCalls: calls, mode: (await page.locator("[data-search-area]").textContent()).trim(), camera });
+    } finally { await context.close(); }
+  }
+  return checks;
+}
+
 async function main() {
   const failures = [];
   const logs = [];
   const chargerRequests = [];
   const geocodeRequests = [];
   const browser = await chromium.launch({ headless: true, executablePath: chromePath });
+  const startupLocationChecks = await checkStartupLocation(browser);
   const context = await browser.newContext({
     viewport,
     deviceScaleFactor: 2,
@@ -287,8 +386,8 @@ async function main() {
   page.on("console", (msg) => logs.push(`${msg.type()}: ${msg.text()}`));
   page.on("pageerror", (err) => logs.push(`pageerror: ${String(err.stack || err.message)}`));
 
-  // Count (and deterministically deny) geolocation calls without opening a browser
-  // permission prompt. A cold-open call is therefore directly observable as a failure.
+  // Count and deterministically deny the automatic startup request without opening
+  // a browser permission prompt. The app must ask once and retain useful fallback UI.
   await page.addInitScript(() => {
     window.__voltaQaGeoCalls = 0;
     window.__voltaQaDeferLocation = false;
@@ -370,7 +469,7 @@ async function main() {
 
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 20000 });
   await page.getByRole("combobox", { name: "Enter home address or city" }).waitFor({ timeout: 15000 });
-  await page.getByText("Search a city or use your location to check nearby chargers.", { exact: true }).waitFor({ timeout: 15000 });
+  await page.getByText("Location is unavailable", { exact: true }).waitFor({ timeout: 15000 });
   await page.waitForTimeout(250);
 
   const cold = await page.evaluate(({ width, height }) => {
@@ -416,23 +515,13 @@ async function main() {
   if (!cold.combo?.visible || cold.combo.label !== "Enter home address or city" || cold.combo.autocomplete !== "list") {
     failures.push(`cold open lacks the address/city combobox contract: ${JSON.stringify(cold.combo)}`);
   }
-  if (cold.geolocationCalls !== 0) {
-    failures.push(`cold open called geolocation without user action (${cold.geolocationCalls} calls)`);
+  if (cold.geolocationCalls !== 1) {
+    failures.push(`cold open made ${cold.geolocationCalls} geolocation calls; expected exactly one startup request`);
   }
 
-  // Click the explicit >=44px location control, then require the address fallback.
-  const useLocationButtons = page.getByRole("button", { name: "Use my location", exact: true });
-  let largeCta = null;
-  for (let i = 0; i < (await useLocationButtons.count()); i += 1) {
-    const candidate = useLocationButtons.nth(i);
-    const box = await candidate.boundingBox();
-    if (box && box.width >= 44 && box.height >= 44) {
-      largeCta = candidate;
-      break;
-    }
-  }
-  if (largeCta) await largeCta.click();
-  await page.getByText("Location is unavailable", { exact: true }).waitFor({ timeout: 5000 }).catch(() => null);
+  // The denied startup request itself must expose the address fallback; the driver
+  // does not need to press Locate before discovering another way to search.
+  await page.getByText("Location is unavailable", { exact: true }).waitFor({ timeout: 5000 });
   const denied = await page.evaluate(() => ({
     geolocationCalls: window.__voltaQaGeoCalls,
     fallbackVisible: [...document.querySelectorAll('[role="status"]')].some((status) => {
@@ -441,7 +530,7 @@ async function main() {
     }),
     comboVisible: Boolean(document.querySelector('input[role="combobox"]')?.getBoundingClientRect().width),
   }));
-  if (denied.geolocationCalls !== 1) failures.push(`explicit location action made ${denied.geolocationCalls} geolocation calls; expected 1`);
+  if (denied.geolocationCalls !== 1) failures.push(`denied startup made ${denied.geolocationCalls} geolocation calls; expected 1`);
   if (!denied.fallbackVisible || !denied.comboVisible) failures.push("denied GPS did not expose the home address/city fallback");
 
   // Address selection must become the origin for one bounded, broad, non-overview query.
@@ -565,8 +654,6 @@ async function main() {
           height: Math.round(rect.height * 10) / 10,
         };
       });
-    const mapRect = document.querySelector(".maplibregl-canvas")?.getBoundingClientRect();
-    const panelRect = section?.getBoundingClientRect();
     const cardRect = firstCard?.getBoundingClientRect();
     const hintRect = hintMaps?.getBoundingClientRect();
     const visiblePixels = (rect) => (rect ? Math.max(0, Math.min(rect.bottom, height) - Math.max(rect.top, 0)) : 0);
@@ -578,7 +665,6 @@ async function main() {
             overflowY: getComputedStyle(scroller).overflowY,
           }
         : null,
-      mapAbovePanel: Boolean(mapRect && panelRect && mapRect.height > 0 && mapRect.bottom <= panelRect.top + 1),
       firstCardVisiblePixels: visiblePixels(cardRect),
       directMapsInsideViewport: Boolean(
         hintRect && hintRect.left >= 0 && hintRect.right <= width && hintRect.top >= 0 && hintRect.bottom <= height,
@@ -589,7 +675,18 @@ async function main() {
     };
   }, viewport);
 
-  if (!mobile.mapAbovePanel) failures.push("mobile map centers results underneath the panel");
+  await page.getByRole("button", { name: "Show map and chargers", exact: true }).click();
+  mobile.splitMap = await page.evaluate(() => {
+    const map = document.querySelector(".maplibregl-canvas");
+    const mapRect = map?.getBoundingClientRect();
+    const panelRect = document.querySelector("section")?.getBoundingClientRect();
+    return {
+      mapVisible: Boolean(map && getComputedStyle(map).visibility !== "hidden"),
+      mapAbovePanel: Boolean(mapRect && panelRect && mapRect.height > 0 && mapRect.bottom <= panelRect.top + 1),
+    };
+  });
+  if (!mobile.splitMap.mapVisible || !mobile.splitMap.mapAbovePanel) failures.push("mobile map centers results underneath the panel");
+  await page.getByRole("button", { name: "Show full charger list", exact: true }).click();
   if (!mobile.scroller || mobile.scroller.clientHeight < 44 || mobile.scroller.scrollHeight <= mobile.scroller.clientHeight) {
     failures.push(`mobile result scroller is not usable: ${JSON.stringify(mobile.scroller)}`);
   }
@@ -699,7 +796,7 @@ async function main() {
   }
   await locateAt(home.lat + 0.03, home.lon - 0.03);
   const locationCallsBeforeRaces = await page.evaluate(() => window.__voltaQaGeoCalls);
-  if (locationCallsBeforeRaces !== 3) failures.push(`expected denied + two explicit location calls, got ${locationCallsBeforeRaces}`);
+  if (locationCallsBeforeRaces !== 3) failures.push(`expected denied startup + two explicit location calls, got ${locationCallsBeforeRaces}`);
 
   // GPS cannot be physically cancelled. Its callbacks must be ignored after the
   // driver chooses a different origin, including old failures and repeated requests.
@@ -751,6 +848,9 @@ async function main() {
   await page.locator('[data-station="go-near"] .pill-go').waitFor({ timeout: 10000 });
   delayRegionOverview = true;
   const beforeRegion = await pendingLocation();
+  // Place selection expands the mobile list, which hides the map's region bar.
+  // Return through the driver's visible control before choosing a map shortcut.
+  await page.getByRole("button", { name: "Show map and chargers", exact: true }).click();
   await page.getByRole("navigation", { name: "Explore a region" }).getByRole("button", { name: "Mainland", exact: true }).click();
   await Promise.race([
     regionRequestSeen,
@@ -790,6 +890,7 @@ async function main() {
     baseUrl,
     viewport,
     screenshot,
+    startupLocationChecks,
     cold,
     denied,
     selectedUrl,

@@ -2,7 +2,7 @@
 /* Geolocation distance/ETA browser contract for Volta (React SPA).
  *
  * Verifies the Locate flow does more than render: browser geolocation permission is
- * granted, clicking "Use my location" reloads /api/chargers keyed by the user's real
+ * granted, the automatic startup request reloads /api/chargers keyed by the user's real
  * coordinates (lat/lon, non-overview), every API row gains distance_km +
  * drive_eta_min_est, and the rendered cards flip from "Locate to see ETA" to honest
  * "X km · Y min drive" facts while preserving fail-closed nearby ranking: safer
@@ -15,12 +15,18 @@
  *  - Locate fetch no longer sends force=true (server cache TTL governs freshness).
  *
  * Usage: node scripts/qa_geolocation_distance.js <baseUrl>
+ * Optional offline UI mode: VOLTA_QA_GEO_FIXTURE=/path/to/responses.json supplies
+ * {overview, nearby} API responses and disables basemap networking. This checks
+ * browser/query/render behavior against those fixtures, not backend calculation.
  */
 const { chromium } = require("playwright");
+const { readFileSync } = require("node:fs");
+const { installDeterministicBasemap } = require("./qa_browser_harness");
 
 const baseUrl = (process.argv[2] || process.env.VOLTA_QA_BASE_URL || "http://127.0.0.1:8773").replace(/\/$/, "");
 const chromePath = process.env.VOLTA_QA_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const screenshot = process.env.VOLTA_QA_GEO_SCREENSHOT || "/tmp/volta-geolocation-distance.png";
+const fixtureFile = process.env.VOLTA_QA_GEO_FIXTURE;
 const userLocation = {
   latitude: Number(process.env.VOLTA_QA_USER_LAT || "39.47"),
   longitude: Number(process.env.VOLTA_QA_USER_LON || "-0.377"),
@@ -156,6 +162,10 @@ function collectCards() {
 }
 
 async function main() {
+  const fixture = fixtureFile ? JSON.parse(readFileSync(fixtureFile, "utf8")) : null;
+  if (fixture && [fixture.overview, fixture.nearby].some((body) => !Array.isArray(body?.stations) || !Array.isArray(body?.leads))) {
+    throw new Error("Geolocation QA fixture needs overview and nearby responses with stations/leads arrays");
+  }
   const logs = [];
   const requests = [];
   const responses = [];
@@ -166,9 +176,27 @@ async function main() {
     deviceScaleFactor: 2,
     isMobile: true,
     geolocation: userLocation,
+    serviceWorkers: "block",
   });
   await context.grantPermissions(["geolocation"], { origin: baseUrl });
   const page = await context.newPage();
+  if (fixture) {
+    await installDeterministicBasemap(page);
+    await page.route("**/api/chargers?*", (route) => {
+      const overview = new URL(route.request().url()).searchParams.get("overview") === "true";
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(overview ? fixture.overview : fixture.nearby) });
+    });
+  }
+  // Hold the browser's real permission-granted lookup long enough to verify that
+  // pending-location cards do not invent distance or ETA. The app initiates it.
+  await page.addInitScript(() => {
+    const getCurrentPosition = navigator.geolocation.getCurrentPosition.bind(navigator.geolocation);
+    window.__voltaQaStartupLocationCalls = 0;
+    Object.defineProperty(navigator.geolocation, "getCurrentPosition", { configurable: true, value: (success, error, options) => {
+      window.__voltaQaStartupLocationCalls += 1;
+      window.__voltaQaReleaseStartupLocation = () => getCurrentPosition(success, error, options);
+    } });
+  });
 
   // MapLibre's internal animation loop throws under headless Chrome during the locate
   // flyTo (null transform matrices / double-run render loop). The map is a backdrop
@@ -208,8 +236,9 @@ async function main() {
   });
 
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded", timeout: 20000 });
-  // Default open = national leads-only overview; wait for the virtualized list to paint.
+  // Pending startup GPS retains the national fallback until coordinates arrive.
   await page.waitForSelector("[data-station] article", { timeout: 25000 });
+  await page.waitForFunction(() => window.__voltaQaStartupLocationCalls === 1);
   const before = await page.evaluate(collectCards);
 
   // The locate fetch is the first successful non-overview /api/chargers call carrying lat/lon.
@@ -226,7 +255,7 @@ async function main() {
     { timeout: 45000 },
   );
 
-  await page.click('button[aria-label="Use my location"]');
+  await page.evaluate(() => window.__voltaQaReleaseStartupLocation());
   const locatedResponse = await locatedResponsePromise;
   const locatedUrl = new URL(locatedResponse.url());
   const locatedJson = await locatedResponse.json();
@@ -252,6 +281,7 @@ async function main() {
     { timeout: 30000 },
   );
   const after = await page.evaluate(collectCards);
+  const startupLocationCalls = await page.evaluate(() => window.__voltaQaStartupLocationCalls);
   await page.screenshot({ path: screenshot, fullPage: true });
 
   await browser.close();
@@ -300,6 +330,7 @@ async function main() {
 
   // --- Before locating: the app must not claim any distance/ETA it cannot know. ---
   if (!before.cards) failures.push("overview render has no station cards before locating");
+  if (startupLocationCalls !== 1) failures.push(`startup location was requested ${startupLocationCalls} times; expected one`);
   if (before.driveFactCards !== 0) failures.push(`distance/drive facts were visible before locating: ${before.driveFactCards}`);
   if (before.distanceFactCards !== 0) failures.push(`distance facts were visible before locating: ${before.distanceFactCards}`);
   if (before.locateFactCards !== before.cards) {
@@ -373,8 +404,10 @@ async function main() {
   console.log(JSON.stringify({
     ok: failures.length === 0,
     baseUrl,
+    apiMode: fixture ? "offline fixture (browser/query/render only)" : "backend integration",
     userLocation,
     screenshot,
+    startupLocationCalls,
     before: {
       cards: before.cards,
       driveFactCards: before.driveFactCards,

@@ -530,7 +530,8 @@
    legitimately extend past the canvas; clip it at the sheet edge and the driver loses
    the card. The popup layer already sits above the panel (z-index 40 > 20). */
 @media (max-width: 767px) {
-  .maplibregl-map {
+  /* Outrank MapLibre's lazily loaded .maplibregl-map overflow rule. */
+  .discovery-map .maplibregl-map {
     overflow: visible;
   }
 }
@@ -618,7 +619,7 @@
   .app-header { gap: 12px; }
   .brand-lockup { font-size: 21px; }
   .brand-lockup img { width: 30px; height: 30px; }
-  .discovery-map { top: var(--header-height); bottom: calc(100dvh - var(--mobile-sheet-top)); left: 0; right: 0; border: 0; border-radius: 0; }
+  .discovery-map { top: var(--header-height); bottom: calc(100dvh - var(--mobile-sheet-top)); left: 0; right: 0; border: 0; border-radius: 0; overflow: visible; }
   .discovery-panel { top: var(--mobile-sheet-top); bottom: 0; left: 0; right: 0; width: auto;
     border-radius: 24px 24px 0 0; border-bottom: 0; box-shadow: 0 -8px 28px -22px var(--fg); }
   .discovery-title, .discovery-intro { display: none; }
@@ -629,8 +630,6 @@
   .overview-guidance { font-size: 11px; line-height: 1.4; }
   .results-body { padding: 4px 12px 0; }
   .data-honesty { padding-left: 20px; padding-right: 20px; padding-bottom: max(4px, env(safe-area-inset-bottom)); }
-  .agent-connection-dialog { bottom: max(16px, env(safe-area-inset-bottom));
-    max-height: calc(100dvh - max(16px, env(safe-area-inset-bottom)) - 16px); }
   .region-nav { top: calc(var(--header-height) + 10px); left: 12px; max-width: calc(100% - 24px); }
   .region-nav button { padding: 0 10px; font-size: 11px; }
   .area-search { top: calc(var(--header-height) + 74px); right: 12px; font-size: 12px; }

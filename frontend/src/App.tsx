@@ -323,6 +323,7 @@ export default function App() {
   const reduceMotion = useReducedMotion()
   const { theme, toggle } = useTheme()
   const geo = useGeolocation()
+  const requestDeviceLocation = geo.request
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [requestMaxPrice, setRequestMaxPrice] = useState(filters.maxPrice)
   // Keep slider feedback immediate without starting an upstream lookup for every
@@ -350,6 +351,11 @@ export default function App() {
   const [scrolled, setScrolled] = useState(false)
   const listOffsets = useListOffsets(headingRef, statusRef, bodyRef)
 
+  // Keep the one privacy-safe offline catalogue observed independently of GPS
+  // and viewport queries. Those queries are deliberately never persisted by SW.
+  const catalogue = useChargers({
+    filters: DEFAULT_FILTERS, overview: true, compact: true, bbox: REGIONS[0].bbox,
+  })
   const inventory = useChargers({
     filters: DEFAULT_FILTERS, overview: true, compact: true,
     bbox: committedBbox ?? viewport?.bbox ?? REGIONS[0].bbox,
@@ -378,13 +384,13 @@ export default function App() {
       chooseChargersData({
         overview,
         live: data,
-        instant: overview ? inventory.data : instant.data,
+        instant: (overview ? inventory.data : instant.data) ?? catalogue.data,
         isFetching: query.isFetching,
         isPlaceholder: query.isPlaceholderData,
         isError: query.isError,
         viewportBbox: overview ? (viewport?.bbox ?? null) : committedBbox,
       }),
-    [overview, data, inventory.data, instant.data, query.isFetching, query.isPlaceholderData, query.isError, viewport, committedBbox],
+    [overview, data, inventory.data, instant.data, catalogue.data, query.isFetching, query.isPlaceholderData, query.isError, viewport, committedBbox],
   )
   const responseNotLive = responseHasNoLiveAuthority(effectiveData)
   const responseMixedLive = responseHasMixedLiveAuthority(effectiveData)
@@ -399,14 +405,37 @@ export default function App() {
     setViewport(current => current ? { ...current, userInitiated: false } : null)
   }, [])
 
-  const requestLocation = () => {
+  const requestLocation = useCallback(() => {
     claimSearchArea()
-    geo.request((coords) => {
+    requestDeviceLocation((coords) => {
       setOrigin({ coords, label: 'your location', kind: 'device' })
       setOverview(false)
       setCommittedBbox(boxAround(coords, 0.18))
       setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 16, nonce: Date.now() })
     })
+  }, [claimSearchArea, requestDeviceLocation])
+
+  useEffect(() => {
+    // Defer the initial request so StrictMode's effect replay cancels the first
+    // timer before asking the browser twice. Explicit navigation always wins.
+    const timer = window.setTimeout(() => {
+      if (explicitAreaIntentAt.current === 0) requestLocation()
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [requestLocation])
+
+  const onStationSelect = (id: string | null) => {
+    if (id !== null) {
+      claimSearchArea()
+      geo.cancel()
+    }
+    setSelectedId(id)
+  }
+
+  const onSearchChange = (value: string) => {
+    claimSearchArea()
+    geo.cancel()
+    setSearch(value)
   }
 
   const onPlaceSelect = (r: GeocodeResult) => {
@@ -694,7 +723,7 @@ export default function App() {
       <StationList
         rows={panelRows}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={onStationSelect}
         scrollRef={listRef}
         scrollMargin={listOffsets.margin}
         scrollPaddingStart={listOffsets.heading}
@@ -711,7 +740,7 @@ export default function App() {
             <MapView
               stations={mapRows}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={onStationSelect}
               theme={theme}
               userCoords={geo.coords}
               onUserViewportIntent={geo.cancel}
@@ -828,7 +857,7 @@ export default function App() {
             )}
           </AnimatePresence>
           <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1"><SearchBar value={search} onChange={setSearch} onPlaceSelect={onPlaceSelect} /></div>
+            <div className="min-w-0 flex-1"><SearchBar value={search} onChange={onSearchChange} onPlaceSelect={onPlaceSelect} /></div>
             <IconButton label="Use my location" onClick={requestLocation}>
               <LocateFixed size={20} className={geo.status === 'locating' ? 'animate-pulse' : ''} />
             </IconButton>

@@ -103,6 +103,7 @@ final class AdverseStatesUITests: XCTestCase {
         // fallback — a free-charger app must still show its database when live is down. It is
         // never route-ready and is clearly marked Not live.
         let lead = app.buttons["stationRow-uitest-lead-01"]
+        scrollUntilHittable(lead, in: app)
         XCTAssertTrue(lead.waitForExistence(timeout: 5), "Free lead should remain as the Not-live fallback when live fails")
         XCTAssertTrue(lead.label.localizedCaseInsensitiveContains("Not live"), "Fallback lead must be marked Not live")
         XCTAssertFalse(lead.label.localizedCaseInsensitiveContains("Go now"), "A lead must never present as Go now")
@@ -123,8 +124,10 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertFalse(row.label.contains("Go now"), "Stale station must not claim route readiness")
         XCTAssertFalse(row.label.contains("2 free"), "Stale connector counts must not appear current")
         // The complete list retains source-backed leads alongside explicitly stale stations.
+        scrollUntilHittable(app.buttons["stationRow-uitest-lead-01"], in: app)
         XCTAssertTrue(app.buttons["stationRow-uitest-lead-01"].waitForExistence(timeout: 5),
                       "Free lead should remain visible (Not live) when live status is stale")
+        scrollUntilHittable(row, in: app)
         row.tap()
         let source = app.buttons["stationSourceAction"]
         let maps = app.buttons["stationMapsAction"]
@@ -151,6 +154,7 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertTrue(fresh.label.localizedCaseInsensitiveContains("Go now"), "Fresh authority was demoted by a stale peer")
 
         let cached = app.buttons["stationRow-uitest-live-stale"]
+        scrollUntilHittable(cached, in: app)
         XCTAssertTrue(cached.exists, "Cached peers remain inspectable in the complete result list")
         XCTAssertTrue(cached.label.contains("Stale status"))
         XCTAssertFalse(cached.label.contains("Go now"), "Cached peer must not claim route readiness")
@@ -192,12 +196,12 @@ final class AdverseStatesUITests: XCTestCase {
         XCTAssertEqual(fullIdentity.count, 1,
                        "AXXXL detail must expose exactly one full station identity")
 
-        let source = app.buttons["Source"]
+        let source = app.buttons["stationSourceAction"]
         scrollUntilHittable(source, in: app)
         XCTAssertTrue(source.waitForExistence(timeout: 3), "AXXXL detail omitted the public source action")
         XCTAssertTrue(source.isHittable, "AXXXL source action is not reachable")
 
-        let maps = app.buttons["Open in Maps"]
+        let maps = app.buttons["stationMapsAction"]
         scrollUntilHittable(maps, in: app)
         XCTAssertTrue(maps.waitForExistence(timeout: 3), "AXXXL detail omitted the Maps recovery action")
         XCTAssertTrue(maps.isHittable, "AXXXL Maps action is not reachable")
@@ -298,19 +302,17 @@ final class AdverseStatesUITests: XCTestCase {
         }
     }
 
-    /// Dynamic Type can preserve the prior Places-section scroll offset when that section is
-    /// replaced by station results. Search both directions until the station card is reachable;
-    /// the former decorative title is intentionally no longer part of the driver surface.
+    /// Target the list, not the window: a downward app swipe can collapse the sheet
+    /// and then pan the underlying map away from the fixture's actual coordinates.
     private func revealStationRowFromHeader(
         _ row: XCUIElement,
         in app: XCUIApplication,
         maxSwipes: Int = 8
     ) {
+        let list = app.collectionViews.firstMatch
+        XCTAssertTrue(list.waitForExistence(timeout: 5))
         for _ in 0 ..< maxSwipes where !row.isHittable {
-            app.swipeDown()
-        }
-        for _ in 0 ..< maxSwipes where !row.isHittable {
-            app.swipeUp()
+            list.swipeUp()
         }
     }
 

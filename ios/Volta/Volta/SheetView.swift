@@ -10,13 +10,13 @@ struct SheetView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #if DEBUG
     @Environment(\.colorScheme) private var colorScheme
     #endif
     @FocusState private var searchFocused: Bool
     @Binding var detent: PresentationDetent
     var onOpenSettings: () -> Void = {}
-    var onOpenAIConnection: () -> Void = {}
     var onSelect: (Station) -> Void = { _ in }
     var onPeekHeight: (CGFloat) -> Void = { _ in }
     /// Selection haptic for a station row tap. One shared toggle on the always-mounted list:
@@ -90,26 +90,18 @@ struct SheetView: View {
 
     @ViewBuilder
     private var searchRow: some View {
-        // Larger text gets a full-width search field. At normal sizes, fit the quiet
-        // connection prompt beside Settings without taking another row from chargers.
-        if dynamicTypeSize.isAccessibilitySize {
-            stackedSearchRow
-        } else {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    searchField.frame(minWidth: 140)
-                    searchActions.fixedSize(horizontal: true, vertical: false)
-                }
-                stackedSearchRow
-            }
-        }
-    }
-
-    private var stackedSearchRow: some View {
-        VStack(spacing: 8) {
-            searchField
+        // Keep one TextField identity. ViewThatFits changed candidates when the
+        // wide prompt became Done on focus, destroying and restoring focus in a
+        // continuous layout loop. AnyLayout moves the same children instead.
+        let stacked = dynamicTypeSize.isAccessibilitySize || horizontalSizeClass != .regular
+        let layout = stacked
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 10))
+        layout {
+            searchField.frame(minWidth: 140)
             searchActions
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .fixedSize(horizontal: !stacked, vertical: true)
+                .frame(maxWidth: stacked ? .infinity : nil, alignment: .trailing)
         }
     }
 
@@ -164,7 +156,7 @@ struct SheetView: View {
                 .accessibilityLabel("Close search")
                 .transition(.opacity)
             } else {
-                AIConnectionPrompt(action: onOpenAIConnection)
+                AIConnectionPrompt()
 
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape")
@@ -222,7 +214,7 @@ struct SheetView: View {
                 Button {
                     searchFocused = false
                     state.pick(result)
-                    detent = .medium
+                    detent = dynamicTypeSize.isAccessibilitySize ? .large : .medium
                 } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "mappin.circle.fill")
