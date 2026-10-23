@@ -307,6 +307,7 @@ CORS_ORIGIN = os.environ.get("VOLTA_CORS_ORIGIN", "*")
 MCP_ALLOWED_ORIGINS = tuple(
     origin.strip() for origin in os.environ.get("VOLTA_MCP_ALLOWED_ORIGINS", "").split(",") if origin.strip()
 )
+MCP_BODY_READ_TIMEOUT_SECONDS = 5.0
 MCP_RATE_LIMIT_RPM = max(1, int(os.environ.get("VOLTA_MCP_RATE_LIMIT_RPM", "30")))
 # Content-Security-Policy is OFF by default: it can break MapLibre's worker/tile
 # loading and this build cannot verify that in a browser in every environment. Empty
@@ -6216,8 +6217,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def _route_mcp_post(self) -> None:
         try:
-            body = self._read_body(agent_mcp.MAX_BODY_BYTES)
+            body = self._read_body(
+                agent_mcp.MAX_BODY_BYTES, timeout_seconds=MCP_BODY_READ_TIMEOUT_SECONDS,
+            )
         except community_store.CommunityError as exc:
+            self.close_connection = True
             return self.send_json(exc.status, {"jsonrpc": "2.0", "id": None, "error": {"code": agent_mcp.INVALID_REQUEST, "message": exc.message}})
         client_key = self._rate_limit_key()
 
@@ -6264,7 +6268,7 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 return
 
-    def _read_body(self, cap: int) -> bytes:
+    def _read_body(self, cap: int, *, timeout_seconds: Optional[float] = None) -> bytes:
         try:
             length = int(self.headers.get("Content-Length") or "0")
         except ValueError:
@@ -6273,7 +6277,34 @@ class Handler(BaseHTTPRequestHandler):
             raise community_store.CommunityError(411, "length_required", "Content-Length is required.")
         if length > cap:
             raise community_store.CommunityError(413, "too_large", f"Body exceeds {cap} bytes.")
-        return self.rfile.read(length)
+        if timeout_seconds is None:
+            return self.rfile.read(length)
+        deadline = time.monotonic() + timeout_seconds
+        previous_timeout = self.connection.gettimeout()
+        body = bytearray()
+        try:
+            while len(body) < length:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("body read deadline exceeded")
+                self.connection.settimeout(remaining)
+                # read1 performs at most one underlying read. A trickle must not
+                # restart the full timeout inside a buffered read(length).
+                chunk = self.rfile.read1(min(length - len(body), 64 * 1024))
+                if not chunk:
+                    raise community_store.CommunityError(
+                        400, "incomplete_body", "Body ended before Content-Length.",
+                    )
+                body.extend(chunk)
+            if time.monotonic() > deadline:
+                raise TimeoutError("body read deadline exceeded")
+            return bytes(body)
+        except TimeoutError as exc:
+            raise community_store.CommunityError(
+                408, "body_timeout", "Request body deadline exceeded.",
+            ) from exc
+        finally:
+            self.connection.settimeout(previous_timeout)
 
     def _parse_json_body(self) -> Dict[str, Any]:
         raw = self._read_body(COMMUNITY_JSON_MAX_BYTES)
