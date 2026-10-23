@@ -14,7 +14,7 @@ visibly distinct.
 
 This wiki was generated from the repository at commit
 `5706893e1fe24ddcc7cd50d2cd4589f7dbaa44e1`. Start with the root
-[README.md](../../README.md) and [AGENTS.md](../../AGENTS.md), with
+[README.md](../../README.md) and [backend contracts](../backend-engine.md), with
 deployment details in [DEPLOY.md](../../DEPLOY.md) and frontend details in
 [frontend/README.md](../../frontend/README.md).
 

@@ -75,4 +75,4 @@ when changed source and `dist/` invalidate existing QA evidence.
 
 Honesty over coverage: keep live / official / directory / community confidence distinct, keep
 charging-price and parking-cost provenance separate, and never present stale/unverified data as
-"go now". See the repo-root `AGENTS.md` for the full contract.
+"go now". See [the backend contract](../docs/backend-engine.md) for the shared rules.

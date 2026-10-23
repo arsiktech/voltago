@@ -215,7 +215,9 @@ The repository ships no installed job and does not run any of these enable comma
 `PORT`, `HOST`, `VOLTA_CACHE_TTL`, `VOLTA_MAPAREVE_PRICE_QUERY_MAX` (default 0.30),
 `VOLTA_MAPAREVE_MAX_PAGES`, `VOLTA_MAPAREVE_PAGE_CONCURRENCY` (default 4 pages fetched at once after page 1), `VOLTA_GAIA_JUMP_URLS` (comma-separated Gaia
 jump URLs to live-parse), `VOLTA_REFRESH_PUSH` (default false), `VOLTA_NOTIFY_CMD`, and
-`VOLTA_HEALTH_BASE_URL`. See `AGENTS.md` for the full runtime list.
+`VOLTA_HEALTH_BASE_URL`. Inspect the selected implementation's environment reads
+in `server.py` and the relevant refresh script for the complete current inputs.
+Source acquisition remains subject to [the backend transport contract](docs/backend-engine.md#public-source-transport).
 
 ## Gated runtime data refresh
 

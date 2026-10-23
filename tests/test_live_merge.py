@@ -9,7 +9,8 @@ branch ignoring distance; merge_nearby_source_stations using bare proximity inst
 of likely_same_station's id/url/name-affinity rules) rather than "fixing"
 them. Do not change product code to make one of these pass; if a real bug is
 ever found here, log a qa/defects.csv row and mark the test
-@unittest.expectedFailure per AGENTS.md §6/plan 006's STOP condition C.
+@unittest.expectedFailure under the historical plan 006 characterization policy.
+Current work preserves failing evidence and never weakens a test to clear a gate.
 """
 from __future__ import annotations
 

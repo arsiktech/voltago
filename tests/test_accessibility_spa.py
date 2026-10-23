@@ -10,7 +10,7 @@ legacy scripts/qa_accessibility_static.py enforced against static/styles.css
 Six light-theme pairs were KNOWN, FILED failures (D-149, Prime Directive
 §2.6): the SPA's light-theme go/check/verify decision colors and the pressed
 filter-chip text were never contrast-tested before this port and fell short
-of 4.5:1 against the app's own light --bg/--surface. Per AGENTS.md §6 / plan
+of 4.5:1 against the app's own light --bg/--surface. Under historical plan
 006's STOP-condition-C precedent, those six assertions were marked
 @unittest.expectedFailure with the defect id rather than weakening the
 threshold. Fixed 2026-07-12 (Iteration 176): frontend/src/index.css's
@@ -47,7 +47,7 @@ PAIR_ROWS = {(row["theme"], row["pair"]): row for row in RESULT["pairs"]}
 # scripts/qa_accessibility_spa.py's WAIVED_PAIRS 1:1 (checked below). Empty
 # since D-149 was fixed 2026-07-12 (Iteration 176) -- kept as a dict (not
 # deleted) so a future real regression has somewhere to be filed the same
-# honest way, per AGENTS.md §6.
+# honest way, preserving the original assertion.
 KNOWN_FAILING: Dict[Tuple[str, str], str] = {}
 
 

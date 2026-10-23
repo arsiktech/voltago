@@ -3,7 +3,7 @@ import XCTest
 
 /// charge_claim / parking_claim (Models.swift, P3.3): the backend's ensure_claim_contract()
 /// ALWAYS attaches BOTH claims to every station/lead row (server.py ~750-795) -- charging-PRICE
-/// provenance and parking-COST provenance are tracked SEPARATELY (AGENTS.md Prime Directive #1)
+/// provenance and parking-COST provenance are tracked SEPARATELY (docs/backend-engine.md honesty contract)
 /// and may conflict (claim_conflict). Before this unit, Station had neither field, so
 /// JSONDecoder silently dropped both keys -- only the conflict SUMMARY survived. These tests
 /// prove the runtime decode now carries both claims, independently, each with its own source.

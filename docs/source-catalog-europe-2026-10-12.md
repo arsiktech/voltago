@@ -6,7 +6,9 @@ for choosing Volta's next data sources outside Spain. Machine-readable copy:
 
 **Read this first.**
 - A listing here is **not** a reuse licence and **not** an ingestion decision. Every new source still
-  needs the rights review, the GET-only transport rule in `AGENTS.md` and an owner decision before an adapter.
+  needs rights review, the [current transport rules](backend-engine.md#public-source-transport)
+  and an owner decision before an adapter. GET is the default; the two narrow reviewed
+  query POSTs do not grant other sources an exception.
 - The existing verdicts stay in force: Electromaps link-only, Chargemap skip, Consum owner decision,
   ACCIONA platform no-ingest ([2026-07-15](source-research-2026-07-15-national.md),
   [2026-07-17](source-research-2026-07-17-free-first.md)); exclusions live in `data/source_policy_exclusions.json`.

@@ -61,11 +61,15 @@ flowchart TD
    `available`, `fast`, and `include_leads`.
 2. **Server resolves viewport** - `resolve_viewport()` clamps explicit bbox or
    turns `lat/lon` into a bounded viewport.
-3. **Live source fetch runs** - `fetch_mapareve()` is primary and fresh Gaia
-   public status is merged when in-view. Structured source policy excludes retired
-   origins; Feníe, Electromaps, and Consum remain link-only, while Chargemap is
-   removed pending written permission. Dormant historical adapter functions are not
-   members of the active runtime/ingestion path.
+3. **Source evidence is assembled** - fresh MapaREVE, eligible Gaia and reviewed
+   Endolla/Spirii overlays can contribute live evidence within their actual scope.
+   Feníe is a cached, attributed, Verify-first snapshot under owner-attested reuse
+   permission, not live availability or independently verified licensing.
+   Its marker-list POST and MapaREVE's query are narrow transport exceptions.
+   Electromaps/Chargemap station evidence and Consum's locator remain excluded;
+   typed Spain-only price annotations do not create pins or live authority.
+   See the [current backend contract](../backend-engine.md#public-source-transport)
+   and [structured source policy](../../data/source_policy_exclusions.json).
 4. **Leads are loaded** - `load_all_leads()` normalizes the intelligence DB and
    seed leads, with bbox filtering before enrichment.
 5. **Rows are enriched** - `enrich_station()`, `decision_for()`,

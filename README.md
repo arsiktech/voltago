@@ -174,7 +174,8 @@ requires full completion. TC-051/TC-056 need authentic manual evidence.
 
 ## Find the relevant context
 
-- Agent workflow and constraints: [AGENTS.md](AGENTS.md).
+- Product and engineering constraints: [backend contracts](docs/backend-engine.md).
+  Execution guidance and project skills stay outside this public repository.
 - Product goals: [GOAL_CONTRACT.md](GOAL_CONTRACT.md).
 - Work references: [plans/README.md](plans/README.md). Completed plans retain their
   original paths for audit links; their old execution protocols are retired.

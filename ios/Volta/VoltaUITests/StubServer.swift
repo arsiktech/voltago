@@ -8,15 +8,15 @@ import Network
 /// TEST_HOST/BUNDLE_LOADER) -- so an in-test `URLProtocol` stub has no effect on the app's real
 /// `URLSession.shared` calls; it would only intercept requests made from the test process. This
 /// server instead answers real HTTP requests over the loopback interface, standing in for the
-/// Volta Python backend so UI tests never depend on a live server or live network (AGENTS.md
-/// Prime Directive #4: fail closed / never flaky on an external dependency). The app is pointed
+/// Volta Python backend so UI tests never depend on a live server or live network.
+/// External dependencies must not make deterministic tests flaky. The app is pointed
 /// at it via the EXISTING configurable-URL seam -- `-voltaBaseURL http://127.0.0.1:<port>`
 /// launch argument, which Foundation registers into UserDefaults' argument domain and
 /// `@AppStorage("voltaBaseURL")` (AppState.swift) reads -- so this required NO production code
 /// change.
 ///
-/// Built on Network.framework, a first-party system framework -- consistent with AGENTS.md's
-/// "iOS stays zero third-party dependencies" (same bar as StoreKit/MapKit/WidgetKit).
+/// Built on Network.framework, a first-party system framework -- consistent with the native-only
+/// dependency contract in docs/backend-engine.md (same bar as StoreKit/MapKit/WidgetKit).
 ///
 /// The iOS Simulator shares the host Mac's loopback interface (see ios/README.md: "The
 /// Simulator shares the Mac's loopback"), so the XCUITest runner process (this code) and the

@@ -292,7 +292,7 @@ class ConnectorLabelNormalizerParityTests(unittest.TestCase):
     """Case 4: server.normalize_connector_label and
     ingest_sources.connector_label_from_token are two independent copies of
     the same alias table (ingest_sources.py does not import server.py — see
-    AGENTS.md's zero-cross-import convention between the live server and the
+    the dependency separation between the live server and the
     offline ingestion script). They must agree token-for-token, including
     both returning None for empty/missing input and neither ever defaulting
     an unrecognized token to a Tesla-ok label (D-151: Electromaps unknown

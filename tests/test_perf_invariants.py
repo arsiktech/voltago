@@ -12,8 +12,8 @@ recompute "expected" via the function under test, so a semantics-changing
 rewrite will make them fail (that is the point; see plans/007 STOP conditions).
 Do not "fix" a golden literal to match a changed implementation -- that is
 exactly the reward-hacking failure plans/006/007 guard against. If a real bug
-is found here, log qa/defects.csv and mark @unittest.expectedFailure, per
-AGENTS.md §6.
+is found here, retain the failing evidence and investigate it. Historical
+characterization exceptions do not authorize weakening a new regression gate.
 """
 from __future__ import annotations
 
