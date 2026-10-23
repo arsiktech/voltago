@@ -1,8 +1,9 @@
 # Plan 013 — Free-first ecosystem: verified free registry + community layer
 
 > **Dated work reference.** Reconcile this plan with current code and evidence.
-> [AGENTS.md](../AGENTS.md) governs workflow and authorization; historical execution
-> sequences and stop-on-drift instructions do not block independent current work.
+> Use [current engineering contracts](../docs/backend-engine.md) and the active
+> task scope. Historical execution sequences and stop-on-drift instructions do
+> not block independent current work. Old guide references below are provenance.
 
 Priority: P1 (owner directive 2026-07-17) · Effort: L (split into independent slices)
 Depends on: 001 (verify), 005 (public hardening — rate-limiter/token conventions), 010 (refresh lifecycle)

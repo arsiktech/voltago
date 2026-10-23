@@ -1,7 +1,8 @@
 # Volta Go product goals
 
 Use this document for product and release work. The current user request sets the
-scope; [AGENTS.md](AGENTS.md) supplies the working rules. Choose implementation
+scope; [backend contracts](docs/backend-engine.md) define the engineering rules.
+Execution guidance stays private. Choose implementation
 order from current code, dependencies, and evidence. The former Claude phase loop,
 fixed agent roles, and blanket per-step gates are retired.
 
@@ -16,7 +17,8 @@ currencies, access restrictions and source-specific gaps stay explicit.
 ## 1. Product foundations
 
 - Preserve live/official/directory/community/cached evidence boundaries and separate
-  charging-price and parking-cost provenance. Public upstream GET surfaces only.
+  charging-price and parking-cost provenance. Public upstream GET surfaces with
+  only the [reviewed query exceptions](docs/backend-engine.md#public-source-transport).
 - Python remains stdlib-only; iOS uses native frameworks only; frontend dependencies
   should earn their place. Both clients share the same station-truth contract.
 - Keep the complete app free while `PaywallConfig.enabled` is false. Paid value,
@@ -93,8 +95,8 @@ local test configuration. Production archives exclude debug StoreKit fixtures.
 
 ## 7. External actions
 
-Follow the existing authorization in the user conversation and the boundary in
-[AGENTS.md](AGENTS.md). Prepare concrete artifacts before requesting any missing
+Follow the existing authorization in the user conversation and the boundaries in
+[RELEASE_RUNBOOK.md](RELEASE_RUNBOOK.md). Prepare concrete artifacts before requesting any missing
 approval. Keep signing, upload, processing, Internal group assignment, installation,
 App Review, and public availability separate. Pricing, agreements, banking/tax,
 legal certifications, credentials, spend, and production changes need the appropriate

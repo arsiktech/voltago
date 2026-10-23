@@ -20,8 +20,8 @@ container hosting is easier but can degrade upstream scraping.
 - [fly.toml](../../../fly.toml) - Fly.io app config.
 - [.dockerignore](../../../.dockerignore) - excludes dev/docs/QA/cache artifacts
   from container image.
-- [.claude/launch.json](../../../.claude/launch.json) - local launch presets
-  for frontend dev and production-style server.
+- [README.md](../../../README.md#run-locally) - frontend and production-style
+  local server commands.
 - [frontend/vite.config.ts](../../../frontend/vite.config.ts) - dev proxy and
   build chunking.
 

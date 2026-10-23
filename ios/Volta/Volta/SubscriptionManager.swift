@@ -89,7 +89,7 @@ struct LaunchAccessLatch: Equatable {
 /// NEVER hardcodes a price or currency: every price/period the UI will show comes from
 /// `Product.displayPrice` / `Product.priceFormatStyle` / `Product.SubscriptionOffer
 /// .displayPrice`, fetched live from StoreKit for whichever storefront/locale the device is
-/// in. That is a hard contract, not a style preference -- see AGENTS.md's monetization-ethics
+/// in. That is a hard contract, not a style preference -- see docs/backend-engine.md's monetization
 /// rule ("never hardcode prices") and GOAL_CONTRACT.md Section 6.
 @MainActor
 final class SubscriptionManager: ObservableObject {

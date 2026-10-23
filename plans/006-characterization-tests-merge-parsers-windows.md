@@ -1,7 +1,7 @@
 # Plan 006: Pin the untested load-bearing behavior — live merge/dedup, ingest parsers, overnight pricing windows
 
 > **Historical completed plan.** Execution steps and STOP rules below are retired.
-> Use [AGENTS.md](../AGENTS.md) and current code for new work; retain the product
+> Use [current contracts](../docs/backend-engine.md) and current code for new work; retain the product
 > constraints and dated evidence recorded here. See [the index](README.md).
 
 ## Status

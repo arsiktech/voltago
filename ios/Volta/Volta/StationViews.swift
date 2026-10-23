@@ -554,7 +554,7 @@ struct StationDetailView: View {
                     row(icon: "exclamationmark.triangle", title: String(localized: "Sources disagree"), detail: conflict, tint: Theme.danger)
                 }
                 // Charging-PRICE provenance and parking-COST provenance are tracked
-                // SEPARATELY (AGENTS.md Prime Directive #1) -- two distinct blocks, each with
+                // SEPARATELY (docs/backend-engine.md honesty contract) -- two distinct blocks, each with
                 // its own source, never merged into the conflict row above.
                 if let claim = station.chargeClaim {
                     claimRow(icon: "bolt.fill", label: String(localized: "Charging claim"), claim: claim)

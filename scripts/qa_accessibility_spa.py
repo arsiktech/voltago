@@ -4,8 +4,8 @@
 Replaces scripts/qa_accessibility_static.py (retired with static/ in plans/009).
 The legacy script asserted WCAG relative-luminance contrast ratios for the
 vanilla static/styles.css design tokens; that surface is gone, but the
-underlying Prime Directive (AGENTS.md §2.6: "contrast... each have a contract
-test") is about the SHIPPING UI, so the contract moves to frontend/src/index.css
+contrast contract in docs/design-system.md covers the SHIPPING UI,
+so the check moves to frontend/src/index.css
 -- the SPA's actual light/dark design tokens -- rather than being dropped.
 
 Reuses the exact relative-luminance + WCAG contrast-ratio math and the same

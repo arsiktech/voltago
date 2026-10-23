@@ -9,8 +9,8 @@ import Foundation
 /// never as part of an autonomous iteration.
 ///
 /// SAFETY-HONESTY IS NEVER GATED BY THIS FLAG. Live/stale/not-live labeling, staleness
-/// warnings, fail-closed behavior, and every other AGENTS.md Prime Directive #1 ("Data
-/// honesty over coverage") / #4 ("Route-first, fail closed") surface -- decision pills,
+/// warnings, fail-closed behavior, and every other honesty-contract surface
+/// in docs/backend-engine.md -- decision pills,
 /// freshness facts, degraded-coverage banners -- must stay byte-identical for paying and
 /// non-paying users in BOTH states of this flag. Keeping that contract intact is the P4.2
 /// paywall-UI unit's job (it must never wrap a warning/decision/freshness label in a

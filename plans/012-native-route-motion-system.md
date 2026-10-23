@@ -1,7 +1,7 @@
 # 012 — Make native route interactions immediate and spatially coherent
 
 > **Historical completed plan.** The implementation notes below describe the July
-> work. Use [AGENTS.md](../AGENTS.md) and current code for subsequent changes; the
+> work. Use [current contracts](../docs/backend-engine.md) and current code for subsequent changes; the
 > original file scopes and STOP rules are retired. See [the index](README.md).
 
 - **Status**: DONE

@@ -3,8 +3,13 @@
 Use the current user request, code, and relevant evidence to choose the next task.
 These plans record earlier audits and implementation work; their dates and status
 labels are historical observations. Reconcile the affected claims before resuming
-work. [AGENTS.md](../AGENTS.md) is the current workflow entrypoint, and
+work. [README.md](../README.md) is the current setup and verification entry point, and
 [GOAL_CONTRACT.md](../GOAL_CONTRACT.md) describes product goals.
+
+As of 2026-10-23, old instruction-file names, imports and launch presets mentioned
+inside archived plans are historical provenance. They are not public dependencies.
+Current engineering/source contracts are in [the backend guide](../docs/backend-engine.md);
+execution guidance and live planning stay private. Dated receipts below remain unchanged.
 
 ## Topics to consult when relevant
 

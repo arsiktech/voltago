@@ -311,7 +311,7 @@ MCP_RATE_LIMIT_RPM = max(1, int(os.environ.get("VOLTA_MCP_RATE_LIMIT_RPM", "30")
 # Content-Security-Policy is OFF by default: it can break MapLibre's worker/tile
 # loading and this build cannot verify that in a browser in every environment. Empty
 # = no CSP header at all. The owner sets the full directive string at deploy time
-# after a real browser check (see AGENTS.md §8 for a starting-point policy).
+# after a real browser check (see DEPLOY.md for configuration and browser checks).
 VOLTA_CSP = os.environ.get("VOLTA_CSP", "").strip()
 
 # --- Worldwide viewport model; regional live feeds retain their own coverage ---

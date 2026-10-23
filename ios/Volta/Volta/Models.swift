@@ -727,7 +727,7 @@ struct PricingWindow: Decodable, Hashable {
 
 /// Charging-PRICE provenance (Station.chargeClaim) and parking-COST provenance
 /// (Station.parkingClaim) are tracked SEPARATELY per station/lead (server.py's
-/// ensure_claim_contract, AGENTS.md Prime Directive #1) and may disagree with each other (see
+/// ensure_claim_contract, docs/backend-engine.md honesty contract) and may disagree with each other (see
 /// ClaimConflict below) -- the two claims must never be merged into one. Mirrors the web's
 /// `Claim` interface (frontend/src/types.ts).
 struct Claim: Decodable, Hashable {

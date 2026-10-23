@@ -26,9 +26,7 @@ data/*.sqlite-*
 # OS / editor / logs
 .DS_Store
 *.log
-.claude/*
-!.claude/skills/
-!.claude/launch.json
+.claude/
 .idea/
 .vscode/
 

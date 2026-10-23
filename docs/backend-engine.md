@@ -5,6 +5,28 @@ shared evidence rules in [`station_truth.py`](../station_truth.py) and community
 annotations in [`community.py`](../community.py). Live `/api/chargers` responses
 include diagnostics under `meta.engine`.
 
+## Product and implementation contracts
+
+- No invented chargers, prices, availability, reviews or start methods. Live,
+  official, directory, community, cached and inferred evidence remain distinct.
+  Stale or unverified evidence cannot become live or route-ready. Community
+  reports may annotate or downgrade, never grant live authority. Charge and
+  parking claims have separate provenance; network calls and fallbacks stay bounded.
+- Python backend, scripts and tests use only the standard library. iOS uses
+  native frameworks only. Frontend dependencies remain limited and the list
+  stays usable if maps fail. Both clients share the station-truth contract.
+- Intelligence is rebuilt into a candidate and must pass delta/canary checks
+  before promotion. Preserve user data and source evidence. Generated QA
+  receipts stay local and ignored; generators produce evidence, never hand-edited
+  results or weakened assertions. Live work and progress are tracked privately.
+- `PaywallConfig.enabled` remains false until launch/pricing prerequisites are
+  approved. StoreKit supplies any future prices and trial terms. Safety warnings,
+  honesty labels and fail-closed behavior are never paywalled.
+
+Worldwide directory support is a local candidate, not proof of production rollout
+or live coverage. Each live integration retains its actual regional scope.
+Finding a charger does not authorize provider login, charging or payment actions.
+
 ## Engine Contract
 
 - Route-ready requires a non-stale, non-lead row, `decision.level == "go"`,
@@ -30,7 +52,25 @@ queries for MapaREVE locations and the Feníe marker list. The shared transport
 checks their exact HTTPS origin/path, body, request budget and timeout before
 connecting, and never follows their POST redirects. Other non-GET requests
 remain blocked. Runtime MapaREVE responses can carry live evidence; Feníe is a
-cached, attributed, Verify-first snapshot. Failed sources retain warnings.
+cached, attributed, Verify-first snapshot. Its redistribution basis is
+owner-attested, not independently verified. Failed sources retain warnings.
+
+The [structured source policy](../data/source_policy_exclusions.json) controls
+exclusions and evidence-kind exceptions, including Consum's excluded locator.
+The narrow Repsol, Electromaps and Chargemap price annotations remain Spain-only,
+anonymous GET evidence attached after existing-row dedupe/merge. They create no
+new pins, primary prices or live authority; see [price evidence](price-evidence.md).
+Collection permission is not a provider reuse licence. Public visibility does
+not remove a source-rights hold. Authenticated scraping, login bypass, app-token
+extraction, traffic interception and CAPTCHA bypass remain excluded.
+
+[`scripts/source_transport.py`](../scripts/source_transport.py) enforces the
+exact HTTPS host/path/body, timeouts, redirect prohibition and rolling budgets.
+Only the two named read-only POST query families are allowed; every other
+non-GET collection request raises `SourcePolicyBlocked`. The exceptions do not
+permit credentials, arbitrary POSTs, provider sessions, charging or payments,
+and do not lift source exclusions. New transport permissions need a separate
+owner decision and reviewed guard changes.
 
 Permitted Gaia public pages can supply independent live evidence. A failed source
 must retain an explicit warning; cached primary-source rows remain stale, and

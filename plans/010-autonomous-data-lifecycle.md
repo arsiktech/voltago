@@ -1,7 +1,7 @@
 # Plan 010: The charger database lives on its own — unattended refresh with fail-closed gates, auto-commit, service supervision
 
 > **Historical completed plan.** Execution steps and STOP rules below are retired.
-> Use [AGENTS.md](../AGENTS.md) and current code for new work; retain the product
+> Use [current contracts](../docs/backend-engine.md) and current code for new work; retain the product
 > constraints and dated evidence recorded here. See [the index](README.md).
 
 > **Final-convergence reconciliation (2026-07-13)**: the owner explicitly approved

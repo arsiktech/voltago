@@ -382,7 +382,7 @@ class IOSDesignContractTests(unittest.TestCase):
     def test_models_declares_a_claim_type_with_charge_and_parking_fields_on_station(self):
         """P3.3: server.py's ensure_claim_contract() (server.py ~750-795) ALWAYS attaches BOTH
         charge_claim and parking_claim to every station/lead row -- charging-PRICE provenance
-        and parking-COST provenance are tracked SEPARATELY (AGENTS.md Prime Directive #1).
+        and parking-COST provenance are tracked SEPARATELY (docs/backend-engine.md honesty contract).
         Before this unit, Station had neither field, so JSONDecoder silently dropped both keys.
         """
         self.assertIn("struct Claim: Decodable, Hashable", self.models)
@@ -609,7 +609,7 @@ class IOSDesignContractTests(unittest.TestCase):
             return strings[key]["localizations"]
 
         # Flat (non-plural) honesty-critical keys: decision tiers and the "Not live" marker
-        # that distinguishes a lead from a live row (AGENTS.md Prime Directive #1).
+        # that distinguishes a lead from a live row (docs/backend-engine.md honesty contract).
         for key in ("Go now", "Check first", "Verify first", "Not live", "Free"):
             localizations = locs(key)
             for locale in ("es", "ru"):

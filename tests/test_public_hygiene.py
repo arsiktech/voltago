@@ -19,6 +19,20 @@ PATTERNS = {
 
 
 class PublicHygieneTests(unittest.TestCase):
+    def test_agent_instructions_and_project_skills_are_not_tracked(self) -> None:
+        listed = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z"],
+            capture_output=True, check=True,
+        ).stdout.decode("utf-8")
+        forbidden = []
+        for rel in filter(None, listed.split("\0")):
+            parts = rel.lower().split("/")
+            if (".claude" in parts or ".agents" in parts or parts[-1] in {
+                "agents.md", "claude.md", "skill.md", "copilot-instructions.md",
+            }):
+                forbidden.append(rel)
+        self.assertEqual(forbidden, [])
+
     def test_tracked_text_files_contain_no_private_details(self) -> None:
         try:
             listed = subprocess.run(
