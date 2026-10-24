@@ -5018,6 +5018,164 @@ def source_etecnic(records: List[Dict[str, Any]]) -> None:
     records.extend(parse_etecnic_chargers(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
 
 
+# --- Zunder public location map ------------------------------------------------------------
+# RIGHTS: the map page and its per-site detail JSON are public and anonymous; Zunder's terms
+# were not reviewed. The owner approved collection on 2026-10-24 under the 12 Oct source
+# policy; `granted_reuse` "zunder-owner-policy-reuse" records it and removing it stops this
+# adapter. The page legend marks sites "Activo" (navy icon) or "En construcción" (light blue);
+# only active sites are kept. Detail counts of available / in-use connectors carry no
+# timestamp, so they stay fetch-time evidence, never live availability.
+ZUNDER_MAP_URL = "https://www.zunder.com/mapa-de-ubicaciones/"
+ZUNDER_DETAIL_URL = "https://www.zunder.com/wp-content/plugins/easycharger/location.php?id="
+ZUNDER_SOURCE = "Zunder public location map"
+ZUNDER_GRANT_ID = "zunder-owner-policy-reuse"
+ZUNDER_ACTIVE_ICON = "icono-marino"
+ZUNDER_DETAIL_PAUSE_SECONDS = 4.0
+# Zunder answers 429 after a handful of quick requests: a few new details per refresh,
+# cached for a month (hardware rarely changes), fill the set gradually.
+ZUNDER_DETAIL_BUDGET = 5
+ZUNDER_DETAIL_TTL_HOURS = 30 * 24
+# Zunder's own connector type names; anything else goes through the shared normaliser.
+ZUNDER_CONNECTOR_LABELS = {"TYPE2": "Type 2", "CCS": "CCS2", "CHADEMO": "CHAdeMO"}
+# The shared normaliser passes unknown tokens through; only these count as a known type.
+KNOWN_CONNECTOR_LABELS = {"Type 1", "Type 2", "CCS1", "CCS2", "CHAdeMO", "Schuko", "Tesla"}
+ZUNDER_MARKER_RE = re.compile(
+    r"var marker(\d+) = new google\.maps\.Marker\(\{\s*position:\s*\{\s*lat:\s*(-?[\d.]+),\s*lng:\s*(-?[\d.]+)\},"
+    r"\s*map:\s*map,\s*title:\s*'((?:[^'\\]|\\.)*)',\s*icon:\s*\{\s*url:\s*'([^']+)'"
+)
+
+
+def parse_zunder_markers(html_text: str) -> List[Dict[str, Any]]:
+    """Active sites from the map page: id, name, coordinates."""
+    sites = []
+    for site_id, lat, lon, title, icon in ZUNDER_MARKER_RE.findall(html_text):
+        if ZUNDER_ACTIVE_ICON not in icon:
+            continue  # "En construcción"
+        sites.append({"id": site_id, "name": html.unescape(title.replace("\\'", "'")).strip(),
+                      "lat": fnum(lat), "lon": fnum(lon)})
+    return sites
+
+
+def parse_zunder_sites(
+    sites: List[Dict[str, Any]],
+    details: Dict[str, Dict[str, Any]],
+    *,
+    source_artifact: Optional[FetchArtifact] = None,
+) -> List[Dict[str, Any]]:
+    try:
+        from .spain_geography import point_in_spain
+    except ImportError:
+        from spain_geography import point_in_spain
+    out: List[Dict[str, Any]] = []
+    fetched = source_artifact.fetched_at[:16].replace("T", " ") + " UTC" if source_artifact else "fetch time"
+    for site in sites:
+        if not point_in_spain(site["lat"], site["lon"]):
+            continue
+        detail = details.get(site["id"]) or {}
+        status_name = str((detail.get("status") or {}).get("name") or "")
+        if detail and status_name and status_name.lower() != "activo":
+            continue
+        connectors, labels, powers = [], set(), []
+        available = in_use = unavailable = ports = 0
+        for connector in detail.get("connectors") or []:
+            if not isinstance(connector, dict):
+                continue
+            token = str(connector.get("connector_type") or "").strip()
+            normalized = connector_label_from_token(token)
+            label = ZUNDER_CONNECTOR_LABELS.get(token.upper()) or (normalized if normalized in KNOWN_CONNECTOR_LABELS else None)
+            power = fnum(connector.get("max_electric_power"))
+            count = sum(int(fnum(connector.get(key)) or 0) for key in ("available", "in_use", "unavailable")) or 1
+            available += int(fnum(connector.get("available")) or 0)
+            in_use += int(fnum(connector.get("in_use")) or 0)
+            unavailable += int(fnum(connector.get("unavailable")) or 0)
+            ports += count
+            if power:
+                powers.append(power)
+            if not label:
+                continue  # an untyped connector row would erase types another source knows
+            connectors.append(connector_ref(label, count=count, power_kw=power, status="UNKNOWN", source_url=ZUNDER_MAP_URL))
+            labels.add(label)
+        if sum(connector["count"] for connector in connectors) != ports:
+            connectors = []  # partly typed: keep labels and port count, no partial inventory
+        if detail:
+            status_text = (f"{available} available, {in_use} in use, {unavailable} unavailable connectors at {fetched}. "
+                           "Those counts have no source timestamp and are not live availability.")
+        else:
+            status_text = "Connector detail was not available at this refresh."
+        add_record(
+            out,
+            source=ZUNDER_SOURCE,
+            source_url=ZUNDER_MAP_URL,
+            name=f"Zunder — {site['name']}",
+            address="",
+            city="",
+            lat=site["lat"],
+            lon=site["lon"],
+            price_min=None,
+            free_condition="Zunder's public map publishes no tariff here; check the price in the Zunder app.",
+            connector_labels=sorted(labels),
+            max_power_kw=max(powers) if powers else None,
+            status="VERIFY",
+            reliability="official-charger-location-price-unknown",
+            evidence=f"Zunder's public location map lists this site as Activo. {status_text}",
+            parking_kind="unknown",
+            parking_note="Zunder's map publishes no parking detail; verify signs onsite.",
+            raw={
+                "zunder_location_id": site["id"],
+                "operator": "Zunder",
+                "coordinate_source": "zunder_public_map",
+                "corroboration_only": True,
+            },
+            connectors=connectors,
+            port_count=ports or None,
+            source_artifact=source_artifact,
+        )
+        if out and out[-1]["raw"].get("zunder_location_id") == site["id"]:
+            out[-1]["sources"][0].update(
+                attribution="Zunder (Grupo Easycharger)",
+                transformation="Only sites the page marks Activo; connector counts kept as fetch-time evidence. "
+                               "No missing tariff is inferred to be free.",
+            )
+    return out
+
+
+def source_zunder(records: List[Dict[str, Any]]) -> None:
+    grants = {grant.get("id") for grant in SOURCE_POLICY_EXCLUSIONS.get("granted_reuse", [])
+              if grant.get("status") == "permitted"}
+    if ZUNDER_GRANT_ID not in grants:
+        return
+    page = cached_fetch(ZUNDER_MAP_URL, "zunder_location_map.html", ttl_hours=24, timeout=60)
+    sites = parse_zunder_markers(page.decode("utf-8", "replace"))
+    details: Dict[str, Dict[str, Any]] = {}
+    new_fetches = 0
+    throttled = False
+    for site in sites:
+        cache_name = f"zunder_location_{site['id']}.json"
+        path = CACHE / cache_name
+        fresh = path.exists() and time.time() - path.stat().st_mtime < ZUNDER_DETAIL_TTL_HOURS * 3600
+        allow_network = not fresh and not throttled and new_fetches < ZUNDER_DETAIL_BUDGET
+        if not fresh and not allow_network and not path.exists():
+            continue  # fills in at a later refresh; the site keeps its map pin
+        if allow_network:
+            new_fetches += 1
+            time.sleep(ZUNDER_DETAIL_PAUSE_SECONDS)
+        try:
+            # Without network permission an expired copy is read as is (it only adds hardware).
+            artifact = cached_fetch(ZUNDER_DETAIL_URL + site["id"], cache_name,
+                                    ttl_hours=ZUNDER_DETAIL_TTL_HOURS if allow_network or fresh else float("inf"),
+                                    timeout=30)
+            details[site["id"]] = json.loads(artifact.decode("utf-8"))
+        except ValueError:
+            # A 429 page or other non-JSON body: drop it and stop asking for this refresh.
+            path.unlink(missing_ok=True)
+            throttled = True
+        except urllib.error.HTTPError as exc:
+            throttled = throttled or exc.code == 429
+        except Exception:  # noqa: BLE001 - one site's detail failing keeps its map pin
+            continue
+    records.extend(parse_zunder_sites(sites, details, source_artifact=page))
+
+
 # --- Canarias te recarga (public Canary Islands charger map) -----------------------------
 # The map export provides markers. Identity-checked station pages add rated power,
 # quantities, full tariffs, source images and access information. The import stays strict:
@@ -5504,6 +5662,7 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_navarra_idena,
     source_castilla_leon,
     source_etecnic,
+    source_zunder,
     source_fenie,
     source_moraleja_green,
     source_canarias_tecarga,

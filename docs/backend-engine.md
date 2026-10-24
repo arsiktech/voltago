@@ -88,6 +88,17 @@ and amperes become kW by phase count. The socket status has no source timestamp,
 kept as fetch-time evidence and never becomes live availability. Connector types are not
 published, so connectors stay unlabelled.
 
+## Zunder public location map
+
+The public map page is fetched by anonymous GET once a day; only sites its legend marks
+Activo are kept (light-blue "En construcción" sites are skipped), and sites outside Spain are
+dropped. Zunder's terms were not reviewed; the owner approved collection on 2026-10-24 under
+the 12 Oct source policy, recorded as `zunder-owner-policy-reuse`. Per-site detail adds
+connector type and power. Zunder answers HTTP 429 after a handful of quick requests, so at
+most 5 new details are fetched per refresh, 4 s apart, stopping at the first rate-limit
+reply, and kept for 30 days. Available and in-use counts have no timestamp and stay
+fetch-time evidence. Unrecognised connector types add to the port count only.
+
 ## Public-source transport
 
 Public collection defaults to GET. The owner approved narrow read-only POST
