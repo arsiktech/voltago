@@ -43,6 +43,24 @@ class RegionalOpenDataTests(unittest.TestCase):
         self.assertEqual(set(sabadell["connector_labels"]), {"CCS2", "CHAdeMO", "Type 2"})
         self.assertEqual(sabadell["raw"]["regional_row_ids"], ["1", "2"])
 
+    def test_station_ids_do_not_depend_on_registry_row_order(self) -> None:
+        forward = {row["id"] for row in ing.parse_catalonia_icaen(CATALONIA)}
+        backward = {row["id"] for row in ing.parse_catalonia_icaen(list(reversed(CATALONIA)))}
+        self.assertEqual(forward, backward)
+        sabadell = next(row for row in ing.parse_catalonia_icaen(list(reversed(CATALONIA)))
+                        if row["raw"]["operator"] == "Ajuntament de Sabadell")
+        self.assertEqual(sabadell["raw"]["regional_station_key"], "catalonia:1")
+
+    def test_a_moved_regional_station_keeps_its_id_through_its_row_key(self) -> None:
+        from station_identity import preserve_record_ids
+        old = ing.parse_catalonia_icaen(CATALONIA[:1])
+        moved = dict(CATALONIA[0], latitud="41.557000")  # coordinate correction, about 90 m
+        new = ing.parse_catalonia_icaen([moved])
+        self.assertNotEqual(old[0]["id"], new[0]["id"])
+        payload, report = preserve_record_ids({"records": old}, {"records": new})
+        self.assertEqual(payload["records"][0]["id"], old[0]["id"])
+        self.assertEqual(report["unresolved_missing_ids"], [])
+
     def test_rows_are_corroboration_only_with_no_free_or_live_claim(self) -> None:
         for row in ing.parse_catalonia_icaen(CATALONIA) + ing.parse_navarra_idena(NAVARRA) + ing.parse_castilla_leon(CASTILLA_LEON):
             self.assertTrue(row["raw"]["corroboration_only"])

@@ -4748,6 +4748,12 @@ def regional_open_data_records(
     """
     meta = REGIONAL_OPEN_DATA[region]
     stations: Dict[Tuple[float, float, str], Dict[str, Any]] = {}
+    # Sort by upstream row ID so grouping and each station's representative post (and so
+    # its generated ID) do not depend on the order the registry returns rows in.
+    def row_order(row: Dict[str, Any]) -> Tuple[int, str]:
+        text = str(row.get("row_id") or "")
+        return (int(text), "") if text.isdigit() else (sys.maxsize, text)
+    rows = sorted(rows, key=row_order)
     # The registries list each charger post separately, a few metres apart. Posts of one
     # operator within REGIONAL_STATION_RADIUS_KM join the first station seen there.
     by_cell: Dict[Tuple[int, int, str], List[Tuple[float, float, str]]] = defaultdict(list)
@@ -4805,6 +4811,8 @@ def regional_open_data_records(
             raw={
                 "operator": station["operator"] or None,
                 "regional_row_ids": station["row_ids"][:50],
+                # The lowest upstream row ID: stable identity evidence for station_identity.
+                "regional_station_key": f"{region}:{station['row_ids'][0]}" if station["row_ids"] else None,
                 "opening_hours": station["hours"] or None,
                 "access_text": station["access"] or None,
                 "coordinate_source": f"{region}_open_data",
