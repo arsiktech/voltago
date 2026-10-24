@@ -69,6 +69,20 @@ class RegionalOpenDataTests(unittest.TestCase):
         self.assertEqual(rows[0]["total_evse"], 1)
         self.assertEqual(rows[0]["max_power_kw"], 7)
 
+    def test_dedupe_keeps_two_operators_at_one_spot_apart(self) -> None:
+        stations = ing.dedupe(ing.parse_catalonia_icaen(CATALONIA))
+        self.assertEqual(sorted(row["raw"]["operator"] for row in stations), ["Ajuntament de Sabadell", "Endesa X Way"])
+        self.assertTrue(all(not row.get("merged_ids") for row in stations))
+
+    def test_a_partly_typed_station_keeps_its_full_post_count(self) -> None:
+        rows = [dict(CATALONIA[0], tipus_connexi="MENNEKES.M"), dict(CATALONIA[1], tipus_connexi="")]
+        (station,) = ing.parse_catalonia_icaen(rows)
+        self.assertEqual(station["total_evse"], 2)
+        self.assertEqual(station["connector_labels"], ["Type 2"])
+        self.assertEqual(station["raw"]["regional_row_ids"], ["1", "2"])
+        (deduped,) = ing.dedupe([station])
+        self.assertEqual(deduped["total_evse"], 2)
+
     def test_rows_are_corroboration_only_with_no_free_or_live_claim(self) -> None:
         for row in ing.parse_catalonia_icaen(CATALONIA) + ing.parse_navarra_idena(NAVARRA) + ing.parse_castilla_leon(CASTILLA_LEON):
             self.assertTrue(row["raw"]["corroboration_only"])

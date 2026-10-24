@@ -3755,9 +3755,14 @@ def record_merged_ids(base: Dict[str, Any], items: Iterable[Dict[str, Any]]) -> 
 
 def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     records = reject_suspicious_openchargemap_coordinate_clusters(records)
-    groups: Dict[Tuple[int, int], List[Dict[str, Any]]] = defaultdict(list)
+    groups: Dict[Tuple[int, int, str], List[Dict[str, Any]]] = defaultdict(list)
+    regional_sources = {meta["source"] for meta in REGIONAL_OPEN_DATA.values()}
     for r in records:
-        groups[(round(r["lat"] * 10000), round(r["lon"] * 10000))].append(r)
+        # A regional registry can list two operators at one spot; keep them apart here and
+        # leave cross-source matching to merge_cross_source_duplicates' identity checks.
+        separate = (normalized_identity_text((r.get("raw") or {}).get("operator") or "")
+                    if r.get("source") in regional_sources else "")
+        groups[(round(r["lat"] * 10000), round(r["lon"] * 10000), separate)].append(r)
     merged = []
     rank = RELIABILITY_RANK
     parking_rank = PARKING_KIND_RANK
@@ -4789,8 +4794,11 @@ def regional_open_data_records(
         counts: Dict[Tuple[str, Optional[float]], int] = defaultdict(int)
         for label, power in station["connectors"]:
             counts[(label, power)] += 1
+        # A partial inventory would undercount ports (add_record counts only connector rows),
+        # so a station with any untyped post keeps its labels and post count but no rows.
+        typed_posts_only = station["posts"] == len(station["connectors"])
         connectors = [connector_ref(label, count=count, power_kw=power, status="UNKNOWN", source_url=meta["page"])
-                      for (label, power), count in sorted(counts.items(), key=lambda kv: str(kv[0]))]
+                      for (label, power), count in sorted(counts.items(), key=lambda kv: str(kv[0]))] if typed_posts_only else []
         powers = [power for (_label, power) in station["connectors"] if power] + station.get("untyped_powers", [])
         operator = station["operator"] or "Public charger"
         place = station["address"] or station["city"] or "charging point"
