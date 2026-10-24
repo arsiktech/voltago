@@ -83,6 +83,7 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
             index[key].add(i)
     baseline_key_counts = Counter(key for row in previous for key in identity_keys(row))
     proposals = []
+    absorbed = []
     for old in previous:
         if old["id"] in candidate_ids:
             continue
@@ -96,8 +97,15 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
                 evidence.setdefault(i, []).append(key)
         if len(matches) == 1:
             i = next(iter(matches))
-            if rows[i]["id"] not in baseline_ids and distance_m(old, rows[i]) <= 250:
+            if distance_m(old, rows[i]) > 250:
+                continue
+            if rows[i]["id"] not in baseline_ids:
                 proposals.append((old["id"], i, evidence[i]))
+            elif rows[i].get("merged_ids"):
+                # The station was merged into a station that keeps its own baseline ID,
+                # for example an OSM row absorbed by a registry row. The old ID survives
+                # as a merged ID, which lookups and the delta gate already honour.
+                absorbed.append((old["id"], i, evidence[i]))
     uses = Counter(i for _, i, _ in proposals)
     changes = []
     for previous_id, i, evidence in proposals:
@@ -112,7 +120,17 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
         }
         changes.append({"preserved_id": previous_id, "generated_id": generated_id,
                         "source_identifiers": [list(key) for key in sorted(evidence)]})
+    merged_changes = []
+    for previous_id, i, evidence in absorbed:
+        merged_ids = rows[i].setdefault("merged_ids", [])
+        if previous_id in merged_ids:
+            continue  # the ingestion merge already recorded it
+        merged_ids.append(previous_id)
+        merged_changes.append({"merged_id": previous_id, "into_id": rows[i]["id"],
+                               "source_identifiers": [list(key) for key in sorted(evidence)]})
     result["recordset_sha256"] = recordset_sha256(rows)
-    remaining = sorted(baseline_ids - {row["id"] for row in rows})
-    report = {"preserved_ids": len(changes), "changes": changes, "unresolved_missing_ids": remaining}
+    remaining = sorted(baseline_ids - {row["id"] for row in rows}
+                       - {merged for row in rows for merged in row.get("merged_ids") or []})
+    report = {"preserved_ids": len(changes), "changes": changes, "merged_previous_ids": merged_changes,
+              "unresolved_missing_ids": remaining}
     return result, report
