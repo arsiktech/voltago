@@ -374,6 +374,7 @@ struct StationDetailView: View {
                     // The next step stays inside the medium sheet: actions come before the
                     // parking facts and the decision's reasoning.
                     StationActions(station: station)
+                    StationWatchSection(station: station)
                     StationParkingAccessFacts(station: station)
                     // Backend reasons describe the decision at fetch time. Once the client
                     // demotes stale/degraded/unavailable data, repeating an old optimistic

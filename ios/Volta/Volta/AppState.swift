@@ -916,6 +916,20 @@ final class AppState: NSObject, ObservableObject {
         loadNearby(reason: "nearby-alternatives")
     }
 
+    /// From a tapped availability alert: reload the charger's area so its current status,
+    /// not the alert text, decides what the driver sees.
+    func showWatchedCharger(lat: Double, lon: Double) {
+        cancelLocationForManualNavigation()
+        let region = MKCoordinateRegion(center: .init(latitude: lat, longitude: lon),
+                                        span: .init(latitudeDelta: 0.03, longitudeDelta: 0.03))
+        visibleRegion = region
+        withAnimation(cameraAnimation) { camera = .region(region) }
+        loadNearby(reason: "watch-alert")
+    }
+
+    /// A watch uses the driver's connector filter; no filter means every connector.
+    var watchConnectorTypes: [String] { connectorTypes.sorted() }
+
     // MARK: - Location
 
     /// Pure authorization callback reducer. `locate()` directly requests a location when

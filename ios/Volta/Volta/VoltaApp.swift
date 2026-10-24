@@ -2,6 +2,8 @@ import SwiftUI
 
 @main
 struct VoltaApp: App {
+    @UIApplicationDelegateAdaptor(VoltaAppDelegate.self) private var appDelegate
+
     private var shouldUsePaywallGate: Bool {
         #if DEBUG
         return PaywallConfig.enabled || PaywallDebugLaunch.forcePaywall
@@ -51,16 +53,26 @@ enum DiscoveryDebugLaunch {
 private struct VoltaContentRoot: View {
     @StateObject private var state = AppState()
     @StateObject private var garage = VehicleGarage()
+    @StateObject private var watches = WatchService()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         RootView()
             .environmentObject(state)
             .environmentObject(garage)
+            .environmentObject(watches)
             .task { state.start() }
             .task(id: state.api.baseURL.absoluteString + String(describing: scenePhase)) {
                 guard scenePhase == .active else { return }
+                await watches.loadConfig(api: state.api)
+                await watches.refresh(api: state.api)
                 await garage.run(baseURL: state.api.baseURL)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .voltaWatchAlertOpened)) { note in
+                // Re-read current facts around the charger; never trust the alert text.
+                guard let id = note.object as? String, let local = watches.watch(id: id) else { return }
+                state.showWatchedCharger(lat: local.lat, lon: local.lon)
+                Task { await watches.refresh(api: state.api) }
             }
     }
 }

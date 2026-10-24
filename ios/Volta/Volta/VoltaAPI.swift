@@ -96,6 +96,42 @@ struct VoltaAPI {
             throw URLError(.badServerResponse)
         }
     }
+
+    // MARK: Availability watches (docs/spec-availability-alerts.md)
+
+    func watchConfig() async throws -> WatchConfig {
+        try await get("api/watches/config", [])
+    }
+
+    /// The device token goes only in this POST body, never in a URL.
+    func createWatch(_ request: WatchCreateRequest) async throws -> WatchRecord {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/watches"))
+        req.httpMethod = "POST"
+        req.timeoutInterval = 30
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONSerialization.data(withJSONObject: request.jsonObject)
+        return try await watchResponse(for: req)
+    }
+
+    func watch(id: String) async throws -> WatchRecord {
+        try await watchResponse(for: URLRequest(url: baseURL.appendingPathComponent("api/watches/\(id)")))
+    }
+
+    func cancelWatch(id: String) async throws -> WatchRecord {
+        var req = URLRequest(url: baseURL.appendingPathComponent("api/watches/\(id)"))
+        req.httpMethod = "DELETE"
+        return try await watchResponse(for: req)
+    }
+
+    private func watchResponse(for request: URLRequest) async throws -> WatchRecord {
+        let (data, resp) = try await session.data(for: request)
+        guard let http = resp as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw WatchRequestError(status: http.statusCode,
+                                    reason: (try? Self.decoder.decode(WatchErrorBody.self, from: data))?.warning)
+        }
+        return try Self.decoder.decode(WatchEnvelope.self, from: data).watch
+    }
 }
 
 /// south,west,north,east — the server's bbox query format.
