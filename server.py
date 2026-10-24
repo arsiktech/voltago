@@ -6582,6 +6582,10 @@ class Handler(BaseHTTPRequestHandler):
         if file_path.is_dir():
             file_path = file_path / "index.html"
         if not file_path.exists() or not file_path.is_file():
+            # Discovery documents are machine-read: an MCP client probing OAuth metadata must
+            # get a real 404 ("no sign-in here"), never the app shell with 200.
+            if safe.parts[:1] == (".well-known",):
+                return self.send_json(404, {"error": "not_found"})
             # SPA client-side routes have no file suffix: fall back to index.html.
             if not safe.suffix:
                 file_path = root / "index.html"
