@@ -148,6 +148,23 @@ class RetiredIdGateTests(unittest.TestCase):
         self.assertEqual(result["delta"]["missing_aliases"], 1)
         self.assertEqual(result["delta"]["missing_alias_sample"], ["old-alias"])
 
+    def test_a_lost_alias_needs_a_retirement_whose_evidence_holds(self) -> None:
+        holder = keeper()
+        holder["merged_ids"] = ["old-alias"]
+        run, result = self.run_gate([holder], [keeper()], [retirement("old-alias")])  # successor "new" absent
+        self.assertNotEqual(run.returncode, 0)
+        self.assertEqual(result["delta"]["missing_aliases"], 1)
+        self.assertEqual([item["id"] for item in result["delta"]["retirements_unmet"]], ["old-alias"])
+        self.assertEqual(result["delta"]["retirements_stale"], [])
+
+    def test_a_lost_alias_with_a_supported_retirement_passes(self) -> None:
+        holder = keeper()
+        holder["merged_ids"] = ["old-alias"]
+        run, result = self.run_gate([holder], [keeper(), station("new", 40.468)], [retirement("old-alias")])
+        self.assertEqual(run.returncode, 0, run.stdout)
+        self.assertEqual(result["delta"]["missing_aliases"], 0)
+        self.assertEqual(result["delta"]["retirements_unmet"], [])
+
     def test_an_alias_kept_moved_or_restored_as_a_station_passes(self) -> None:
         holder = keeper()
         holder["merged_ids"] = ["a", "b", "c"]

@@ -251,7 +251,11 @@ def id_delta(
     # no longer carries, as a station or an alias, would break saved references silently.
     baseline_aliases = {alias for row in baseline_rows for alias in row.get("merged_ids") or []}
     rebuilt_aliases = {alias for row in rebuilt_rows for alias in row.get("merged_ids") or []}
-    lost_aliases = sorted(baseline_aliases - rebuilt_ids - rebuilt_aliases - set(retirements))
+    alias_gone = sorted(baseline_aliases - rebuilt_ids - rebuilt_aliases)
+    # A retirement exempts a lost alias only when its evidence still holds, as for IDs.
+    alias_retired, alias_unmet = honored_retirements(alias_gone, retirements, baseline_ids, rebuilt_ids)
+    retirements_unmet = retirements_unmet + alias_unmet
+    lost_aliases = [alias for alias in alias_gone if alias not in alias_retired]
     return {
         "baseline_ids": len(baseline_ids),
         "rebuilt_ids": len(rebuilt_ids),
@@ -265,7 +269,7 @@ def id_delta(
             {"id": old_id, "successor_id": retired[old_id].get("successor_id")} for old_id in sorted(retired)[:10]
         ],
         "retirements_unmet": retirements_unmet,
-        "retirements_stale": sorted(set(retirements) - set(gone)),
+        "retirements_stale": sorted(set(retirements) - set(gone) - set(alias_gone)),
         "added_sample": added[:10],
         "missing_aliases": len(lost_aliases),
         "missing_alias_sample": lost_aliases[:10],
