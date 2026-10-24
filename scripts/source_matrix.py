@@ -38,6 +38,7 @@ COLUMNS: List[Dict[str, Any]] = [
     {"id": "navarra", "label": "Navarra open data", "prefixes": ("Navarra IDENA",), "coverage": "network", "scope": (41.9, -2.5, 43.35, -0.7)},
     {"id": "castilla_leon", "label": "Castilla y León open data", "prefixes": ("Castilla y León charging",), "coverage": "network", "scope": (40.0, -7.1, 43.3, -1.7)},
     {"id": "etecnic", "label": "Etecnic map", "prefixes": ("Etecnic public charger map",), "coverage": "network", "scope": SPAIN},
+    {"id": "zunder", "label": "Zunder map", "prefixes": ("Zunder public location map",), "coverage": "network", "scope": SPAIN},
     {"id": "madrid", "label": "Madrid open data", "prefixes": ("Madrid public",), "coverage": "network", "scope": (40.31, -3.89, 40.64, -3.52)},
     {"id": "valencia", "label": "València open data", "prefixes": ("València OpenData",), "coverage": "network", "scope": (39.27, -0.43, 39.57, -0.27)},
     {"id": "zaragoza", "label": "Zaragoza open data", "prefixes": ("Zaragoza municipal",), "coverage": "network", "scope": (41.55, -1.05, 41.75, -0.75)},
@@ -59,13 +60,13 @@ ADAPTER_COLUMNS = {
     "source_zaragoza_official": "zaragoza", "source_barcelona_endolla": "endolla",
     "source_fenie": "fenie", "source_lidl": "lidl", "source_moraleja_green": "moraleja",
     "source_catalonia_icaen": "catalonia", "source_navarra_idena": "navarra", "source_castilla_leon": "castilla_leon",
-    "source_etecnic": "etecnic",
+    "source_etecnic": "etecnic", "source_zunder": "zunder",
 }
 # Cache file name prefixes in the build's fetch_evidence, by column.
 CACHE_COLUMNS = {
     "dgt_nap": "dgt", "osm_": "osm", "openchargemap": "ocm", "ocm": "ocm", "mapareve_public": "mapareve",
     "canarias": "canarias", "madrid": "madrid", "valencia": "valencia", "zaragoza": "zaragoza",
-    "endolla": "endolla", "fenie": "fenie", "lidl": "lidl", "etecnic": "etecnic",
+    "endolla": "endolla", "fenie": "fenie", "lidl": "lidl", "etecnic": "etecnic", "zunder": "zunder",
     "catalonia_icaen": "catalonia", "navarra_idena": "navarra", "castilla_leon": "castilla_leon",
 }
 SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_fetched_at",

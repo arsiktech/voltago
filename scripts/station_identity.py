@@ -29,6 +29,7 @@ def identity_keys(row: dict) -> set[tuple]:
         "Castilla y León charging points open data": ("regional_station_key",),
         # Every grouped post ID, so a station survives losing its lowest-ID post.
         "Etecnic public charger map": ("etecnic_charger_id", "etecnic_charger_ids"),
+        "Zunder public location map": ("zunder_location_id",),
     }
     for field in typed_fields.get(family, ()):
         values = raw.get(field)

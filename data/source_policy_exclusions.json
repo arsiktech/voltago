@@ -102,6 +102,29 @@
       "access_method_note": "One anonymous HTTPS GET of the JSON the public map page loads; no credentials, sessions or provider actions.",
       "transformation_required": "Amperes converted to kW; socket status never treated as live availability.",
       "revocation_gate": "Remove this grant to stop collection in scripts/ingest_sources.py source_etecnic."
+    },
+    {
+      "id": "zunder-owner-policy-reuse",
+      "family": "Zunder public location map",
+      "source_family_terms": [
+        "zunder public location map"
+      ],
+      "origin_hosts": [
+        "www.zunder.com"
+      ],
+      "status": "permitted",
+      "basis": "Owner decision 2026-10-24 under the 2026-10-12 source policy (public, no-login sources may be ingested). Zunder's terms were not reviewed; no provider licence or written permission exists.",
+      "granted_on": "2026-10-24",
+      "attribution_required": "Zunder (Grupo Easycharger)",
+      "scope": [
+        "anonymous GET of the public map page",
+        "anonymous GET of public per-site detail JSON, at most 5 per refresh, stopping at HTTP 429, cached 30 days",
+        "active-site location and hardware rows",
+        "fetch-time connector counts as evidence only"
+      ],
+      "access_method_note": "Anonymous HTTPS GET only; no credentials, sessions or provider actions.",
+      "transformation_required": "Only sites marked Activo; counts never treated as live availability.",
+      "revocation_gate": "Remove this grant to stop collection in scripts/ingest_sources.py source_zunder."
     }
   ],
   "exclusions": [
