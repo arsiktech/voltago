@@ -102,6 +102,8 @@ final class AppState: NSObject, ObservableObject {
     @Published var selected: Station?
     @Published var favoriteIDs: [String] = FavoritesStore.load().map(\.id)
     @Published var showingSavedOnly = false
+    /// When the list shows chargers saved on this iPhone because the service is unreachable.
+    @Published var offlineSavedAt: Date?
 
     @Published var searchText = ""
     @Published var searchResults: [GeocodeResult] = []
@@ -231,6 +233,7 @@ final class AppState: NSObject, ObservableObject {
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.delegate = self
         applyDebugLocationOverride()
+        resetOfflineCacheForUITestsIfNeeded()
     }
 
     init(api: VoltaAPI, locationManager: CLLocationManager = CLLocationManager()) {
@@ -241,6 +244,18 @@ final class AppState: NSObject, ObservableObject {
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.delegate = self
         applyDebugLocationOverride()
+        resetOfflineCacheForUITestsIfNeeded()
+    }
+
+    /// UI tests share one app container across launches. Each hermetic launch starts with no
+    /// offline cache unless the test opts in to keep it (the offline journey test). DEBUG only.
+    private func resetOfflineCacheForUITestsIfNeeded() {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-voltaBaseURL") && !arguments.contains("-VoltaUITestKeepOfflineCache") {
+            OfflineStationCache.clear()
+        }
+        #endif
     }
 
     private func migrateRetiredDebugEndpointIfNeeded() {
@@ -458,8 +473,14 @@ final class AppState: NSObject, ObservableObject {
             return
         }
         do {
-            let resp = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox, coords: locationOrigin)
+            let (resp, data) = try await api.overviewWithData(maxPrice: maxPrice, bbox: visibleRegion.bbox, coords: locationOrigin)
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
+            offlineSavedAt = nil
+            let saved = Set(favoriteIDs)
+            Task.detached(priority: .utility) {
+                OfflineStationCache.storeArea(data)
+                OfflineStationCache.storeSaved(from: data, favoriteIDs: saved)
+            }
             if mode == .overview {
                 leads = resp.leads
                 resultsTruncated = resp.meta?.truncated == true
@@ -480,6 +501,10 @@ final class AppState: NSObject, ObservableObject {
             recordFirstMeaningfulContentIfNeeded()
         } catch {
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
+            if mode == .overview, showOfflineSnapshot() {
+                overviewState = .loaded
+                return
+            }
             if mode == .overview {
                 warning = serviceFailureMessage
                 warningIsServerUnreachable = true
@@ -487,6 +512,27 @@ final class AppState: NSObject, ObservableObject {
             }
             overviewState = .failed
         }
+    }
+
+    /// Shows the last area and saved chargers kept on this iPhone, all marked stale, when the
+    /// service is unreachable. Returns false when nothing was saved, so the actionable error stays.
+    private func showOfflineSnapshot() -> Bool {
+        let area = OfflineStationCache.loadArea(decoder: VoltaAPI.decoder)
+        let saved = OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder)
+        var rows = area?.stations ?? []
+        let known = Set(rows.map(\.id))
+        rows += (saved?.stations ?? []).filter { favoriteIDs.contains($0.id) && !known.contains($0.id) }
+        guard !rows.isEmpty, let savedAt = [area?.savedAt, saved?.savedAt].compactMap({ $0 }).min() else { return false }
+        leads = rows
+        stations = []
+        resultsTruncated = false
+        offlineSavedAt = savedAt
+        let when = savedAt.formatted(date: .abbreviated, time: .shortened)
+        warning = String(localized: "Offline. Showing chargers saved on this iPhone on \(when). Availability and prices may have changed.")
+        warningIsServerUnreachable = true
+        announce(String(localized: "Offline. Showing chargers saved on this iPhone."))
+        recordFirstMeaningfulContentIfNeeded()
+        return true
     }
 
     #if DEBUG

@@ -313,6 +313,19 @@ struct SheetView: View {
             }
         }
 
+        if let savedAt = state.offlineSavedAt {
+            StatusNote(tone: Theme.check, systemImage: "wifi.slash") {
+                Text("Offline. Showing chargers saved on this iPhone on \(savedAt.formatted(date: .abbreviated, time: .shortened)). Availability and prices may have changed.")
+                    .font(.footnote)
+                    .accessibilityIdentifier("offlineSnapshotNote")
+            } actions: {
+                Button("Try again") { Task { await state.loadOverview() } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.action)
+                    .accessibilityIdentifier("offlineSnapshotRetry")
+            }
+        }
+
         if state.locationState == .denied || state.locationState == .restricted || state.locationState == .failed {
             StatusNote(tone: Theme.check, systemImage: "location.slash.fill") {
                 Text(locationRecoveryMessage)

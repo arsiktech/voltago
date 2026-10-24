@@ -13,13 +13,18 @@ struct VoltaAPI {
         self.session = session
     }
 
-    private static let decoder: JSONDecoder = {
+    /// Shared with OfflineStationCache so cached bytes decode exactly like live ones.
+    static let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
         return d
     }()
 
     private func get<T: Decodable>(_ path: String, _ query: [URLQueryItem]) async throws -> T {
+        try await getWithData(path, query).value
+    }
+
+    private func getWithData<T: Decodable>(_ path: String, _ query: [URLQueryItem]) async throws -> (value: T, data: Data) {
         var comps = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         comps.queryItems = query
         var req = URLRequest(url: comps.url!)
@@ -28,11 +33,16 @@ struct VoltaAPI {
         guard let http = resp as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        return try Self.decoder.decode(T.self, from: data)
+        return (try Self.decoder.decode(T.self, from: data), data)
     }
 
     /// Stored evidence for the visible area; never downloads an unbounded global catalog.
     func overview(maxPrice: Double, bbox: BBox, coords: CLLocationCoordinate2D? = nil) async throws -> ChargersResponse {
+        try await overviewWithData(maxPrice: maxPrice, bbox: bbox, coords: coords).value
+    }
+
+    /// The overview plus its raw bytes, which the offline cache stores unchanged.
+    func overviewWithData(maxPrice: Double, bbox: BBox, coords: CLLocationCoordinate2D? = nil) async throws -> (value: ChargersResponse, data: Data) {
         var query: [URLQueryItem] = [
             .init(name: "overview", value: "true"),
             .init(name: "include_leads", value: "true"),
@@ -44,7 +54,7 @@ struct VoltaAPI {
             query.append(.init(name: "lat", value: String(coords.latitude)))
             query.append(.init(name: "lon", value: String(coords.longitude)))
         }
-        return try await get("api/chargers", query)
+        return try await getWithData("api/chargers", query)
     }
 
     /// Live viewport fetch; regional public status feeds merge through the server's shared decision path.
