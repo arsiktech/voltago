@@ -86,4 +86,64 @@ class StableStationIdTests(unittest.TestCase):
         self.assertEqual(report['unresolved_missing_ids'],['old'])
 
 
+    def test_station_absorbed_by_an_existing_station_survives_as_a_merged_id(self):
+        # OSM moved the node a few metres (new coordinate ID), and the ingestion merge folded
+        # it into a registry station that keeps its own baseline ID.
+        osm_old = station('osm_old')
+        registry = station('registry', 'https://nap.dgt.es/x', source='DGT National Access Point charging registry')
+        merged = deepcopy(registry)
+        merged['sources'].append({'name': 'OpenStreetMap public tags', 'url': 'https://www.openstreetmap.org/node/123'})
+        merged['merged_ids'] = ['osm_new']
+        payload, report = self.reconcile([osm_old, registry], [merged])
+        self.assertEqual(payload['records'][0]['id'], 'registry')
+        self.assertEqual(payload['records'][0]['merged_ids'], ['osm_new', 'osm_old'])
+        self.assertEqual(report['merged_previous_ids'][0]['into_id'], 'registry')
+        self.assertEqual(report['unresolved_missing_ids'], [])
+
+    def test_merged_alias_survives_two_consecutive_refreshes(self):
+        osm_old = station('osm_old')
+        registry = station('registry', 'https://nap.dgt.es/x', source='DGT National Access Point charging registry')
+        merged = deepcopy(registry)
+        merged['sources'].append({'name': 'OpenStreetMap public tags', 'url': 'https://www.openstreetmap.org/node/123'})
+        merged['merged_ids'] = ['osm_new']
+        first, report = self.reconcile([osm_old, registry], [merged])
+        self.assertTrue(report['changed'])
+        # The next build regenerates merged_ids from current upstream IDs only.
+        second, report = self.reconcile(first['records'], [deepcopy(merged)])
+        self.assertIn('osm_old', second['records'][0]['merged_ids'])
+        self.assertTrue(report['changed'])
+        self.assertEqual(report['unresolved_missing_ids'], [])
+
+    def test_absorbed_station_brings_its_own_historical_aliases(self):
+        osm_old = station('osm_old', merged_ids=['historical_alias'])
+        registry = station('registry', 'https://nap.dgt.es/x', source='DGT National Access Point charging registry')
+        merged = deepcopy(registry)
+        merged['sources'].append({'name': 'OpenStreetMap public tags', 'url': 'https://www.openstreetmap.org/node/123'})
+        merged['merged_ids'] = ['osm_new']
+        payload, report = self.reconcile([osm_old, registry], [merged])
+        self.assertEqual(payload['records'][0]['merged_ids'], ['osm_new', 'osm_old', 'historical_alias'])
+        self.assertEqual(report['unresolved_missing_ids'], [])
+
+    def test_alias_that_is_a_station_again_is_not_carried(self):
+        baseline = station('registry', merged_ids=['back'])
+        payload, report = self.reconcile([baseline], [station('registry'), station('back', 'https://www.openstreetmap.org/node/9')])
+        self.assertNotIn('back', payload['records'][0].get('merged_ids') or [])
+        self.assertEqual(report['carried_aliases'], 0)
+
+    def test_unchanged_candidate_reports_no_change(self):
+        _, report = self.reconcile([station('same')], [station('same')])
+        self.assertFalse(report['changed'])
+
+    def test_existing_station_without_a_merge_does_not_absorb_an_old_id(self):
+        _, report = self.reconcile([station('old'), station('existing', 'https://www.openstreetmap.org/node/999')],
+                                   [station('existing')])
+        self.assertEqual(report['merged_previous_ids'], [])
+        self.assertEqual(report['unresolved_missing_ids'], ['old'])
+
+    def test_absorbing_station_too_far_away_stays_blocked(self):
+        merged = station('registry', lat=40, merged_ids=['osm_new'])
+        _, report = self.reconcile([station('osm_old'), station('registry', lat=40)], [merged])
+        self.assertEqual(report['unresolved_missing_ids'], ['osm_old'])
+
+
 if __name__=='__main__': unittest.main()

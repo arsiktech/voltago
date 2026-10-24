@@ -83,6 +83,7 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
             index[key].add(i)
     baseline_key_counts = Counter(key for row in previous for key in identity_keys(row))
     proposals = []
+    absorbed = []
     for old in previous:
         if old["id"] in candidate_ids:
             continue
@@ -96,8 +97,15 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
                 evidence.setdefault(i, []).append(key)
         if len(matches) == 1:
             i = next(iter(matches))
-            if rows[i]["id"] not in baseline_ids and distance_m(old, rows[i]) <= 250:
+            if distance_m(old, rows[i]) > 250:
+                continue
+            if rows[i]["id"] not in baseline_ids:
                 proposals.append((old["id"], i, evidence[i]))
+            elif rows[i].get("merged_ids"):
+                # The station was merged into a station that keeps its own baseline ID,
+                # for example an OSM row absorbed by a registry row. The old ID survives
+                # as a merged ID, which lookups and the delta gate already honour.
+                absorbed.append((old["id"], i, evidence[i]))
     uses = Counter(i for _, i, _ in proposals)
     changes = []
     for previous_id, i, evidence in proposals:
@@ -112,7 +120,38 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
         }
         changes.append({"preserved_id": previous_id, "generated_id": generated_id,
                         "source_identifiers": [list(key) for key in sorted(evidence)]})
+    merged_changes = []
+    for previous_id, i, evidence in absorbed:
+        merged_ids = rows[i].setdefault("merged_ids", [])
+        if previous_id in merged_ids:
+            continue  # the ingestion merge already recorded it
+        merged_ids.append(previous_id)
+        merged_changes.append({"merged_id": previous_id, "into_id": rows[i]["id"],
+                               "source_identifiers": [list(key) for key in sorted(evidence)]})
+    # A station that keeps its baseline ID keeps the old IDs merged into it earlier. The
+    # ingestion merge rebuilds merged_ids from current upstream IDs only, so without this an
+    # alias recorded by one refresh would vanish in the next and saved references would break.
+    final_ids = {row["id"] for row in rows}
+    claimed = {alias for row in rows for alias in row.get("merged_ids") or []}
+    previous_by_id = {row["id"]: row for row in previous}
+    # Each surviving station inherits the aliases of its own baseline row and of every
+    # baseline station merged into it now, so an absorbed station's history moves with it.
+    inherited: dict[int, list] = defaultdict(list)
+    for i, row in enumerate(rows):
+        inherited[i].extend((previous_by_id.get(row["id"]) or {}).get("merged_ids") or [])
+    for previous_id, i, _evidence in absorbed:
+        inherited[i].extend((previous_by_id.get(previous_id) or {}).get("merged_ids") or [])
+    carried = []
+    for i, row in enumerate(rows):
+        for alias in inherited[i]:
+            if alias in final_ids or alias in claimed:
+                continue  # the alias is a station again, or another station holds it
+            row.setdefault("merged_ids", []).append(alias)
+            claimed.add(alias)
+            carried.append({"merged_id": alias, "into_id": row["id"]})
     result["recordset_sha256"] = recordset_sha256(rows)
-    remaining = sorted(baseline_ids - {row["id"] for row in rows})
-    report = {"preserved_ids": len(changes), "changes": changes, "unresolved_missing_ids": remaining}
+    remaining = sorted(baseline_ids - final_ids - claimed)
+    report = {"preserved_ids": len(changes), "changes": changes, "merged_previous_ids": merged_changes,
+              "carried_aliases": len(carried), "unresolved_missing_ids": remaining,
+              "changed": bool(changes or merged_changes or carried)}
     return result, report
