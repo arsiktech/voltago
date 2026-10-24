@@ -157,12 +157,13 @@ class AgentMcpHttpTests(unittest.TestCase):
         return status, payload
 
     def modern(self, method: str, params: Optional[Dict[str, Any]] = None, *, name_header: Optional[str] = None,
-               headers: Optional[Dict[str, str]] = None, version: str = MODERN):
+               headers: Optional[Dict[str, str]] = None, version: str = MODERN, extra_meta: Optional[Dict[str, Any]] = None):
         params = dict(params or {})
         params["_meta"] = {
             "io.modelcontextprotocol/protocolVersion": version,
             "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"},
             "io.modelcontextprotocol/clientCapabilities": {},
+            **(extra_meta or {}),
         }
         sent = {"MCP-Protocol-Version": version, "Mcp-Method": method}
         if method == "tools/call":
@@ -353,6 +354,49 @@ class AgentMcpHttpTests(unittest.TestCase):
         found = self.find(place="Valencia", lat=None, lon=None)
         self.assertEqual(found["query"]["place"], "Valencia, España")
         self.assertEqual([row["id"] for row in found["chargers"]], ["near-place"])
+
+    def test_tools_declare_chatgpt_directory_annotations_and_status_lines(self) -> None:
+        status, payload = self.legacy("tools/list", {})
+        self.assertEqual(status, 200, payload)
+        for tool in payload["result"]["tools"]:
+            hints = tool["annotations"]
+            self.assertIs(hints["readOnlyHint"], True, tool["name"])
+            self.assertIs(hints["destructiveHint"], False, tool["name"])
+            self.assertIs(hints["openWorldHint"], False, tool["name"])
+            self.assertTrue(tool["_meta"]["openai/toolInvocation/invoking"])
+            self.assertTrue(tool["_meta"]["openai/toolInvocation/invoked"])
+
+    def test_approximate_chatgpt_city_is_used_only_without_an_explicit_place(self) -> None:
+        self.upstream = [live_row("near-city", lat=39.471, lon=-0.37)]
+        hint = {"openai/userLocation": {"city": "Valencia", "region": "Valencian Community", "country": "ES",
+                                        "latitude": 1.0, "longitude": 2.0, "timezone": "Europe/Madrid"}}
+        geocode = server  # server.geocode_search is the patched mock during each test
+        status, payload = self.modern("tools/call", {"name": "find_chargers", "arguments": {}}, extra_meta=hint)
+        self.assertEqual(status, 200, payload)
+        result = payload["result"]
+        self.assertFalse(result["isError"], result["content"])
+        query = result["structuredContent"]["query"]
+        self.assertEqual(query["origin"], "approximate_client_location")
+        # The hint's coordinates are never used as the origin; the city text is geocoded instead.
+        self.assertEqual((query["lat"], query["lon"]), (ORIGIN_LAT, ORIGIN_LON))
+        geocode.geocode_search.assert_called_with("Valencia, Valencian Community, ES", limit=1)
+        self.assertIn("approximate city", result["content"][0]["text"])
+
+        status, payload = self.modern("tools/call", {"name": "find_chargers", "arguments": {"place": "Valencia airport"}},
+                                      extra_meta=hint)
+        self.assertEqual(payload["result"]["structuredContent"]["query"]["origin"], "place")
+        geocode.geocode_search.assert_called_with("Valencia airport", limit=1)
+
+        status, payload = self.modern("tools/call", {"name": "find_chargers", "arguments": {}})
+        self.assertTrue(payload["result"]["isError"])
+        self.assertIn("Pass a `place`", payload["result"]["content"][0]["text"])
+
+    def test_coarse_client_place_ignores_malformed_hints(self) -> None:
+        self.assertIsNone(agent_mcp.coarse_client_place(None))
+        self.assertIsNone(agent_mcp.coarse_client_place({"openai/userLocation": "Valencia"}))
+        self.assertIsNone(agent_mcp.coarse_client_place({"openai/userLocation": {"city": "  ", "latitude": 39.4}}))
+        self.assertEqual(agent_mcp.coarse_client_place({"openai/userLocation": {"city": "Bad\nCity", "country": "ES"}}), "ES")
+        self.assertEqual(len(agent_mcp.coarse_client_place({"openai/userLocation": {"city": "x" * 500}})), 60)
 
     def test_mcp_results_match_the_rest_api(self) -> None:
         self.upstream = [live_row(f"live-{i}", lat=39.46 + i * 0.004, lon=-0.37) for i in range(5)]

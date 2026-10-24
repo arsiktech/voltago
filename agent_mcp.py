@@ -110,7 +110,15 @@ class ToolInputError(ValueError):
 
 # --------------------------------------------------------------------------- tools
 
-_READ_ONLY = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}
+# openWorldHint is false: the tools read Volta Go's own bounded catalogue, not the open web.
+_READ_ONLY = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+
+# ChatGPT reads these status lines while a tool runs; other clients ignore them.
+OPENAI_USER_LOCATION = "openai/userLocation"
+
+
+def _invocation_meta(invoking: str, invoked: str) -> Dict[str, str]:
+    return {"openai/toolInvocation/invoking": invoking, "openai/toolInvocation/invoked": invoked}
 
 TOOLS: List[Dict[str, Any]] = [
     {
@@ -127,7 +135,10 @@ TOOLS: List[Dict[str, Any]] = [
             "properties": {
                 "place": {
                     "type": "string",
-                    "description": "Place worldwide, e.g. 'Tokyo' or 'Valencia airport'. Use this or lat/lon.",
+                    "description": (
+                        "Place worldwide, e.g. 'Tokyo' or 'Valencia airport'. Use this or lat/lon. "
+                        "If both are omitted, an approximate city supplied by the AI app is used when available."
+                    ),
                     "maxLength": 120,
                 },
                 "lat": {"type": "number", "minimum": -90.0, "maximum": 90.0, "description": "Latitude (WGS 84)."},
@@ -160,6 +171,7 @@ TOOLS: List[Dict[str, Any]] = [
             "additionalProperties": False,
         },
         "annotations": {"title": "Find EV chargers", **_READ_ONLY},
+        "_meta": _invocation_meta("Finding chargers", "Found chargers"),
     },
     {
         "name": "get_charger",
@@ -181,6 +193,7 @@ TOOLS: List[Dict[str, Any]] = [
             "additionalProperties": False,
         },
         "annotations": {"title": "Get one charger", **_READ_ONLY},
+        "_meta": _invocation_meta("Reading charger evidence", "Read charger evidence"),
     },
     {
         "name": "get_data_status",
@@ -192,6 +205,7 @@ TOOLS: List[Dict[str, Any]] = [
         ),
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
         "annotations": {"title": "Data coverage and freshness", **_READ_ONLY},
+        "_meta": _invocation_meta("Checking data freshness", "Checked data freshness"),
     },
 ]
 _TOOL_NAMES = {tool["name"] for tool in TOOLS}
@@ -437,26 +451,43 @@ def _summary_line(index: int, view: Mapping[str, Any]) -> str:
     return " · ".join(parts) + f" · id={view.get('id')}"
 
 
-def _resolve_origin(args: Mapping[str, Any], backend: Any) -> Tuple[float, float, Optional[str]]:
+def coarse_client_place(meta: Any) -> Optional[str]:
+    """City-level text from ChatGPT's `openai/userLocation` hint. Its coordinates are ignored:
+    the hint is approximate, and the tool should never turn it into a precise origin."""
+    location = meta.get(OPENAI_USER_LOCATION) if isinstance(meta, Mapping) else None
+    if not isinstance(location, Mapping):
+        return None
+    parts = []
+    for key in ("city", "region", "country"):
+        value = location.get(key)
+        if isinstance(value, str) and value.strip() and value.isprintable():
+            parts.append(value.strip()[:60])
+    return ", ".join(parts) if parts else None
+
+
+def _resolve_origin(args: Mapping[str, Any], backend: Any, coarse_place: Optional[str] = None) -> Tuple[float, float, Optional[str], str]:
     place = _text(args, "place", max_len=120)
     lat = _number(args, "lat", low=-90.0, high=90.0)
     lon = _number(args, "lon", low=-180.0, high=180.0)
     if (lat is None) != (lon is None):
         raise ToolInputError("Pass both `lat` and `lon`, or a `place`.")
     if lat is not None and lon is not None:
-        return lat, lon, None
+        return lat, lon, None, "coordinates"
+    origin = "place"
+    if not place and coarse_place:
+        place, origin = coarse_place, "approximate_client_location"
     if not place:
         raise ToolInputError("Pass a `place` or `lat` and `lon`.")
     results = backend.geocode_search(place, limit=1)
     if not results:
         raise ToolInputError(f"No place matched {place!r}. Try a town name or pass lat/lon.")
     best = results[0]
-    return float(best["lat"]), float(best["lon"]), str(best.get("label") or place)
+    return float(best["lat"]), float(best["lon"]), str(best.get("label") or place), origin
 
 
-def find_chargers(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
+def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Optional[str] = None) -> Dict[str, Any]:
     _reject_unknown(args, "find_chargers")
-    lat, lon, place_label = _resolve_origin(args, backend)
+    lat, lon, place_label, origin = _resolve_origin(args, backend, coarse_place)
     radius = _number(args, "radius_km", low=0.5, high=MAX_RADIUS_KM, default=DEFAULT_RADIUS_KM)
     free_only = _flag(args, "free_only")
     max_price = _number(args, "max_price_eur_kwh", low=0.0, high=PRICE_ANY)
@@ -533,6 +564,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
     result = {
         "query": {
             "place": place_label,
+            "origin": origin,
             "lat": round(lat, 6),
             "lon": round(lon, 6),
             "radius_km": radius,
@@ -567,7 +599,11 @@ def find_chargers(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
     header = f"{len(views)} of {len(kept)} chargers within {radius:g} km"
     header += f" of {place_label}" if place_label else f" of {lat:.4f},{lon:.4f}"
     header += "." if views else ". None matched; see `excluded` for what the filters removed."
-    lines = [header] + [_summary_line(i, view) for i, view in enumerate(views, 1)]
+    lines = [header]
+    if origin == "approximate_client_location":
+        lines.append("Searched around the user's approximate city from the AI app, not their exact position. "
+                     "Ask for a place or address for nearer results.")
+    lines += [_summary_line(i, view) for i, view in enumerate(views, 1)]
     if payload.get("warning"):
         lines.append(f"Warning: {payload['warning']}")
     lines.append(result["caveat"])
@@ -789,7 +825,10 @@ def _call_tool(params: Mapping[str, Any], backend: Any, rate_limit: Callable[[],
         result = {"content": [{"type": "text", "text": f"Rate limit reached. Retry in {wait} seconds."}], "isError": True}
     else:
         try:
-            output = TOOL_HANDLERS[name](arguments, backend)
+            if name == "find_chargers":
+                output = find_chargers(arguments, backend, coarse_place=coarse_client_place(params.get("_meta")))
+            else:
+                output = TOOL_HANDLERS[name](arguments, backend)
             result = {
                 "content": [{"type": "text", "text": output["text"]}],
                 "structuredContent": output["structured"],
