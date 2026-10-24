@@ -631,6 +631,8 @@ struct StationDetailView: View {
                                         .underline()
                                         .foregroundStyle(Theme.actionInk)
                                 }
+                                .accessibilityRemoveTraits(.isButton)
+                                .accessibilityAddTraits(.isLink)
                             } else {
                                 Text(src.name ?? "Source")
                                     .font(.subheadline.weight(.medium))
@@ -648,6 +650,8 @@ struct StationDetailView: View {
                                     Link("License: \(license)", destination: licenseURL)
                                         .font(.caption2)
                                         .foregroundStyle(Theme.actionInk)
+                                        .accessibilityRemoveTraits(.isButton)
+                                        .accessibilityAddTraits(.isLink)
                                 } else {
                                     Text("License: \(license)")
                                         .font(.caption2)
@@ -675,6 +679,9 @@ struct StationDetailView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        // A row with a source link and a licence link would otherwise become
+                        // one tap target that opens only the first.
+                        .buttonStyle(.borderless)
                     }
                 }
             }

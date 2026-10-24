@@ -30,7 +30,10 @@ final class ScreenshotTourUITests: XCTestCase {
     /// Xcode's automated accessibility audit on the discovery sheet and a detail screen.
     /// It complements, and cannot replace, the manual VoiceOver pass (TC-056). Clipping is
     /// checked by the accessibility-size tour screenshots instead: the `.textClipped` audit
-    /// flags wrapping SwiftUI text in rows inconsistently from run to run.
+    /// flags wrapping SwiftUI text in rows inconsistently from run to run. The `.dynamicType`
+    /// audit is replaced by `testTextGrowsAtLargestAccessibilitySize`: on Xcode 27 / iOS 27
+    /// it flagged ordinary text-style text, including SwiftUI's own section headers, as
+    /// unscalable, a different element on each run.
     func testAccessibilityAuditDiscoveryAndDetail() throws {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -39,7 +42,7 @@ final class ScreenshotTourUITests: XCTestCase {
         ]
         app.launch()
         XCTAssertTrue(app.textFields["discoverySearchField"].waitForExistence(timeout: 15))
-        try app.performAccessibilityAudit(for: [.dynamicType, .sufficientElementDescription, .hitRegion]) { issue in
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion]) { issue in
             Self.isMapKitOwned(issue)
         }
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stationRow-'")).firstMatch
@@ -47,9 +50,39 @@ final class ScreenshotTourUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 15))
         row.tap()
         XCTAssertTrue(app.navigationBars["Charger details"].waitForExistence(timeout: 10))
-        try app.performAccessibilityAudit(for: [.dynamicType, .sufficientElementDescription, .hitRegion]) { issue in
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion]) { issue in
             Self.isMapKitOwned(issue)
         }
+    }
+
+    /// Dynamic Type, checked directly: the Your EV card and the first charger row must be
+    /// clearly taller at the largest accessibility text size than at the default size.
+    func testTextGrowsAtLargestAccessibilitySize() throws {
+        let regular = try discoveryHeights(size: "UICTContentSizeCategoryL")
+        let largest = try discoveryHeights(size: "UICTContentSizeCategoryAccessibilityXXXL")
+        for (name, height) in regular {
+            let grown = try XCTUnwrap(largest[name])
+            XCTAssertGreaterThan(grown, height * 1.3, "\(name) did not grow with text size: \(height) → \(grown)")
+        }
+    }
+
+    private func discoveryHeights(size: String) throws -> [String: CGFloat] {
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-voltaBaseURL", ProcessInfo.processInfo.environment["TOUR_BASE_URL"] ?? stubServer?.baseURLString ?? "",
+            "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
+            "-UIPreferredContentSizeCategoryName", size,
+        ]
+        app.launch()
+        defer { app.terminate() }
+        let card = app.descendants(matching: .any)["yourEVSummary"].firstMatch
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'stationRow-'")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        let cardHeight = card.frame.height
+        // At the largest size the first row starts below the fold of the lazy list.
+        for _ in 0..<8 where !row.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        return ["Your EV card": cardHeight, "charger row": row.frame.height]
     }
 
     /// Map tiles and MapKit's own "Legal" attribution link are outside the app's control.
