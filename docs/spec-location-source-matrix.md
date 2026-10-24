@@ -68,8 +68,10 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
 - Each source's freshness is measured in production and shown, not assumed.
 - Map, matrix and agents read the same records.
 
-## Owner decisions needed
+## Owner decisions (2026-10-24)
 
-1. Columns: all about 20 source families, or the top 8 by coverage with the rest grouped.
-2. Whether price-only sources get columns.
-3. First build target: web page only, or web plus a read-only API endpoint.
+1. Columns: every source family gets its own column (about 20).
+2. Price-only sources (Electromaps, Chargemap, Repsol) get columns in the Restricted
+   state. Each shows only that the source has a price for the location.
+3. The first build is better cross-source matching, measured by the single-source share.
+   The matrix interface follows.
