@@ -41,6 +41,37 @@ final class AdverseStatesUITests: XCTestCase {
         attachScreenshot(named: "adverse-overview-503-light-medium")
     }
 
+    func testOfflineRelaunchShowsSavedAreaMarkedOfflineWithRetry() throws {
+        // First launch online: the area overview is cached on this iPhone.
+        let overview = StubFixtures.overviewChargersJSON
+        stubServer.configureOverviewResponses([.ok(overview), .ok(overview), .ok(overview)])
+        var app = launchedApp(style: "Light", extraArguments: ["-VoltaUITestLocationState", "denied"])
+        let row = app.buttons["stationRow-uitest-lead-01"]
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "Online overview never showed the fixture row")
+        // The cache is written in the background after the response is shown.
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 3))
+        sleep(2)
+        app.terminate()
+
+        // Second launch offline: the service fails, the saved area appears, clearly offline.
+        stubServer.configureOverviewResponses([.serviceUnavailable, .serviceUnavailable, .serviceUnavailable])
+        app = launchedApp(style: "Light", extraArguments: ["-VoltaUITestLocationState", "denied", "-VoltaUITestKeepOfflineCache"])
+        let note = app.staticTexts["offlineSnapshotNote"]
+        XCTAssertTrue(note.waitForExistence(timeout: 15), "Offline note missing; requests: \(stubServer.recordedRequestPaths())")
+        XCTAssertTrue(note.label.contains("Offline. Showing chargers saved on this iPhone"))
+        XCTAssertTrue(app.buttons["offlineSnapshotRetry"].exists)
+        // The cached charger is back on the map, marked not live (the list row sits below
+        // the half-height sheet, so the map pin and the count are the visible evidence).
+        let pin = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "UITest Lead")).firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: 5), "Cached charger missing offline")
+        let pinValue = String(describing: pin.value ?? "")
+        XCTAssertTrue(pinValue.contains("Not"), "Cached charger should read as not live: \(pinValue)")
+        XCTAssertFalse(pinValue.localizedCaseInsensitiveContains("Go now"))
+        XCTAssertEqual(app.staticTexts["Chargers in this view"].value as? String, "1")
+        XCTAssertFalse(app.buttons["overviewEmptyRetry"].exists, "The empty failure state should give way to the saved area")
+        attachScreenshot(named: "offline-saved-area-light")
+    }
+
     func testDeniedLocationOffersSearchAndSettingsWithoutMovingTheSheet() throws {
         let app = launchedApp(
             style: "Dark",
