@@ -63,6 +63,7 @@ from station_truth import (
 
 import agent_mcp
 import community as community_store
+import watches as watch_store
 from google_maps import attach_google_maps_navigation
 import vehicles as vehicle_store
 
@@ -239,6 +240,12 @@ COMMUNITY_WRITE_RPM = max(1, int(os.environ.get("VOLTA_COMMUNITY_WRITE_RPM", "10
 COMMUNITY_TOKEN = os.environ.get("VOLTA_COMMUNITY_TOKEN", "").strip()
 ADMIN_TOKEN = os.environ.get("VOLTA_ADMIN_TOKEN", "").strip()
 COMMUNITY_JSON_MAX_BYTES = 32_768
+# Availability watches (docs/spec-availability-alerts.md). Off by default: until APNs
+# credentials exist an alert cannot reach a phone, so the endpoints stay closed unless the
+# owner opts in (tests, staging). WATCH_SENDER is replaced only by a configured APNs sender.
+WATCHES_ENABLED = os.environ.get("VOLTA_WATCHES_ENABLED", "false").strip().lower() == "true"
+WATCH_WRITE_RPM = max(1, int(os.environ.get("VOLTA_WATCH_WRITE_RPM", "6")))
+WATCH_SENDER: Any = watch_store.UnconfiguredSender()
 
 
 def _is_loopback_peer(ip: str) -> bool:
@@ -6114,6 +6121,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == agent_mcp.MCP_PATH:
             # MCP is POST-only: no standalone SSE stream, so GET is 405 (never the SPA).
             return self._send_mcp_method_not_allowed()
+        if path.startswith("/api/watches/"):
+            return self._route_watch("GET", path)
         if path == "/api/chargers":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
@@ -6261,9 +6270,42 @@ class Handler(BaseHTTPRequestHandler):
     def do_DELETE(self) -> None:
         # Legacy Streamable HTTP clients DELETE their session on exit; this server
         # mints no sessions, so the specification's answer is 405.
-        if urllib.parse.urlparse(self.path).path == agent_mcp.MCP_PATH:
+        path = urllib.parse.urlparse(self.path).path
+        if path == agent_mcp.MCP_PATH:
             return self._send_mcp_method_not_allowed()
+        if path.startswith("/api/watches/"):
+            return self._route_watch("DELETE", path)
         self.send_json(404, {"error": "not_found"})
+
+    def _route_watch(self, method: str, path: str) -> None:
+        """Availability watches. The watch ID is the capability: it is random, returned
+        only to the creator, and the device token never appears in a URL or response."""
+        try:
+            if method == "GET" and path == "/api/watches/config":
+                return self.send_json(200, watch_config(), {"Cache-Control": "no-store"})
+            if not WATCHES_ENABLED:
+                raise watch_store.WatchError(503, "watches_disabled",
+                                             "Availability watches are not enabled on this deployment.")
+            watch_id = path[len("/api/watches/"):] if path.startswith("/api/watches/") else ""
+            if method == "POST" and path == "/api/watches":
+                if not self._enforce_rate_limit("watch-write", WATCH_WRITE_RPM):
+                    return
+                view = watch_store.create_watch(
+                    self._parse_json_body(), lookup=watch_lookup,
+                    key_for=agent_mcp._connector_key, allowed_types=agent_mcp.CONNECTOR_TYPES,
+                )
+                view["push_configured"] = bool(getattr(WATCH_SENDER, "configured", False))
+                return self.send_json(201, {"ok": True, "watch": view}, {"Cache-Control": "no-store"})
+            if method == "GET" and watch_id:
+                return self.send_json(200, {"watch": watch_store.get_watch(watch_id)}, {"Cache-Control": "no-store"})
+            if method == "DELETE" and watch_id:
+                if not self._enforce_rate_limit("watch-write", WATCH_WRITE_RPM):
+                    return
+                return self.send_json(200, {"ok": True, "watch": watch_store.cancel_watch(watch_id)},
+                                      {"Cache-Control": "no-store"})
+            return self.send_json(404, {"error": "not_found"})
+        except watch_store.WatchError as exc:
+            return self.send_json(exc.status, {"error": exc.code, "warning": exc.message})
 
     def _send_mcp_method_not_allowed(self, head: bool = False) -> None:
         body = json.dumps(
@@ -6477,6 +6519,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._route_vehicle_post(path)
         if path == agent_mcp.MCP_PATH:
             return self._route_mcp_post()
+        if path == "/api/watches":
+            return self._route_watch("POST", path)
         if not path.startswith("/api/community/"):
             return self.send_json(404, {"error": "not_found"})
         if not COMMUNITY_WRITES_ENABLED:
@@ -6621,6 +6665,33 @@ def warm_default_overview_forever() -> None:
         time.sleep(60.0 - (time.time() % 60.0) + 0.05)
 
 
+def watch_lookup(station_id: str, lat: float, lon: float) -> Optional[Dict[str, Any]]:
+    """The served row for a watched charger, read through the normal live path so watches
+    share its caches, TTLs and upstream budgets. Strict ID match only: a nearby look-alike
+    must never stand in for the watched charger."""
+    status, payload = live_response({
+        "lat": [f"{lat:.6f}"], "lon": [f"{lon:.6f}"], "radius_km": ["0.5"],
+        "include_leads": ["false"], "max_price": ["5"],
+    })
+    if status != 200:
+        return None
+    for row in payload.get("stations") or []:
+        if row.get("id") == station_id or station_id in (row.get("merged_ids") or []):
+            return row
+    return None
+
+
+def watch_config() -> Dict[str, Any]:
+    return {
+        "enabled": WATCHES_ENABLED,
+        "push_configured": bool(getattr(WATCH_SENDER, "configured", False)),
+        "eligible_feeds": list(watch_store.ELIGIBLE_FEEDS),
+        "default_minutes": watch_store.DEFAULT_MINUTES,
+        "max_minutes": watch_store.MAX_MINUTES,
+        "connector_types": list(agent_mcp.CONNECTOR_TYPES),
+    }
+
+
 def main() -> None:
     if not (WEB_DIST / "index.html").exists():
         print(
@@ -6632,6 +6703,8 @@ def main() -> None:
     host = os.environ.get("HOST", "127.0.0.1")
     server = VoltaHTTPServer((host, port), Handler)
     threading.Thread(target=warm_default_overview_forever, name="volta-overview-warm", daemon=True).start()
+    if WATCHES_ENABLED:
+        watch_store.Watcher(lookup=watch_lookup, sender=WATCH_SENDER, key_for=agent_mcp._connector_key).start()
     print(f"Volta Go running on http://{host}:{port}")
     print("Live data: permitted Gaia public pages plus the MapaREVE read-only bbox query (narrow reviewed POST exception)")
     server.serve_forever()

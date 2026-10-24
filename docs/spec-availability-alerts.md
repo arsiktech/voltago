@@ -19,7 +19,7 @@ change time and a fresh fetch inside the feed's freshness window. Today:
 | --- | --- | --- | --- |
 | Endolla (CC BY 4.0) | Barcelona | ~1,400 | Yes |
 | Spirii AFIR | Spain, Spirii sites | ~100 | Yes |
-| Gaia | One Alboraia site | few | Yes |
+| Gaia | One Alboraia site | few | Later: its live path has no per-snapshot validity flag yet |
 | MapaREVE | Spain | largest | Yes, but blocked until the refusal lifts |
 | Etecnic, Zunder | Spain | — | No: fetch-time counts only, never live |
 | Directory, community, cached rows | — | — | No |
@@ -83,6 +83,20 @@ One transition matrix: occupied→free (alert), free at start (no alert), unknow
 (no alert), stale→fresh free (no alert), flapping (one alert), cancel, expiry, outage,
 server restart with persisted watches, invalid token (watch ends). Plus one physical
 iPhone push once the prerequisites exist.
+
+## Implementation status
+
+- Server side is built in [`watches.py`](../watches.py) and wired into `server.py`:
+  `GET /api/watches/config`, `POST /api/watches`, `GET` and `DELETE /api/watches/{id}`.
+  The random watch ID is the capability; the device token never appears in a URL or
+  response and is deleted when the watch ends.
+- Off by default (`VOLTA_WATCHES_ENABLED=false`). The only sender is
+  `UnconfiguredSender`, which records `delivery: "not_configured"`: no alert reaches a
+  phone until APNs is configured.
+- Tests: [`tests/test_watches.py`](../tests/test_watches.py) covers the transition
+  matrix, the store, the watcher pass and the endpoints.
+- Not built yet: the iOS **Watch** button, notification permission and token
+  registration, and the APNs `curl` sender.
 
 ## Out of scope
 
