@@ -75,3 +75,14 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
    state. Each shows only that the source has a price for the location.
 3. The first build is better cross-source matching, measured by the single-source share.
    The matrix interface follows.
+
+## First build (2026-10-24)
+
+- `GET /api/location-sources?bbox=south,west,north,east` (at most about 20 km across)
+  returns the columns, the 150 locations nearest the centre, and each cell's state with
+  its source entries, reason or nearby candidate. Built by `scripts/source_matrix.py`.
+- `/matrix` is the web page: address search, the matrix, and a detail panel per cell.
+- A column is marked stale, and cannot show "Not listed", when its adapter failed or its
+  latest fetch fell back to an older cached copy.
+- Not yet included: the runtime live feeds (MapaREVE live, Endolla and Spirii status,
+  Gaia), and the MCP tool.
