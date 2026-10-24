@@ -1,6 +1,6 @@
 # Volta Go — single-image deploy: build the React SPA, serve it + the API from Python stdlib.
 # Stage 1: build the frontend
-FROM node:26.10.0-trixie-slim AS web
+FROM node:26.12.1-trixie-slim AS web
 WORKDIR /web/frontend
 RUN npm install --global npm@12.2.0
 COPY frontend/package.json frontend/package-lock.json* ./
