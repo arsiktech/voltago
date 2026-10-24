@@ -27,6 +27,7 @@ def identity_keys(row: dict) -> set[tuple]:
         "Catalonia ICAEN charging points open data": ("regional_station_key",),
         "Navarra IDENA charging points open data": ("regional_station_key",),
         "Castilla y León charging points open data": ("regional_station_key",),
+        "Etecnic public charger map": ("etecnic_charger_id",),
     }
     for field in typed_fields.get(family, ()):
         value = raw.get(field)
