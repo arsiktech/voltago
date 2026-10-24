@@ -66,6 +66,12 @@ FIXTURE = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
+class DgtNapFeedHostTests(unittest.TestCase):
+    def test_feed_uses_the_resource_url_listed_on_the_nap_dataset_page(self) -> None:
+        # infocar.dgt.es answered HTTP 502 from 2026-10-21 while nap.dgt.es served the same file.
+        self.assertTrue(ing.DGT_NAP_FEED_URL.startswith("https://nap.dgt.es/datex2/v3/miterd/"))
+
+
 class DgtNapParserTests(unittest.TestCase):
     def parse(self):
         return ing.parse_dgt_nap_feed(io.BytesIO(FIXTURE.encode("utf-8")), minimum_sites=1)
