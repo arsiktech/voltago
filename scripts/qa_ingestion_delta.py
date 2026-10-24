@@ -247,6 +247,15 @@ def id_delta(
     retired, retirements_unmet = honored_retirements(unmerged, retirements, baseline_ids, rebuilt_ids)
     missing = [old_id for old_id in unmerged if old_id not in retired]
     added = sorted(rebuilt_ids - baseline_ids)
+    # Old IDs merged into a station are aliases that lookups still resolve. One the rebuild
+    # no longer carries, as a station or an alias, would break saved references silently.
+    baseline_aliases = {alias for row in baseline_rows for alias in row.get("merged_ids") or []}
+    rebuilt_aliases = {alias for row in rebuilt_rows for alias in row.get("merged_ids") or []}
+    alias_gone = sorted(baseline_aliases - rebuilt_ids - rebuilt_aliases)
+    # A retirement exempts a lost alias only when its evidence still holds, as for IDs.
+    alias_retired, alias_unmet = honored_retirements(alias_gone, retirements, baseline_ids, rebuilt_ids)
+    retirements_unmet = retirements_unmet + alias_unmet
+    lost_aliases = [alias for alias in alias_gone if alias not in alias_retired]
     return {
         "baseline_ids": len(baseline_ids),
         "rebuilt_ids": len(rebuilt_ids),
@@ -260,8 +269,10 @@ def id_delta(
             {"id": old_id, "successor_id": retired[old_id].get("successor_id")} for old_id in sorted(retired)[:10]
         ],
         "retirements_unmet": retirements_unmet,
-        "retirements_stale": sorted(set(retirements) - set(gone)),
+        "retirements_stale": sorted(set(retirements) - set(gone) - set(alias_gone)),
         "added_sample": added[:10],
+        "missing_aliases": len(lost_aliases),
+        "missing_alias_sample": lost_aliases[:10],
     }
 
 
@@ -346,6 +357,8 @@ def main() -> int:
     max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
+    if delta["missing_aliases"]:
+        failures.append(f"rebuilt lost {delta['missing_aliases']} merged-ID aliases: {delta['missing_alias_sample']}")
 
     baseline_sources = source_names(baseline_rows)
     rebuilt_sources = source_names(rebuilt_rows)
