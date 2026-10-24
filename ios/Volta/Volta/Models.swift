@@ -148,6 +148,8 @@ struct Station: Decodable, Identifiable, Hashable {
     var community: CommunitySummary?
     /// Per-row stale marker emitted after a stale live-cache fallback.
     var cacheStale: Bool?
+    /// Validity of the regional live feed snapshot this row's status came from.
+    var liveStatus: LiveStatus? = nil
     /// Client-only context stamped from the enclosing response. Optional keeps synthesis
     /// forward-compatible with servers that know nothing about this presentation field.
     var responseTrust: StationTrustKind?
@@ -175,8 +177,13 @@ struct Station: Decodable, Identifiable, Hashable {
         case sourceReportedUnavailable
         case freshnessMinutes, lastSeen, distanceKm, driveEtaMinEst, navigation, media, lead
         case sourceDetails, tariffDetails
-        case community, cacheStale, responseTrust
+        case community, cacheStale, liveStatus, responseTrust
     }
+}
+
+struct LiveStatus: Decodable, Hashable {
+    var valid: Bool?
+    var feed: String?
 }
 
 /// Display-only rates from explicit source units. Never a primary tariff or estimate input.

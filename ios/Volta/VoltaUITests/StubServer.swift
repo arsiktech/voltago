@@ -100,6 +100,20 @@ final class StubServer {
         queue.sync { nearbyOverviewResponse = response }
     }
 
+    /// Availability-watch routes. Unset keeps `/api/watches/*` at 404, which the app reads
+    /// as "watches not offered" -- the default for every other test.
+    private var watchConfigResponse: ResponseStep?
+    private var watchCreateResponse: ResponseStep?
+    private var watchRecordResponse: ResponseStep?
+
+    func configureWatchRoutes(config: String, create: ResponseStep, record: String) {
+        queue.sync {
+            watchConfigResponse = .ok(config)
+            watchCreateResponse = create
+            watchRecordResponse = .ok(record)
+        }
+    }
+
     func configureGeocodeResponses(_ responses: [ResponseStep]) {
         queue.sync {
             geocodeResponses = responses
@@ -270,6 +284,13 @@ final class StubServer {
                 index: &liveResponseIndex,
                 fallback: .ok(liveChargersJSON)
             )
+        case "/api/watches/config" where watchConfigResponse != nil:
+            return watchConfigResponse!
+        case "/api/watches" where watchCreateResponse != nil:
+            // The only POST this stub answers; its body is not read (the server closes after).
+            return watchCreateResponse!
+        case _ where path.hasPrefix("/api/watches/") && watchRecordResponse != nil:
+            return watchRecordResponse!
         default:
             return ResponseStep(status: "404 Not Found", body: #"{"error": "not found"}"#)
         }
