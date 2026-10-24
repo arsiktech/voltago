@@ -134,10 +134,16 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     final_ids = {row["id"] for row in rows}
     claimed = {alias for row in rows for alias in row.get("merged_ids") or []}
     previous_by_id = {row["id"]: row for row in previous}
+    # Each surviving station inherits the aliases of its own baseline row and of every
+    # baseline station merged into it now, so an absorbed station's history moves with it.
+    inherited: dict[int, list] = defaultdict(list)
+    for i, row in enumerate(rows):
+        inherited[i].extend((previous_by_id.get(row["id"]) or {}).get("merged_ids") or [])
+    for previous_id, i, _evidence in absorbed:
+        inherited[i].extend((previous_by_id.get(previous_id) or {}).get("merged_ids") or [])
     carried = []
-    for row in rows:
-        old = previous_by_id.get(row["id"])
-        for alias in (old or {}).get("merged_ids") or []:
+    for i, row in enumerate(rows):
+        for alias in inherited[i]:
             if alias in final_ids or alias in claimed:
                 continue  # the alias is a station again, or another station holds it
             row.setdefault("merged_ids", []).append(alias)

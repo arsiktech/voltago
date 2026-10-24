@@ -114,6 +114,16 @@ class StableStationIdTests(unittest.TestCase):
         self.assertTrue(report['changed'])
         self.assertEqual(report['unresolved_missing_ids'], [])
 
+    def test_absorbed_station_brings_its_own_historical_aliases(self):
+        osm_old = station('osm_old', merged_ids=['historical_alias'])
+        registry = station('registry', 'https://nap.dgt.es/x', source='DGT National Access Point charging registry')
+        merged = deepcopy(registry)
+        merged['sources'].append({'name': 'OpenStreetMap public tags', 'url': 'https://www.openstreetmap.org/node/123'})
+        merged['merged_ids'] = ['osm_new']
+        payload, report = self.reconcile([osm_old, registry], [merged])
+        self.assertEqual(payload['records'][0]['merged_ids'], ['osm_new', 'osm_old', 'historical_alias'])
+        self.assertEqual(report['unresolved_missing_ids'], [])
+
     def test_alias_that_is_a_station_again_is_not_carried(self):
         baseline = station('registry', merged_ids=['back'])
         payload, report = self.reconcile([baseline], [station('registry'), station('back', 'https://www.openstreetmap.org/node/9')])
