@@ -139,6 +139,28 @@ class RetiredIdGateTests(unittest.TestCase):
         self.assertNotEqual(run.returncode, 0)
         self.assertFalse(json.loads(run.stdout)["ok"])
 
+    def test_a_lost_merged_alias_fails_the_gate(self) -> None:
+        holder = keeper()
+        holder["merged_ids"] = ["old-alias"]
+        run, result = self.run_gate([holder], [keeper()])
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["delta"]["missing_aliases"], 1)
+        self.assertEqual(result["delta"]["missing_alias_sample"], ["old-alias"])
+
+    def test_an_alias_kept_moved_or_restored_as_a_station_passes(self) -> None:
+        holder = keeper()
+        holder["merged_ids"] = ["a", "b", "c"]
+        other = station("other")
+        other["raw"] = {"fenie_code": "0002"}
+        rebuilt_holder = keeper()
+        rebuilt_holder["merged_ids"] = ["a"]
+        other_rebuilt = dict(other, merged_ids=["b"])
+        restored = station("c", 40.5)
+        restored["raw"] = {"fenie_code": "0003"}
+        _run, result = self.run_gate([holder, other], [rebuilt_holder, other_rebuilt, restored])
+        self.assertEqual(result["delta"]["missing_aliases"], 0)
+
     def test_id_delta_keeps_streaming_records_equivalent(self) -> None:
         old, new, kept = station("old"), station("new", 40.468), keeper()
         retirements = {"old": retirement("old")}

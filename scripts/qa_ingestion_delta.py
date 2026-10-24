@@ -247,6 +247,11 @@ def id_delta(
     retired, retirements_unmet = honored_retirements(unmerged, retirements, baseline_ids, rebuilt_ids)
     missing = [old_id for old_id in unmerged if old_id not in retired]
     added = sorted(rebuilt_ids - baseline_ids)
+    # Old IDs merged into a station are aliases that lookups still resolve. One the rebuild
+    # no longer carries, as a station or an alias, would break saved references silently.
+    baseline_aliases = {alias for row in baseline_rows for alias in row.get("merged_ids") or []}
+    rebuilt_aliases = {alias for row in rebuilt_rows for alias in row.get("merged_ids") or []}
+    lost_aliases = sorted(baseline_aliases - rebuilt_ids - rebuilt_aliases - set(retirements))
     return {
         "baseline_ids": len(baseline_ids),
         "rebuilt_ids": len(rebuilt_ids),
@@ -262,6 +267,8 @@ def id_delta(
         "retirements_unmet": retirements_unmet,
         "retirements_stale": sorted(set(retirements) - set(gone)),
         "added_sample": added[:10],
+        "missing_aliases": len(lost_aliases),
+        "missing_alias_sample": lost_aliases[:10],
     }
 
 
@@ -346,6 +353,8 @@ def main() -> int:
     max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
+    if delta["missing_aliases"]:
+        failures.append(f"rebuilt lost {delta['missing_aliases']} merged-ID aliases: {delta['missing_alias_sample']}")
 
     baseline_sources = source_names(baseline_rows)
     rebuilt_sources = source_names(rebuilt_rows)
