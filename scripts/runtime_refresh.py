@@ -297,7 +297,7 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
                 payload, identity_report = preserve_record_ids(
                     json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
                 receipt["identity_reconciliation"] = identity_report
-                if identity_report["preserved_ids"]:
+                if identity_report["changed"]:
                     shared.atomic_json(candidate, payload)
                 del payload
             candidate_sha = shared.sha256_file(candidate)

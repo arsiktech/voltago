@@ -100,6 +100,30 @@ class StableStationIdTests(unittest.TestCase):
         self.assertEqual(report['merged_previous_ids'][0]['into_id'], 'registry')
         self.assertEqual(report['unresolved_missing_ids'], [])
 
+    def test_merged_alias_survives_two_consecutive_refreshes(self):
+        osm_old = station('osm_old')
+        registry = station('registry', 'https://nap.dgt.es/x', source='DGT National Access Point charging registry')
+        merged = deepcopy(registry)
+        merged['sources'].append({'name': 'OpenStreetMap public tags', 'url': 'https://www.openstreetmap.org/node/123'})
+        merged['merged_ids'] = ['osm_new']
+        first, report = self.reconcile([osm_old, registry], [merged])
+        self.assertTrue(report['changed'])
+        # The next build regenerates merged_ids from current upstream IDs only.
+        second, report = self.reconcile(first['records'], [deepcopy(merged)])
+        self.assertIn('osm_old', second['records'][0]['merged_ids'])
+        self.assertTrue(report['changed'])
+        self.assertEqual(report['unresolved_missing_ids'], [])
+
+    def test_alias_that_is_a_station_again_is_not_carried(self):
+        baseline = station('registry', merged_ids=['back'])
+        payload, report = self.reconcile([baseline], [station('registry'), station('back', 'https://www.openstreetmap.org/node/9')])
+        self.assertNotIn('back', payload['records'][0].get('merged_ids') or [])
+        self.assertEqual(report['carried_aliases'], 0)
+
+    def test_unchanged_candidate_reports_no_change(self):
+        _, report = self.reconcile([station('same')], [station('same')])
+        self.assertFalse(report['changed'])
+
     def test_existing_station_without_a_merge_does_not_absorb_an_old_id(self):
         _, report = self.reconcile([station('old'), station('existing', 'https://www.openstreetmap.org/node/999')],
                                    [station('existing')])

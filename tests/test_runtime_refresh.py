@@ -172,6 +172,46 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertEqual(receipt["records"], 1)
         self.assertEqual(json.loads((self.state / "current/free_intelligence.json").read_text())["records"][0]["id"], "fixture-only")
 
+    def test_alias_only_reconciliation_reaches_the_delta_gate_and_is_published(self):
+        osm_url = "https://www.openstreetmap.org/node/123"
+        registry = {"id": "registry", "source": "DGT National Access Point charging registry", "lat": 39.0, "lon": -0.5,
+                    "source_url": "https://nap.dgt.es/x", "sources": [{"url": "https://nap.dgt.es/x"}]}
+        osm_old = {"id": "osm_old", "source": "OpenStreetMap public tags", "lat": 39.0, "lon": -0.5,
+                   "source_url": osm_url, "sources": [{"url": osm_url}]}
+        (self.root / "data/free_intelligence.json").write_text(json.dumps({"records": [registry, osm_old]}))
+        merged = {**registry, "sources": registry["sources"] + [{"url": osm_url}], "merged_ids": ["osm_new"]}
+        seen_by_delta = []
+
+        def stage(root, run, name, argv, timeout):
+            candidate = run / "free_intelligence.json"
+            baseline = self.root / "data/free_intelligence.json"
+            if name == "build":
+                candidate.write_text(json.dumps({"records": [merged], "generated_at": "fixture"}))
+                payload = {}
+            elif name == "delta":
+                seen_by_delta.append(json.loads(candidate.read_text())["records"][0]["merged_ids"])
+                payload = {"ok": True, "delta": {"missing_ids": 0}}
+            else:
+                sha = shared.sha256_file(candidate)
+                payload = {"ok": True, "candidate_reused": True, "candidate_sha256": sha,
+                           "candidate_sha256_after": sha, "baseline_sha256": shared.sha256_file(baseline)}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+        def reports(**kwargs):
+            kwargs["free_report"].write_text('{}')
+            kwargs["valencia_report"].write_text('{}')
+            return {"fixture": True}
+
+        with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+             mock.patch.object(refresh, "run_stage", side_effect=stage), \
+             mock.patch.object(refresh.shared, "generate_reports", side_effect=reports):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 0)
+        self.assertEqual(seen_by_delta, [["osm_new", "osm_old"]])
+        receipt = json.loads((self.state / "last.json").read_text())
+        self.assertEqual(receipt["identity_reconciliation"]["merged_previous_ids"][0]["merged_id"], "osm_old")
+        current = json.loads((self.state / "current/free_intelligence.json").read_text())
+        self.assertIn("osm_old", current["records"][0]["merged_ids"])
+
     def test_bundle_hash_mismatch_cannot_publish(self):
         refresh.publish_bundle(self.state, self.run)
         with self.assertRaisesRegex(RuntimeError, "changed"):
