@@ -13,12 +13,14 @@ from typing import Any, Dict, Iterable, List, Tuple
 
 from source_policy import load_source_policy_exclusions, partition_records
 from station_identity import identity_keys
+from station_retirements import RetirementError, load_retirements
 from json_recordset import load_json_recordset
 
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "data" / "free_intelligence.json"
 POLICY_EXCLUSIONS = ROOT / "data" / "source_policy_exclusions.json"
+RETIREMENTS = ROOT / "data" / "station_id_retirements.json"
 BAD_STATION_NAME_RE = re.compile(r"\b(?:n\s*['’]?\s*existe\s+pas|nexiste\s+pas|no\s+existe|does\s+not\s+exist|nonexistent|removed|inexistant|supprim[ée]e?|d[ée]mont[ée]e?|demontee|doublon|duplicate)\b", re.I)
 CORROBORATION_ONLY_SOURCE_REQUIREMENTS = {
     "Madrid public charger open data": ("source_madrid_official", 100),
@@ -202,21 +204,63 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
     return proven
 
 
-def id_delta(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def honored_retirements(
+    unmerged: Iterable[str],
+    retirements: Dict[str, Dict[str, Any]],
+    baseline_ids: set,
+    rebuilt_ids: set,
+) -> Tuple[Dict[str, Dict[str, Any]], List[Dict[str, str]]]:
+    """Split reviewed retirements into those the data still supports and those it does not.
+
+    An entry with a successor counts only when that successor is in the rebuilt data and
+    is new, so a retirement cannot hide a loss behind a station the baseline already had.
+    """
+    honored: Dict[str, Dict[str, Any]] = {}
+    unmet: List[Dict[str, str]] = []
+    for old_id in unmerged:
+        entry = retirements.get(old_id)
+        if entry is None:
+            continue
+        successor = entry.get("successor_id")
+        if successor is None:
+            honored[old_id] = entry
+        elif successor not in rebuilt_ids:
+            unmet.append({"id": old_id, "reason": "successor_id is not in the rebuilt data"})
+        elif successor in baseline_ids:
+            unmet.append({"id": old_id, "reason": "successor_id already exists in the baseline"})
+        else:
+            honored[old_id] = entry
+    return honored, unmet
+
+
+def id_delta(
+    baseline_rows: List[Dict[str, Any]],
+    rebuilt_rows: List[Dict[str, Any]],
+    retirements: Dict[str, Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    retirements = retirements or {}
     baseline_ids = {record_id(row) for row in baseline_rows if record_id(row)}
     rebuilt_ids = {record_id(row) for row in rebuilt_rows if record_id(row)}
     gone = sorted(baseline_ids - rebuilt_ids)
     merged = merged_into(baseline_rows, rebuilt_rows, gone)
-    missing = [old_id for old_id in gone if old_id not in merged]
+    unmerged = [old_id for old_id in gone if old_id not in merged]
+    retired, retirements_unmet = honored_retirements(unmerged, retirements, baseline_ids, rebuilt_ids)
+    missing = [old_id for old_id in unmerged if old_id not in retired]
     added = sorted(rebuilt_ids - baseline_ids)
     return {
         "baseline_ids": len(baseline_ids),
         "rebuilt_ids": len(rebuilt_ids),
         "missing_ids": len(missing),
         "merged_ids": len(merged),
+        "retired_ids": len(retired),
         "added_ids": len(added),
         "missing_sample": missing[:10],
         "merged_sample": [{"id": old_id, "into": merged[old_id]} for old_id in sorted(merged)[:10]],
+        "retired_sample": [
+            {"id": old_id, "successor_id": retired[old_id].get("successor_id")} for old_id in sorted(retired)[:10]
+        ],
+        "retirements_unmet": retirements_unmet,
+        "retirements_stale": sorted(set(retirements) - set(gone)),
         "added_sample": added[:10],
     }
 
@@ -251,9 +295,17 @@ def main() -> int:
     parser.add_argument("--min-total-ratio", type=float, default=0.9)
     parser.add_argument("--max-missing-id-ratio", type=float, default=0.08)
     parser.add_argument("--policy-exclusions", type=Path, default=POLICY_EXCLUSIONS)
+    parser.add_argument("--retirements", type=Path, default=RETIREMENTS,
+                        help="reviewed station-ID retirements; a path given here must exist")
     args = parser.parse_args()
 
     failures: List[str] = []
+    try:
+        retirements = load_retirements(args.retirements, required=args.retirements != RETIREMENTS)
+    except RetirementError as exc:
+        # A broken list must not silently turn into "retire nothing": reject the candidate.
+        retirements = {}
+        failures.append(f"station retirement list rejected: {exc}")
     policy = load_source_policy_exclusions(args.policy_exclusions)
     baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy)
     rebuilt_payload, rebuilt_rows, rebuilt_excluded = load_partitioned(args.rebuilt, policy)
@@ -290,7 +342,7 @@ def main() -> int:
     if unpromoted_timestamps:
         failures.append(f"Rows have raw source timestamps but missing top-level last_seen: {unpromoted_timestamps[:10]}")
 
-    delta = id_delta(baseline_rows, rebuilt_rows)
+    delta = id_delta(baseline_rows, rebuilt_rows, retirements)
     max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
@@ -343,6 +395,7 @@ def main() -> int:
             "parking": parking_names(rebuilt_rows).most_common(),
         },
         "delta": delta,
+        "retirements": {"path": str(args.retirements), "entries": len(retirements)},
         "corroboration_only_source_losses": corroboration_only_losses,
         "failures": failures,
     }

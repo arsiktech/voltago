@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "retirements": [
+    {
+      "id": "intel_fen-e-energ-a-public-map-gratuitos_fen-e-evbox-estancion-recarga-santalucia-ribera-del-loira_40.4379_-3.6264",
+      "successor_id": "intel_fen-e-energ-a-public-map-gratuitos_fen-e-evbox-estancion-recarga-santalucia-ribera-del-loira_40.46817_-3.62643",
+      "retired_on": "2026-10-24",
+      "reason": "Fenie corrected this station's latitude, so its coordinate-derived ID changed. The refresh gate rejected every candidate from 2026-10-22 onward because this one baseline ID had no match, and the identity rule only carries an ID forward within 250 m.",
+      "evidence": "The 2026-10-24 refresh candidate holds the same Fenie code (0870), name and station page (recarga.fenieenergia.es/punto-recarga/0870) under the successor ID. Only the latitude differs, 40.4379 in the baseline and 40.46817 in the candidate, about 3.4 km. References to the old ID were not checked.",
+      "approved_by": "repository owner, 2026-10-24"
+    }
+  ]
+}

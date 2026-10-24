@@ -45,6 +45,28 @@ exercises these boundaries in Python, TypeScript, and Swift. When changing a tru
 rule, update the shared cases and check all affected clients; a presentation label
 must not independently promote a station to route-ready.
 
+## Retired station IDs
+
+The refresh gate (`scripts/qa_ingestion_delta.py`) requires every baseline station ID to
+survive a refresh, because saved references and community history point at it. Normal
+survival paths are an unchanged ID, an ID carried forward by a unique stable source code
+within 250 m (`station_identity.py`), or a proven merge. When none applies and the change
+is real, such as an upstream coordinate correction that changes a coordinate-derived ID,
+record it in [`data/station_id_retirements.json`](../data/station_id_retirements.json).
+
+Each entry names the retired `id`, an optional `successor_id`, `retired_on`, `reason`,
+`evidence` and `approved_by`, and is reviewed in Git like any other data change. The gate
+honors an entry only while it still checks out. With a `successor_id`, that ID must be in
+the rebuilt data and absent from the baseline, so a retirement cannot hide a loss behind a
+station the baseline already had. Without one, the entry records a genuine removal.
+
+The gate stays strict otherwise. A malformed list, or a `--retirements` path that does not
+exist, fails the candidate. Every other missing ID still counts, and `runtime_refresh.py`
+still requires zero. The report lists `retired_ids`, `retirements_unmet` (entries the data
+did not support) and `retirements_stale` (entries whose ID is no longer gone), so finished
+entries can be removed. A retirement does not repoint saved references to the old ID. Check
+what references it before adding an entry.
+
 ## Public-source transport
 
 Public collection defaults to GET. The owner approved narrow read-only POST
