@@ -77,6 +77,17 @@ free. Each registry lists every charger post separately, so posts of one operato
 15 m form one station. On production data (2026-10-24) they corroborated 1,389 existing
 stations, added 399 new ones, and moved the single-source share from 86.7% to 80.1%.
 
+## Etecnic public charger map
+
+The JSON behind Etecnic's public map is fetched by anonymous GET twice a day. Etecnic's
+aviso legal reserves redistribution; the owner approved collection on 2026-10-24 under the
+12 Oct source policy and accepted that risk. The grant `etecnic-owner-policy-reuse` in
+[`data/source_policy_exclusions.json`](../data/source_policy_exclusions.json) is the
+revocation gate. Posts within 15 m form one station, stations outside Spain are dropped,
+and amperes become kW by phase count. The socket status has no source timestamp, so it is
+kept as fetch-time evidence and never becomes live availability. Connector types are not
+published, so connectors stay unlabelled.
+
 ## Public-source transport
 
 Public collection defaults to GET. The owner approved narrow read-only POST

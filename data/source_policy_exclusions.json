@@ -79,6 +79,29 @@
         "price inference",
         "payment or session actions"
       ]
+    },
+    {
+      "id": "etecnic-owner-policy-reuse",
+      "family": "Etecnic public charger map",
+      "source_family_terms": [
+        "etecnic public charger map"
+      ],
+      "origin_hosts": [
+        "etecnic.net"
+      ],
+      "status": "permitted",
+      "basis": "Owner decision 2026-10-24 under the 2026-10-12 source policy (public, no-login sources may be ingested). Etecnic's aviso legal reserves redistribution; no provider licence or written permission exists, and the owner accepted that risk and chose not to request permission.",
+      "granted_on": "2026-10-24",
+      "attribution_required": "Etecnic Movilidad Eléctrica",
+      "scope": [
+        "exact public anonymous GET of etecnic.net/api/v1/chargers/index.json",
+        "bounded caching",
+        "location and hardware rows",
+        "fetch-time socket status as evidence only"
+      ],
+      "access_method_note": "One anonymous HTTPS GET of the JSON the public map page loads; no credentials, sessions or provider actions.",
+      "transformation_required": "Amperes converted to kW; socket status never treated as live availability.",
+      "revocation_gate": "Remove this grant to stop collection in scripts/ingest_sources.py source_etecnic."
     }
   ],
   "exclusions": [

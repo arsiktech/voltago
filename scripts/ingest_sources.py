@@ -4888,6 +4888,134 @@ def source_navarra_idena(records: List[Dict[str, Any]]) -> None:
 def source_castilla_leon(records: List[Dict[str, Any]]) -> None:
     artifact = cached_fetch(CASTILLA_LEON_URL, "castilla_leon_charging_points.json", ttl_hours=24 * 7, timeout=90)
     records.extend(parse_castilla_leon(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+# --- Etecnic public charger map ------------------------------------------------------------
+# RIGHTS: the JSON behind etecnic.es/mapa-de-recarga is public and anonymous, but Etecnic's
+# aviso legal reserves redistribution. The owner approved ingesting it on 2026-10-24 under
+# the 12 Oct source policy and accepted that risk; the record is `granted_reuse`
+# "etecnic-owner-policy-reuse" in data/source_policy_exclusions.json and removing it turns
+# this adapter off. Rows carry location and hardware. The socket status in the file has no
+# timestamp, so it is kept as fetch-time evidence only, never as live authority.
+# Field meanings come from Etecnic's own map code: socket status 0 available, 1 occupied,
+# 2 reserved, 3 out of service, 9 not available; test_errors false means unmonitored;
+# `power` is in amperes (kW about 0.23 x A single-phase, 0.692 x A three-phase).
+ETECNIC_CHARGERS_URL = "https://etecnic.net/api/v1/chargers/index.json"
+ETECNIC_MAP_PAGE = "https://www.etecnic.es/mapa-de-recarga/"
+ETECNIC_SOURCE = "Etecnic public charger map"
+ETECNIC_GRANT_ID = "etecnic-owner-policy-reuse"
+ETECNIC_SOCKET_STATUS = {0: "available", 1: "occupied", 2: "reserved", 3: "out of service", 9: "not available"}
+
+
+def etecnic_power_kw(amps: Any, phases: Any) -> Optional[float]:
+    value = fnum(amps)
+    if value is None or value <= 0:
+        return None
+    return round(value * (0.692 if phases == 3 else 0.23), 1)
+
+
+ETECNIC_STATION_RADIUS_KM = 0.015
+
+
+def _etecnic_stations(items: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """Group charger posts listed separately (often 'Site - 1', 'Site - 2') within 15 m."""
+    stations: List[List[Dict[str, Any]]] = []
+    by_cell: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+    for item in items:
+        if not isinstance(item, dict) or item.get("show_map") is not True:
+            continue
+        lat, lon = fnum(item.get("lat")), fnum(item.get("lon"))
+        if lat is None or lon is None:
+            continue
+        cell = (int(lat * 2000), int(lon * 2000))
+        index = next((i for dx in (-1, 0, 1) for dy in (-1, 0, 1) for i in by_cell.get((cell[0] + dx, cell[1] + dy), [])
+                      if _dist_km({"lat": lat, "lon": lon}, {"lat": fnum(stations[i][0]["lat"]), "lon": fnum(stations[i][0]["lon"])})
+                      <= ETECNIC_STATION_RADIUS_KM), None)
+        if index is None:
+            by_cell[cell].append(len(stations))
+            stations.append([item])
+        else:
+            stations[index].append(item)
+    return stations
+
+
+def parse_etecnic_chargers(items: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    try:
+        from .spain_geography import point_in_spain
+    except ImportError:
+        from spain_geography import point_in_spain
+    out: List[Dict[str, Any]] = []
+    fetched = source_artifact.fetched_at[:16].replace("T", " ") + " UTC" if source_artifact else "fetch time"
+    for posts in _etecnic_stations(items):
+        # Etecnic also runs chargers in Portugal, Andorra and France, inside Volta's Spain box.
+        if not point_in_spain(fnum(posts[0].get("lat")), fnum(posts[0].get("lon"))):
+            continue
+        posts.sort(key=lambda post: int(post.get("id") or 0))
+        item = posts[0]
+        sockets = [(post, socket) for post in posts for socket in post.get("charger_sockets") or [] if isinstance(socket, dict)]
+        powers = [etecnic_power_kw(post.get("power"), post.get("phases")) for post in posts]
+        power_kw = max((power for power in powers if power), default=None)
+        counts: Dict[str, int] = defaultdict(int)
+        for post, socket in sockets:
+            state = (ETECNIC_SOCKET_STATUS.get(socket.get("status"), "unknown")
+                     if post.get("test_errors") is not False else "not monitored")
+            counts[state] += 1
+        status_text = ", ".join(f"{count} {state}" for state, count in sorted(counts.items())) or "no sockets listed"
+        monitored = any(post.get("test_errors") is not False for post in posts)
+        # Etecnic does not publish connector types. An untyped official inventory would win
+        # a merge and erase types another source knows, so no connector rows are emitted;
+        # the socket count and the raw type IDs stay as evidence.
+        connectors: List[Dict[str, Any]] = []
+        name = re.sub(r"\s*[-–]\s*\S*\s*\d+\s*$", "", str(item.get("name") or "Etecnic charger")).strip() or "Etecnic charger"
+        add_record(
+            out,
+            source=ETECNIC_SOURCE,
+            source_url=ETECNIC_MAP_PAGE,
+            name=f"Etecnic — {name}",
+            address=str(item.get("address") or ""),
+            city="",
+            lat=fnum(item.get("lat")),
+            lon=fnum(item.get("lon")),
+            price_min=None,
+            free_condition="Etecnic's public map publishes no tariff; check the price in the operator app.",
+            connector_labels=[],
+            max_power_kw=power_kw,
+            status="VERIFY",
+            reliability="official-charger-location-price-unknown",
+            evidence=(f"Etecnic's public charger map lists {len(posts)} charger(s) here. At {fetched} it reported "
+                      f"sockets as {status_text}. That status has no source timestamp and is not live availability."),
+            parking_kind="unknown",
+            parking_note="Etecnic's map publishes no parking detail; verify signs onsite.",
+            raw={
+                # The lowest charger ID at the site is the stable identity key.
+                "etecnic_charger_id": str(item.get("id")),
+                "etecnic_charger_ids": [str(post.get("id")) for post in posts],
+                "etecnic_connector_type_ids": sorted({str(socket.get("connector_type_id")) for _post, socket in sockets
+                                                     if socket.get("connector_type_id") is not None}),
+                "operator": "Etecnic",
+                "monitored": monitored,
+                "socket_status_at_fetch": status_text,
+                "coordinate_source": "etecnic_public_map",
+                "corroboration_only": True,
+            },
+            connectors=connectors,
+            port_count=len(sockets),
+            source_artifact=source_artifact,
+        )
+        if out and out[-1]["raw"].get("etecnic_charger_id") == str(item.get("id")):
+            out[-1]["sources"][0].update(
+                attribution="Etecnic Movilidad Eléctrica",
+                transformation="Amperes converted to kW from the phase count; socket status kept as fetch-time "
+                               "evidence only. No missing tariff is inferred to be free.",
+            )
+    return out
+
+
+def source_etecnic(records: List[Dict[str, Any]]) -> None:
+    grants = {grant.get("id") for grant in SOURCE_POLICY_EXCLUSIONS.get("granted_reuse", [])
+              if grant.get("status") == "permitted"}
+    if ETECNIC_GRANT_ID not in grants:
+        return
+    artifact = cached_fetch(ETECNIC_CHARGERS_URL, "etecnic_public_chargers.json", ttl_hours=12, timeout=60)
+    records.extend(parse_etecnic_chargers(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
 
 
 # --- Canarias te recarga (public Canary Islands charger map) -----------------------------
@@ -5375,6 +5503,7 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_catalonia_icaen,
     source_navarra_idena,
     source_castilla_leon,
+    source_etecnic,
     source_fenie,
     source_moraleja_green,
     source_canarias_tecarga,
