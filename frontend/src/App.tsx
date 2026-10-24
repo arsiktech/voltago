@@ -285,6 +285,13 @@ function DataHonestyDisclosure() {
     <div className="data-honesty flex-none border-t border-border px-6 py-1 text-xs text-muted">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
         <AgentConnection />
+        <a
+          href="/matrix"
+          className="inline-flex min-h-11 items-center gap-1 rounded-lg text-xs font-medium text-fg-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
+          Source coverage
+          <ArrowUpRight size={14} aria-hidden="true" />
+        </a>
         <motion.button
           type="button"
           onClick={() => setOpen((v) => !v)}
