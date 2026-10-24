@@ -3305,7 +3305,9 @@ def _mapareve_block_record(refused: Optional[bool], probe: bool) -> None:
             pause = _MAPAREVE_BLOCK["pause"]
             pause = min(pause * 2, MAPAREVE_BLOCK_PAUSE_MAX_SECONDS) if pause else MAPAREVE_BLOCK_PAUSE_SECONDS
             _MAPAREVE_BLOCK.update(pause=pause, until=time.time() + pause)
-        elif probe or _MAPAREVE_BLOCK["pause"]:
+        elif probe:
+            # Only the probe clears a refusal. A page admitted before the refusal and
+            # still in flight says nothing about whether the refusal has lifted.
             _MAPAREVE_BLOCK.update(pause=0.0, until=0.0)
 
 
