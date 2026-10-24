@@ -38,6 +38,32 @@ Any other MCP client: add a remote (Streamable HTTP) server with the URL
 
 For a local server (`python3 server.py`), use `http://127.0.0.1:8765/mcp`.
 
+### ChatGPT
+
+1. Open [chatgpt.com/plugins](https://chatgpt.com/plugins), select **+**, then
+   **Add custom MCP server**.
+2. Enter the name `Volta Go` and the URL `https://voltago.app/mcp`. Set
+   **Authentication** to **No authentication**, confirm the risk warning, and
+   select **Create as a plugin**.
+3. Install it from your personal plugins view. In a **Work** chat, type `@`,
+   choose Volta Go, and ask, for example, "free CCS2 chargers near Valencia airport".
+
+ChatGPT-specific behaviour:
+
+- Every tool declares `readOnlyHint: true`, `destructiveHint: false` and
+  `openWorldHint: false`: the tools read Volta Go's own catalogue and change nothing.
+- Tools carry `openai/toolInvocation/invoking` and `invoked` status lines.
+- If `find_chargers` gets no `place` and no `lat`/`lon`, it uses the city,
+  region and country text from ChatGPT's `openai/userLocation` hint, never its
+  coordinates. The result then reports `query.origin:
+  "approximate_client_location"` and tells the model to ask for a place for
+  nearer results.
+
+This is a private custom connection. Listing Volta Go in the ChatGPT directory
+needs a separate review. In particular, OpenAI's plugin guidelines discourage
+raw location fields in tool inputs, so the `place`/`lat`/`lon` inputs must be
+reconsidered first.
+
 ## Tools
 
 | Tool | Use it to |
