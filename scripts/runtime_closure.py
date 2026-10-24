@@ -22,6 +22,7 @@ RUNTIME_FILES = (
     "scripts/price_evidence.py",
     "scripts/public_live_status.py",
     "scripts/source_matrix.py",
+    "scripts/seo_pages.py",
     "data/free_intelligence.json",
     "data/seed_leads.json",
     "data/source_policy_exclusions.json",

@@ -29,6 +29,7 @@ COPY scripts/source_transport.py ./scripts/source_transport.py
 COPY scripts/price_evidence.py ./scripts/price_evidence.py
 COPY scripts/public_live_status.py ./scripts/public_live_status.py
 COPY scripts/source_matrix.py ./scripts/source_matrix.py
+COPY scripts/seo_pages.py ./scripts/seo_pages.py
 COPY data/free_intelligence.json data/seed_leads.json data/source_policy_exclusions.json data/google_maps_links.json ./data/
 COPY --from=web /web/frontend/dist ./frontend/dist
 # Build-time import smoke: catches a syntax/import error in the image itself (not just
