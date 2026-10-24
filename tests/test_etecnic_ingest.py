@@ -53,6 +53,25 @@ class EtecnicIngestTests(unittest.TestCase):
         self.assertIn("1 not monitored", unmonitored["sources"][0]["evidence"])
         self.assertEqual(unmonitored["connector_labels"], [])
 
+    def test_merging_with_typed_osm_connectors_keeps_their_types(self) -> None:
+        site = next(row for row in ing.parse_etecnic_chargers(ITEMS) if row["raw"]["etecnic_charger_id"] == "7")
+        self.assertEqual(site["connectors"], [])
+        osm: list = []
+        ing.add_record(osm, source="OpenStreetMap public tags", source_url="https://www.openstreetmap.org/node/1",
+                       name="Etecnic", lat=site["lat"], lon=site["lon"], connector_labels=["Type 2"],
+                       connectors=[ing.connector_ref("Type 2", count=2, power_kw=22.0)], raw={"operator": "Etecnic"})
+        (merged,) = ing.dedupe([site, osm[0]])
+        self.assertEqual(merged["connector_labels"], ["Type 2"])
+
+    def test_station_keeps_its_id_when_its_lowest_post_disappears(self) -> None:
+        from station_identity import preserve_record_ids
+        baseline = [row for row in ing.parse_etecnic_chargers(ITEMS) if row["raw"]["etecnic_charger_id"] == "7"]
+        refreshed = ing.parse_etecnic_chargers([ITEMS[1]])  # only post 8 remains
+        self.assertNotEqual(baseline[0]["id"], refreshed[0]["id"])
+        payload, report = preserve_record_ids({"records": baseline}, {"records": refreshed})
+        self.assertEqual(payload["records"][0]["id"], baseline[0]["id"])
+        self.assertEqual(report["unresolved_missing_ids"], [])
+
     def test_collection_stops_when_the_owner_grant_is_removed(self) -> None:
         records: list = []
         with patch.object(ing, "SOURCE_POLICY_EXCLUSIONS", {"granted_reuse": []}), \

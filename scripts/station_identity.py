@@ -27,12 +27,15 @@ def identity_keys(row: dict) -> set[tuple]:
         "Catalonia ICAEN charging points open data": ("regional_station_key",),
         "Navarra IDENA charging points open data": ("regional_station_key",),
         "Castilla y León charging points open data": ("regional_station_key",),
-        "Etecnic public charger map": ("etecnic_charger_id",),
+        # Every grouped post ID, so a station survives losing its lowest-ID post.
+        "Etecnic public charger map": ("etecnic_charger_id", "etecnic_charger_ids"),
     }
     for field in typed_fields.get(family, ()):
-        value = raw.get(field)
-        if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value):
-            keys.add((str(family), field, str(value)))
+        values = raw.get(field)
+        for value in values if isinstance(values, list) else [values]:
+            if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value):
+                # A list field and its scalar twin name the same upstream object.
+                keys.add((str(family), field.removesuffix("s") if isinstance(values, list) else field, str(value)))
     # Identifiers of rows merged into this pin, recorded by the ingestion merge. They are the
     # same typed keys this function produces, so they carry the same strictness.
     for carried in row.get("merged_source_identifiers") or []:

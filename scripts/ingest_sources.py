@@ -4960,12 +4960,10 @@ def parse_etecnic_chargers(items: List[Dict[str, Any]], *, source_artifact: Opti
             counts[state] += 1
         status_text = ", ".join(f"{count} {state}" for state, count in sorted(counts.items())) or "no sockets listed"
         monitored = any(post.get("test_errors") is not False for post in posts)
-        connectors = [
-            connector_ref("Unknown connector", count=1, power_kw=etecnic_power_kw(post.get("power"), post.get("phases")),
-                          status="UNKNOWN", source_url=ETECNIC_MAP_PAGE, connector_id=socket.get("id"),
-                          raw={"etecnic_connector_type_id": socket.get("connector_type_id")})
-            for post, socket in sockets
-        ]
+        # Etecnic does not publish connector types. An untyped official inventory would win
+        # a merge and erase types another source knows, so no connector rows are emitted;
+        # the socket count and the raw type IDs stay as evidence.
+        connectors: List[Dict[str, Any]] = []
         name = re.sub(r"\s*[-–]\s*\S*\s*\d+\s*$", "", str(item.get("name") or "Etecnic charger")).strip() or "Etecnic charger"
         add_record(
             out,
@@ -4990,6 +4988,8 @@ def parse_etecnic_chargers(items: List[Dict[str, Any]], *, source_artifact: Opti
                 # The lowest charger ID at the site is the stable identity key.
                 "etecnic_charger_id": str(item.get("id")),
                 "etecnic_charger_ids": [str(post.get("id")) for post in posts],
+                "etecnic_connector_type_ids": sorted({str(socket.get("connector_type_id")) for _post, socket in sockets
+                                                     if socket.get("connector_type_id") is not None}),
                 "operator": "Etecnic",
                 "monitored": monitored,
                 "socket_status_at_fetch": status_text,
