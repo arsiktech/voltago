@@ -44,6 +44,8 @@ ios/**/build-device/
 # Community evidence (plan 013): user content never enters git.
 # Syncthing carries data/community.db + photos between owner machines.
 data/community.db*
+# Availability watches hold APNs device tokens: never in git.
+data/watches.db*
 data/community/
 
 # Public repository: generated QA evidence stays local because it records machine

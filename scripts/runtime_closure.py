@@ -11,6 +11,7 @@ RUNTIME_FILES = (
     "server.py",
     "agent_mcp.py",
     "community.py",
+    "watches.py",
     "station_truth.py",
     "google_maps.py",
     "vehicles.py",
