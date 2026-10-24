@@ -5577,6 +5577,14 @@ def source_health_summary() -> Dict[str, Any]:
         "live_geography": {"mapareve": "Spain coverage envelope", "gaia": "Configured Alboraia station only",
                            "endolla": "Barcelona static sites only", "spirii": "Spirii AFIR sites whose address countryCode is ES"},
         "mapareve_refusal": mapareve_block_status(),
+        # Sources whose latest fetch failed in the last build, so an older cached copy was
+        # used. Those rows are labelled too; this lists them in one place.
+        "cache_fallbacks": [
+            {"cache_name": artifact.get("cache_name"), "url": artifact.get("url"),
+             "fetched_at": artifact.get("fetched_at"), "error": artifact.get("error")}
+            for artifact in ((intel.get("fetch_evidence") or {}).get("artifacts") or [])
+            if isinstance(artifact, dict) and (artifact.get("cache") or {}).get("fallback")
+        ],
         "source_manifest": (intel.get("global_coverage") or {}).get("source_manifests") or intel.get("source_manifest") or {},
         "global_coverage": intel.get("global_coverage") or {},
         "policy": {

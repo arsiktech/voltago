@@ -1329,6 +1329,11 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
     # labelling rule, not an inclusion rule. A paid charger keeps its published price
     # (price_claim_type=confirmed_paid); a charger whose source publishes no price stays
     # price_unknown_lead and is never treated as free or cheap.
+    if source_artifact is not None and source_artifact.fallback:
+        # The latest fetch failed and an older cached copy was used. Say so first, so a
+        # truncated evidence string still carries it.
+        evidence = (f"Cached copy from {source_artifact.fetched_at[:10]}: the latest fetch of this "
+                    f"source failed. " + (evidence or ""))
     connectors = connectors or []
     labels = connector_labels if connector_labels is not None else sorted({str(c.get("label") or c.get("type")) for c in connectors if c.get("label") or c.get("type")}) or ["Type 2"]
     port_total = sum(count_int(c.get("count")) for c in connectors) if connectors else count_int(port_count, default=0) or None
@@ -1357,7 +1362,9 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
         "connector_count": port_total if connectors else None,
         "source": source,
         "source_url": source_url,
-        "sources": [{"name": source, "url": source_url, "evidence": evidence[:500]}],
+        "sources": [{"name": source, "url": source_url, "evidence": evidence[:500],
+                     **({"source_cache_fallback": True, "source_fetched_at": source_artifact.fetched_at}
+                        if source_artifact is not None and source_artifact.fallback else {})}],
         "source_integration": source_integration_profile(source, reliability, status, raw),
         "reliability": reliability,
         "charge_claim": {
