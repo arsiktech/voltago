@@ -99,6 +99,16 @@ most 5 new details are fetched per refresh, 4 s apart, stopping at the first rat
 reply, and kept for 30 days. Available and in-use counts have no timestamp and stay
 fetch-time evidence. Unrecognised connector types add to the port count only.
 
+## Crawlable pages
+
+`scripts/seo_pages.py` serves server-rendered Spanish pages for search engines from the same
+station data, with no JavaScript: `/cargadores` (cities), `/cargadores/<city>` (cities with
+5+ stations) and `/cargador/<name>-<hash>` (stations that two or more source families list,
+or that a source prices or marks free). `/sitemap.xml` is generated from the same index. The
+station URL ends with a hash of the station ID, so it stays stable across refreshes. Pages
+show each price with its source and data date, never live availability, and link to the app
+for live status. Owner decisions 2026-10-24.
+
 ## Public-source transport
 
 Public collection defaults to GET. The owner approved narrow read-only POST

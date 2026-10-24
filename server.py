@@ -48,6 +48,7 @@ from scripts.global_source_catalog import ADAPTERS as GLOBAL_ADAPTERS, ADAPTER_I
 from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_sha256
 from scripts.price_evidence import price_evidence_counts
 from scripts import source_matrix
+from scripts import seo_pages
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from scripts import public_live_status
@@ -4151,6 +4152,36 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     return results
 
 
+def crawlable_page_families(item: Dict[str, Any]) -> set:
+    """Independent publishers behind a station: the known host families, then the website
+    host, then the name, so one publisher's several pages or datasets count once."""
+    families = set()
+    for entry in item.get("sources") or []:
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or "")
+            host = (urllib.parse.urlsplit(str(entry.get("url") or "")).hostname or "").removeprefix("www.")
+            families.add(source_family(name, entry.get("url")) or host or name.split(" (")[0].strip().lower())
+    return {family for family in families if family}
+
+
+_CRAWLABLE_INDEX: Dict[str, Any] = {"key": None, "index": None}
+_CRAWLABLE_INDEX_LOCK = threading.Lock()
+
+
+def crawlable_site_index() -> "seo_pages.SiteIndex":
+    """The search-engine page index, rebuilt only when the intelligence data changes."""
+    intel = load_intelligence_meta()
+    key = (id(intel), intel.get("generated_at"), len(intel.get("records") or []))
+    with _CRAWLABLE_INDEX_LOCK:
+        if _CRAWLABLE_INDEX["key"] != key:
+            records = intel.get("records") or []
+            # A disk-backed catalogue is looked up per page; a JSON one keeps the page records.
+            lookup = records.index.get_by_id if isinstance(records, IndexedRecords) else None
+            _CRAWLABLE_INDEX.update(key=key, index=seo_pages.SiteIndex(
+                records, intel.get("generated_at"), families=crawlable_page_families, lookup=lookup))
+        return _CRAWLABLE_INDEX["index"]
+
+
 def parse_bbox_param(params: Dict[str, List[str]]) -> Optional[Dict[str, float]]:
     """Parse bbox=south,west,north,east into Volta's bbox dict (None if absent/invalid)."""
     raw = (params.get("bbox") or [""])[0]
@@ -5927,6 +5958,32 @@ class Handler(BaseHTTPRequestHandler):
         )
         return False
 
+    def send_crawlable_page(self, path: str) -> None:
+        if not self._enforce_rate_limit("pages", RATE_LIMIT_RPM):
+            return
+        status, content_type, text, extra = seo_pages.route(crawlable_site_index(), path)
+        body = text.encode("utf-8")
+        use_gzip = self._client_accepts_gzip() and len(body) > 1400
+        out = gzip_lib.compress(body, 6) if use_gzip else body
+        self.send_response(status)
+        headers = {
+            "Content-Type": content_type, "Cache-Control": "public, max-age=3600" if status == 200 else "no-store",
+            "Vary": "Accept-Encoding", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
+            "X-Frame-Options": "DENY", **extra,
+        }
+        if use_gzip:
+            headers["Content-Encoding"] = "gzip"
+        for header_name, header_value in headers.items():
+            self.send_header(header_name, header_value)
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self._headers_sent = True
+        if self.command != "HEAD":
+            try:
+                self.wfile.write(out)
+            except BrokenPipeError:
+                return
+
     def send_json(self, status: int, payload: Dict[str, Any], extra_headers: Optional[Dict[str, str]] = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_json_bytes(status, body, extra_headers=extra_headers)
@@ -5983,6 +6040,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route_head(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path == "/sitemap.xml" or path == "/cargadores" or path.startswith(("/cargadores/", "/cargador/")):
+            return self.send_crawlable_page(path)
         if path == "/":
             path = "/index.html"
         if path == agent_mcp.MCP_PATH:
@@ -6151,6 +6210,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, source_health_summary())
         if path == "/api/source-strategy":
             return self.send_json(200, requested_source_strategy())
+        if path == "/sitemap.xml" or path == "/cargadores" or path.startswith(("/cargadores/", "/cargador/")):
+            return self.send_crawlable_page(path)
         if path == "/api/location-sources":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
