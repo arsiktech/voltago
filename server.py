@@ -130,7 +130,12 @@ MAPAREVE_MAX_PAGES = int(os.environ.get("VOLTA_MAPAREVE_MAX_PAGES", "40"))
 MAPAREVE_PER_PAGE = 20
 # Pages fetched at once after page 1 reports total_count. Bounded so one refresh never
 # floods the upstream; the per-process POST budget in source_transport still applies.
-MAPAREVE_PAGE_CONCURRENCY = max(1, int(os.environ.get("VOLTA_MAPAREVE_PAGE_CONCURRENCY", "4")))
+# Two, not four: from 2026-10-21 MapaREVE's bot protection refused the production host.
+MAPAREVE_PAGE_CONCURRENCY = max(1, int(os.environ.get("VOLTA_MAPAREVE_PAGE_CONCURRENCY", "2")))
+# After MapaREVE refuses us (403/429), send nothing for this long, then one probe. Each
+# refused probe doubles the pause, up to the maximum. A refusal is respected, never evaded.
+MAPAREVE_BLOCK_PAUSE_SECONDS = max(60.0, float(os.environ.get("VOLTA_MAPAREVE_BLOCK_PAUSE", "21600")))
+MAPAREVE_BLOCK_PAUSE_MAX_SECONDS = max(MAPAREVE_BLOCK_PAUSE_SECONDS, float(os.environ.get("VOLTA_MAPAREVE_BLOCK_PAUSE_MAX", "86400")))
 CACHE_TTL_SECONDS = int(os.environ.get("VOLTA_CACHE_TTL", "60"))
 CACHE: Dict[str, Any] = {"ts": 0, "payload": None, "raw_count": 0, "error": None, "assembled": None}
 # CACHE["recent"]: recent successful MapaREVE fetches by viewport cache key (oldest
@@ -3265,7 +3270,73 @@ def public_get_urlopen(request: urllib.request.Request, *, timeout: float) -> An
     return policy_urlopen(request, timeout=timeout)
 
 
+class MapaReveRefused(Exception):
+    """MapaREVE refused this host recently; no request is sent until the pause ends."""
+
+
+# until: no request before this time. pause: the current pause length. probing: one
+# request is already testing whether the refusal has lifted.
+_MAPAREVE_BLOCK: Dict[str, Any] = {"until": 0.0, "pause": 0.0, "probing": False}
+_MAPAREVE_BLOCK_LOCK = threading.Lock()
+
+
+def _mapareve_block_admit() -> bool:
+    """Raise MapaReveRefused while paused. True when this call is the single probe."""
+    with _MAPAREVE_BLOCK_LOCK:
+        if not _MAPAREVE_BLOCK["pause"]:
+            return False
+        if time.time() < _MAPAREVE_BLOCK["until"] or _MAPAREVE_BLOCK["probing"]:
+            raise MapaReveRefused("MapaREVE refused this host; paused until "
+                                  + datetime.fromtimestamp(_MAPAREVE_BLOCK["until"], timezone.utc).isoformat(timespec="seconds"))
+        _MAPAREVE_BLOCK["probing"] = True
+        return True
+
+
+def _mapareve_block_record(refused: Optional[bool], probe: bool) -> None:
+    """refused: True for 403/429, False for an answer, None when nothing was learned."""
+    with _MAPAREVE_BLOCK_LOCK:
+        if probe:
+            _MAPAREVE_BLOCK["probing"] = False
+        if refused is None:
+            if probe:
+                _MAPAREVE_BLOCK["until"] = time.time() + _MAPAREVE_BLOCK["pause"]
+            return
+        if refused:
+            pause = _MAPAREVE_BLOCK["pause"]
+            pause = min(pause * 2, MAPAREVE_BLOCK_PAUSE_MAX_SECONDS) if pause else MAPAREVE_BLOCK_PAUSE_SECONDS
+            _MAPAREVE_BLOCK.update(pause=pause, until=time.time() + pause)
+        elif probe or _MAPAREVE_BLOCK["pause"]:
+            _MAPAREVE_BLOCK.update(pause=0.0, until=0.0)
+
+
+def mapareve_block_status() -> Dict[str, Any]:
+    with _MAPAREVE_BLOCK_LOCK:
+        if not _MAPAREVE_BLOCK["pause"]:
+            return {"refused": False}
+        return {
+            "refused": True,
+            "paused_until": datetime.fromtimestamp(_MAPAREVE_BLOCK["until"], timezone.utc).isoformat(timespec="seconds"),
+            "pause_seconds": int(_MAPAREVE_BLOCK["pause"]),
+        }
+
+
 def _fetch_mapareve_page(page: int, body: bytes) -> Dict[str, Any]:
+    probe = _mapareve_block_admit()
+    try:
+        data = _request_mapareve_page(page, body)
+    except urllib.error.HTTPError as exc:
+        _mapareve_block_record(exc.code in (403, 429), probe)
+        raise
+    except BaseException:
+        # A timeout or network error says nothing about the refusal: a probe waits one
+        # more pause without doubling it.
+        _mapareve_block_record(None, probe)
+        raise
+    _mapareve_block_record(False, probe)
+    return data
+
+
+def _request_mapareve_page(page: int, body: bytes) -> Dict[str, Any]:
     req = urllib.request.Request(
         f"{MAPAREVE_URL}?page={page}&per_page={MAPAREVE_PER_PAGE}",
         data=body,
@@ -5503,6 +5574,7 @@ def source_health_summary() -> Dict[str, Any]:
         "scope": "worldwide",
         "live_geography": {"mapareve": "Spain coverage envelope", "gaia": "Configured Alboraia station only",
                            "endolla": "Barcelona static sites only", "spirii": "Spirii AFIR sites whose address countryCode is ES"},
+        "mapareve_refusal": mapareve_block_status(),
         "source_manifest": (intel.get("global_coverage") or {}).get("source_manifests") or intel.get("source_manifest") or {},
         "global_coverage": intel.get("global_coverage") or {},
         "policy": {

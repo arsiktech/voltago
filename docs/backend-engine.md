@@ -77,6 +77,14 @@ remain blocked. Runtime MapaREVE responses can carry live evidence; Feníe is a
 cached, attributed, Verify-first snapshot. Its redistribution basis is
 owner-attested, not independently verified. Failed sources retain warnings.
 
+A MapaREVE refusal (HTTP 403 or 429) is respected, not evaded. The server then
+sends no MapaREVE request for `VOLTA_MAPAREVE_BLOCK_PAUSE` seconds (default
+6 h), then lets exactly one probe through. A refused probe doubles the pause, up
+to `VOLTA_MAPAREVE_BLOCK_PAUSE_MAX` (default 24 h). A timed-out probe waits one
+more pause, and a successful probe clears the refusal. While paused, live
+responses serve the cache with a `MapaReveRefused` warning, and
+`/api/source-health` reports `mapareve_refusal`. Page requests run two at a time.
+
 The [structured source policy](../data/source_policy_exclusions.json) controls
 exclusions and evidence-kind exceptions, including Consum's excluded locator.
 The narrow Repsol, Electromaps and Chargemap price annotations remain Spain-only,
