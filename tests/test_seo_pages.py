@@ -50,7 +50,7 @@ class SeoPagesTests(unittest.TestCase):
     def test_pages_never_claim_a_price_or_live_status_that_no_source_gives(self) -> None:
         record = station("p", sources=("DGT National Access Point charging registry", "OpenStreetMap public tags"))
         index = sp.SiteIndex(city_rows(5) + [record], None)
-        page = sp.render_station(index, sp.station_slug(record))
+        page = sp.render_station(index, sp.station_digest(record))
         self.assertIn("Ninguna fuente publica el precio", page)
         self.assertIn("La disponibilidad en directo no se muestra aquí", page)
         self.assertNotIn("Disponible ahora", page)
@@ -58,7 +58,7 @@ class SeoPagesTests(unittest.TestCase):
     def test_free_claim_names_its_source(self) -> None:
         record = station("f", free=True, sources=("Feníe Energía public map (Gratuitos)",))
         index = sp.SiteIndex([record], None)
-        self.assertIn("Gratis según Feníe Energía public map (Gratuitos)", sp.render_station(index, sp.station_slug(record)))
+        self.assertIn("Gratis según Feníe Energía public map (Gratuitos)", sp.render_station(index, sp.station_digest(record)))
 
     def test_a_price_says_when_its_source_was_fetched(self) -> None:
         record = station("d", price=0.51, sources=("MapaREVE public OCPI snapshot",))
@@ -68,7 +68,7 @@ class SeoPagesTests(unittest.TestCase):
     def test_hostile_text_is_escaped_including_json_ld(self) -> None:
         record = station("x", price=0.2, name='Evil</script><script>alert(1)</script>"')
         index = sp.SiteIndex([record], None)
-        page = sp.render_station(index, sp.station_slug(record))
+        page = sp.render_station(index, sp.station_digest(record))
         self.assertNotIn("<script>alert(1)", page)
         self.assertEqual(page.count("</script>"), 1)  # only the JSON-LD block closes
 
@@ -80,6 +80,35 @@ class SeoPagesTests(unittest.TestCase):
         self.assertIn(f"<loc>https://voltago.app/cargador/{sp.station_slug(priced)}</loc>", sitemap)
         self.assertIn("<lastmod>2026-10-24</lastmod>", sitemap)
         self.assertEqual(sitemap.count("<loc>"), 4)
+
+    def test_one_publisher_with_two_datasets_is_one_family(self) -> None:
+        record = station("e", sources=("Barcelona Endolla location/details open data", "Barcelona Endolla port-status open data"),
+                         city="Barcelona")
+        index = sp.SiteIndex([record], None, families=lambda r: {"endolla"})
+        self.assertEqual(index.stations, {})
+
+    def test_a_renamed_station_keeps_its_url_through_a_redirect(self) -> None:
+        record = station("r", price=0.3, name="Nuevo nombre")
+        index = sp.SiteIndex([record], None)
+        status, _type, _body, headers = sp.route(index, f"/cargador/nombre-antiguo-{sp.station_digest(record)}")
+        self.assertEqual(status, 301)
+        self.assertEqual(headers["Location"], f"/cargador/{sp.station_slug(record)}")
+        self.assertEqual(sp.route(index, headers["Location"])[0], 200)
+
+    def test_foreign_stations_get_no_spanish_page(self) -> None:
+        paris = dict(station("fr", price=0.4, city="Paris", lat=48.85), lon=2.35, country_code="FR")
+        lisbon = dict(station("pt", price=0.4, city="Lisboa", lat=38.72), lon=-9.14)
+        index = sp.SiteIndex([paris, lisbon] + city_rows(5), None)
+        self.assertEqual(index.stations, {})
+        self.assertEqual(list(index.cities), ["valencia"])
+
+    def test_full_records_come_from_the_lookup_not_the_index(self) -> None:
+        record = station("l", price=0.3)
+        calls = []
+        index = sp.SiteIndex([record], None, lookup=lambda identifier: calls.append(identifier) or record)
+        self.assertNotIn("sources", index.stations[sp.station_digest(record)])
+        self.assertIn("<h1>Estación Test</h1>", sp.route(index, f"/cargador/{sp.station_slug(record)}")[2])
+        self.assertEqual(calls, ["l"])
 
     def test_unknown_paths_are_404_pages(self) -> None:
         index = sp.SiteIndex(city_rows(5), None)
@@ -102,6 +131,10 @@ class CrawlableRouteTests(unittest.TestCase):
                     self.assertIn("Puntos de recarga en València", response.read().decode())
                 with urllib.request.urlopen(base + "/sitemap.xml") as response:
                     self.assertIn("/cargadores/valencia", response.read().decode())
+                head = urllib.request.Request(base + "/sitemap.xml", method="HEAD")
+                with urllib.request.urlopen(head) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers["Content-Type"], "application/xml; charset=utf-8")
                 with self.assertRaises(urllib.error.HTTPError) as caught:
                     urllib.request.urlopen(base + "/cargador/nope-00000000")
                 self.assertEqual(caught.exception.code, 404)

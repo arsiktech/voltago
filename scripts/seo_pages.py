@@ -14,7 +14,12 @@ import os
 import re
 import unicodedata
 from collections import Counter, defaultdict
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+
+try:
+    from .spain_geography import point_in_spain
+except ImportError:  # executed as a script from scripts/
+    from spain_geography import point_in_spain
 
 SITE_URL = os.environ.get("VOLTA_PUBLIC_URL", "https://voltago.app").rstrip("/")
 CITY_MIN_STATIONS = 5
@@ -37,13 +42,33 @@ def source_families(record: Dict[str, Any]) -> List[str]:
     return names
 
 
-def has_page(record: Dict[str, Any]) -> bool:
-    return len(source_families(record)) >= 2 or record.get("price_min") is not None or bool(record.get("is_free"))
+def has_page(record: Dict[str, Any], family_count: Optional[int] = None) -> bool:
+    families = len(source_families(record)) if family_count is None else family_count
+    return families >= 2 or record.get("price_min") is not None or bool(record.get("is_free"))
+
+
+def station_digest(record: Dict[str, Any]) -> str:
+    """The stable part of a station URL: a hash of the station ID, not of its name."""
+    return hashlib.sha1(str(record.get("id")).encode("utf-8")).hexdigest()[:8]
 
 
 def station_slug(record: Dict[str, Any]) -> str:
-    digest = hashlib.sha1(str(record.get("id")).encode("utf-8")).hexdigest()[:8]
-    return f"{slugify(record.get('name'))[:60].strip('-') or 'cargador'}-{digest}"
+    return f"{slugify(record.get('name'))[:60].strip('-') or 'cargador'}-{station_digest(record)}"
+
+
+def in_spain(record: Dict[str, Any]) -> bool:
+    """Spanish pages only: an explicit other country, or a point outside Spain, is skipped."""
+    raw = record.get("raw") or {}
+    country = str(record.get("country_code") or record.get("country") or raw.get("country_code") or "").upper()
+    if country and country not in {"ES", "ESP"}:
+        return False
+    return point_in_spain(record.get("lat"), record.get("lon"))
+
+
+# Fields a city list needs. The full record is fetched only when its station page is asked for,
+# so a large disk-backed catalogue is never held in memory.
+COMPACT_FIELDS = ("id", "name", "address", "city", "lat", "lon", "price_min", "is_free", "connector_labels",
+                  "max_power_kw", "total_evse")
 
 
 def city_label(record: Dict[str, Any]) -> Optional[str]:
@@ -54,29 +79,52 @@ def city_label(record: Dict[str, Any]) -> Optional[str]:
 
 
 class SiteIndex:
-    """Cities and station pages for one data version."""
+    """Cities and station pages for one data version, held as compact summaries."""
 
-    def __init__(self, records: Iterable[Dict[str, Any]], generated_at: Optional[str]) -> None:
+    def __init__(
+        self,
+        records: Iterable[Dict[str, Any]],
+        generated_at: Optional[str],
+        *,
+        families: Optional[Callable[[Dict[str, Any]], Iterable[str]]] = None,
+        lookup: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None,
+    ) -> None:
         self.generated_at = generated_at
+        count_families = (lambda record: len(set(families(record)))) if families else (lambda record: len(source_families(record)))
         by_city: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         spellings: Dict[str, Counter] = defaultdict(Counter)
         self.stations: Dict[str, Dict[str, Any]] = {}
+        kept: Dict[str, Dict[str, Any]] = {}
         for record in records:
             if not isinstance(record.get("lat"), (int, float)) or not isinstance(record.get("lon"), (int, float)):
                 continue
+            if not in_spain(record):
+                continue
+            compact = {key: record.get(key) for key in COMPACT_FIELDS}
+            compact["families"] = count_families(record)
+            compact["price_text"] = price_text(record)
+            compact["page"] = has_page(record, compact["families"])
+            compact["slug"] = station_slug(record)
             label = city_label(record)
             if label:
                 key = slugify(label)
-                by_city[key].append(record)
+                by_city[key].append(compact)
                 spellings[key][label] += 1
-            if has_page(record):
-                self.stations[station_slug(record)] = record
+            if compact["page"]:
+                self.stations[station_digest(record)] = compact
+                if lookup is None:
+                    kept[str(record.get("id"))] = record
         self.cities = {key: rows for key, rows in by_city.items() if len(rows) >= CITY_MIN_STATIONS}
         self.city_names = {key: spellings[key].most_common(1)[0][0] for key in self.cities}
+        self._lookup = lookup or kept.get
 
     def city_of(self, record: Dict[str, Any]) -> Optional[str]:
         label = city_label(record)
         return slugify(label) if label and slugify(label) in self.cities else None
+
+    def full_record(self, digest: str) -> Optional[Dict[str, Any]]:
+        compact = self.stations.get(digest)
+        return self._lookup(str(compact["id"])) if compact else None
 
 
 def _e(value: Any) -> str:
@@ -158,15 +206,15 @@ def render_city(index: SiteIndex, key: str) -> Optional[str]:
     if rows is None:
         return None
     name = index.city_names[key]
-    ordered = sorted(rows, key=lambda r: (not has_page(r), -len(source_families(r)), str(r.get("name") or "")))
+    ordered = sorted(rows, key=lambda r: (not r["page"], -r["families"], str(r.get("name") or "")))
     items = []
     for record in ordered[:CITY_LIST_LIMIT]:
         title = _e(record.get("name") or "Punto de recarga")
-        if has_page(record):
-            title = f'<a href="/cargador/{station_slug(record)}">{title}</a>'
-        families = len(source_families(record))
+        if record["page"]:
+            title = f'<a href="/cargador/{record["slug"]}">{title}</a>'
+        families = record["families"]
         items.append(f"<li><strong>{title}</strong><br><span class=\"muted\">{_e(record.get('address') or '')}</span><br>"
-                     f"{_e(_hardware(record))} · {_e(price_text(record))} "
+                     f"{_e(_hardware(record))} · {_e(record['price_text'])} "
                      f"<span class=\"muted\">· {families} fuente{'s' if families != 1 else ''}</span></li>")
     more = (f"<p class=\"muted\">Se muestran {CITY_LIST_LIMIT} de {len(rows)}. Abre el mapa para verlos todos.</p>"
             if len(rows) > CITY_LIST_LIMIT else "")
@@ -181,10 +229,12 @@ def render_city(index: SiteIndex, key: str) -> Optional[str]:
                  f"/cargadores/{key}", body)
 
 
-def render_station(index: SiteIndex, slug: str) -> Optional[str]:
-    record = index.stations.get(slug)
-    if record is None:
+def render_station(index: SiteIndex, digest: str) -> Optional[str]:
+    compact = index.stations.get(digest)
+    record = index.full_record(digest)
+    if compact is None or record is None:
         return None
+    slug = compact["slug"]
     name = str(record.get("name") or "Punto de recarga")
     city_key = index.city_of(record)
     city = index.city_names.get(city_key, city_label(record) or "") if city_key else (city_label(record) or "")
@@ -228,7 +278,7 @@ def render_sitemap(index: SiteIndex) -> str:
     lastmod = _date(index.generated_at) if index.generated_at else None
     urls = [SITE_URL + "/", SITE_URL + "/cargadores"]
     urls += [f"{SITE_URL}/cargadores/{key}" for key in sorted(index.cities)]
-    urls += [f"{SITE_URL}/cargador/{slug}" for slug in sorted(index.stations)]
+    urls += [f"{SITE_URL}/cargador/{compact['slug']}" for compact in sorted(index.stations.values(), key=lambda c: c["slug"])]
     tag = f"<lastmod>{lastmod}</lastmod>" if lastmod else ""
     return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
             + "".join(f"  <url><loc>{_e(url)}</loc>{tag}</url>\n" for url in urls) + "</urlset>\n")
@@ -240,18 +290,24 @@ def not_found_page() -> str:
                  '<a href="/cargadores">Ver todas las ciudades</a>.</p>')
 
 
-def route(index: SiteIndex, path: str) -> Tuple[int, str, str]:
-    """(status, content type, body) for a crawlable path."""
+def route(index: SiteIndex, path: str) -> Tuple[int, str, str, Dict[str, str]]:
+    """(status, content type, body, extra headers) for a crawlable path."""
     path = path.rstrip("/") or "/"
+    html_type = "text/html; charset=utf-8"
     if path == "/sitemap.xml":
-        return 200, "application/xml; charset=utf-8", render_sitemap(index)
+        return 200, "application/xml; charset=utf-8", render_sitemap(index), {}
     if path == "/cargadores":
-        return 200, "text/html; charset=utf-8", render_index(index)
+        return 200, html_type, render_index(index), {}
     match = re.fullmatch(r"/cargadores/([a-z0-9-]+)", path)
-    page = render_city(index, match.group(1)) if match else None
+    if match:
+        page = render_city(index, match.group(1))
+        return (200, html_type, page, {}) if page else (404, html_type, not_found_page(), {})
+    # A station is found by the hash of its ID; a renamed station's old URL redirects.
+    match = re.fullmatch(r"/cargador/(?:[a-z0-9-]*-)?([0-9a-f]{8})", path)
+    compact = index.stations.get(match.group(1)) if match else None
+    if compact is not None and path != f"/cargador/{compact['slug']}":
+        return 301, html_type, "", {"Location": f"/cargador/{compact['slug']}"}
+    page = render_station(index, match.group(1)) if compact is not None else None
     if page is None:
-        match = re.fullmatch(r"/cargador/([a-z0-9-]+)", path)
-        page = render_station(index, match.group(1)) if match else None
-    if page is None:
-        return 404, "text/html; charset=utf-8", not_found_page()
-    return 200, "text/html; charset=utf-8", page
+        return 404, html_type, not_found_page(), {}
+    return 200, html_type, page, {}

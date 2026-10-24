@@ -23,8 +23,10 @@ RUNTIME_FILES = (
     "scripts/public_live_status.py",
     "scripts/source_matrix.py",
     "scripts/seo_pages.py",
+    "scripts/spain_geography.py",
     "data/free_intelligence.json",
     "data/seed_leads.json",
     "data/source_policy_exclusions.json",
     "data/google_maps_links.json",
+    "data/spain_boundary.geojson",
 )

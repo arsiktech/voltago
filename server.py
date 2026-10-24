@@ -4152,6 +4152,18 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     return results
 
 
+def crawlable_page_families(item: Dict[str, Any]) -> set:
+    """Independent publishers behind a station: the known host families, then the website
+    host, then the name, so one publisher's several pages or datasets count once."""
+    families = set()
+    for entry in item.get("sources") or []:
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or "")
+            host = (urllib.parse.urlsplit(str(entry.get("url") or "")).hostname or "").removeprefix("www.")
+            families.add(source_family(name, entry.get("url")) or host or name.split(" (")[0].strip().lower())
+    return {family for family in families if family}
+
+
 _CRAWLABLE_INDEX: Dict[str, Any] = {"key": None, "index": None}
 _CRAWLABLE_INDEX_LOCK = threading.Lock()
 
@@ -4162,7 +4174,11 @@ def crawlable_site_index() -> "seo_pages.SiteIndex":
     key = (id(intel), intel.get("generated_at"), len(intel.get("records") or []))
     with _CRAWLABLE_INDEX_LOCK:
         if _CRAWLABLE_INDEX["key"] != key:
-            _CRAWLABLE_INDEX.update(key=key, index=seo_pages.SiteIndex(intel.get("records") or [], intel.get("generated_at")))
+            records = intel.get("records") or []
+            # A disk-backed catalogue is looked up per page; a JSON one keeps the page records.
+            lookup = records.index.get_by_id if isinstance(records, IndexedRecords) else None
+            _CRAWLABLE_INDEX.update(key=key, index=seo_pages.SiteIndex(
+                records, intel.get("generated_at"), families=crawlable_page_families, lookup=lookup))
         return _CRAWLABLE_INDEX["index"]
 
 
@@ -5945,7 +5961,7 @@ class Handler(BaseHTTPRequestHandler):
     def send_crawlable_page(self, path: str) -> None:
         if not self._enforce_rate_limit("pages", RATE_LIMIT_RPM):
             return
-        status, content_type, text = seo_pages.route(crawlable_site_index(), path)
+        status, content_type, text, extra = seo_pages.route(crawlable_site_index(), path)
         body = text.encode("utf-8")
         use_gzip = self._client_accepts_gzip() and len(body) > 1400
         out = gzip_lib.compress(body, 6) if use_gzip else body
@@ -5953,7 +5969,7 @@ class Handler(BaseHTTPRequestHandler):
         headers = {
             "Content-Type": content_type, "Cache-Control": "public, max-age=3600" if status == 200 else "no-store",
             "Vary": "Accept-Encoding", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
-            "X-Frame-Options": "DENY",
+            "X-Frame-Options": "DENY", **extra,
         }
         if use_gzip:
             headers["Content-Encoding"] = "gzip"
@@ -6024,6 +6040,8 @@ class Handler(BaseHTTPRequestHandler):
     def _route_head(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path == "/sitemap.xml" or path == "/cargadores" or path.startswith(("/cargadores/", "/cargador/")):
+            return self.send_crawlable_page(path)
         if path == "/":
             path = "/index.html"
         if path == agent_mcp.MCP_PATH:
