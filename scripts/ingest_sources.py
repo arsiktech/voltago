@@ -4775,8 +4775,13 @@ def regional_open_data_records(
             "access": row.get("access") or "",
         })
         power = fnum(row.get("power_kw"))
-        for label in row.get("connectors") or ["Unknown connector"]:
+        # A post without a recognisable connector type adds to the port count but not to the
+        # inventory: an untyped official inventory would erase types another source knows.
+        station["posts"] = station.get("posts", 0) + max(1, len(row.get("connectors") or []))
+        for label in row.get("connectors") or []:
             station["connectors"].append((label, power))
+        if not row.get("connectors") and power:
+            station.setdefault("untyped_powers", []).append(power)
         if row.get("row_id") not in (None, ""):
             station["row_ids"].append(str(row["row_id"]))
     out: List[Dict[str, Any]] = []
@@ -4786,7 +4791,7 @@ def regional_open_data_records(
             counts[(label, power)] += 1
         connectors = [connector_ref(label, count=count, power_kw=power, status="UNKNOWN", source_url=meta["page"])
                       for (label, power), count in sorted(counts.items(), key=lambda kv: str(kv[0]))]
-        powers = [power for (_label, power) in station["connectors"] if power]
+        powers = [power for (_label, power) in station["connectors"] if power] + station.get("untyped_powers", [])
         operator = station["operator"] or "Public charger"
         place = station["address"] or station["city"] or "charging point"
         add_record(
@@ -4820,7 +4825,7 @@ def regional_open_data_records(
                 "official_hardware_inventory": True,
             },
             connectors=connectors,
-            port_count=len(station["connectors"]),
+            port_count=station["posts"],
             source_artifact=source_artifact,
         )
         if out:

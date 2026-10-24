@@ -61,6 +61,14 @@ class RegionalOpenDataTests(unittest.TestCase):
         self.assertEqual(payload["records"][0]["id"], old[0]["id"])
         self.assertEqual(report["unresolved_missing_ids"], [])
 
+    def test_a_post_without_a_connector_type_adds_no_untyped_inventory(self) -> None:
+        rows = ing.parse_catalonia_icaen([{"id": "9", "promotor_gestor": "X", "tipus_connexi": "", "kw": "7",
+                                            "latitud": "41.5", "longitud": "2.0", "adre_a": "C/ A", "municipi": "B"}])
+        self.assertEqual(rows[0]["connectors"], [])
+        self.assertEqual(rows[0]["connector_labels"], [])
+        self.assertEqual(rows[0]["total_evse"], 1)
+        self.assertEqual(rows[0]["max_power_kw"], 7)
+
     def test_rows_are_corroboration_only_with_no_free_or_live_claim(self) -> None:
         for row in ing.parse_catalonia_icaen(CATALONIA) + ing.parse_navarra_idena(NAVARRA) + ing.parse_castilla_leon(CASTILLA_LEON):
             self.assertTrue(row["raw"]["corroboration_only"])
