@@ -247,6 +247,16 @@ class AgentMcpHttpTests(unittest.TestCase):
         status, payload = self.modern("resources/list")
         self.assertEqual((status, payload["error"]["code"]), (404, agent_mcp.METHOD_NOT_FOUND))
 
+    def test_oauth_discovery_paths_are_real_404s_not_the_app_shell(self) -> None:
+        # Claude and other MCP clients probe these before connecting; a 200 HTML shell would
+        # look like broken auth metadata instead of "this server needs no sign-in".
+        for path in ("/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp",
+                     "/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"):
+            status, payload, headers = self.http("GET", path)
+            self.assertEqual(status, 404, path)
+            self.assertEqual(payload, {"error": "not_found"}, path)
+            self.assertIn("application/json", headers.get("Content-Type", ""), path)
+
     def test_http_envelope_rules(self) -> None:
         for method in ("GET", "DELETE"):
             status, payload, headers = self.http(method)
