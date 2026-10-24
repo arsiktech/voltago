@@ -3933,6 +3933,50 @@ def brand_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     return bool(a_brands and b_brands and not (a_brands & b_brands))
 
 
+OPERATOR_MATCH_KM = 0.08
+# Legal-form and generic words that say nothing about which operator a row names.
+OPERATOR_STOP_TOKENS = {
+    "sa", "sau", "sl", "slu", "srl", "clientes", "soluciones", "energeticas", "energia", "mobility",
+    "movilidad", "electrica", "electric", "electricidad", "way", "del", "the", "and", "group", "grupo",
+    "spain", "espana", "iberia", "charging", "charge", "recarga", "power", "energy", "services",
+    "servicios", "ayuntamiento", "comercializadora", "sociedad", "limitada", "anonima", "emobility",
+    "solutions", "red", "puntos", "punto", "inc",
+}
+
+
+def explicit_operator_tokens(r: Dict[str, Any]) -> set:
+    """Operator words from an explicit operator, brand or network field only, never the name."""
+    raw = r.get("raw") or {}
+    text = normalized_identity_text(" ".join(str(raw.get(key)) for key in ("operator", "brand", "network") if raw.get(key)))
+    return {token for token in re.findall(r"[a-z0-9]{3,}", text) if token not in OPERATOR_STOP_TOKENS}
+
+
+def unique_operator_partners(records: List[Dict[str, Any]], grid: Dict[Tuple[int, int], List[int]], cell: float) -> Dict[int, int]:
+    """Rows from different families that name the same operator within 80 m, one-to-one.
+
+    A registry row ("REPSOL SOLUCIONES ENERGÉTICAS SA — …") and a community row tagged
+    operator=Repsol a few metres apart are one site. The pairing holds only when each row
+    has exactly one such partner: two same-operator candidates nearby stay apart.
+    """
+    tokens = [explicit_operator_tokens(r) for r in records]
+    span = max(1, math.ceil((OPERATOR_MATCH_KM / 111.32) * cell))
+    partners: Dict[int, List[int]] = defaultdict(list)
+    for (gx, gy), idxs in grid.items():
+        for i in idxs:
+            if not tokens[i]:
+                continue
+            for dx in range(-span, span + 1):
+                for dy in range(-span, span + 1):
+                    for j in grid.get((gx + dx, gy + dy), []):
+                        if j == i or not tokens[j] or not (tokens[i] & tokens[j]):
+                            continue
+                        if record_source_family(records[i]) == record_source_family(records[j]):
+                            continue
+                        if _dist_km(records[i], records[j]) <= OPERATOR_MATCH_KM:
+                            partners[i].append(j)
+    return {i: js[0] for i, js in partners.items() if len(js) == 1 and len(partners.get(js[0], [])) == 1}
+
+
 def corroboration_only_identity_match(a: Dict[str, Any], b: Dict[str, Any], distance_km: float) -> bool:
     """Require address identity before an official price-unknown row can corroborate a lead."""
     if distance_km > 0.08:
@@ -4159,6 +4203,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
         parent[ry] = rx
         families[rx] |= families[ry]
 
+    operator_partner = unique_operator_partners(records, grid, cell)
     edges: List[Tuple[bool, float, int, int]] = []
     for (gx, gy), idxs in grid.items():
         neighbors: List[int] = []
@@ -4190,6 +4235,8 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
                     ) or corroboration_only_identity_match(a, b, distance)
                 else:
                     identity_match = strong_station_identity_match(a, b, distance_km=distance)
+                if not identity_match and operator_partner.get(i) == j:
+                    identity_match = True
                 if corroboration_pair and not identity_match:
                     # A price-unknown registry site is its own station unless it sits on
                     # the other row's coordinates without a conflicting operator brand.
