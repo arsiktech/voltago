@@ -46,6 +46,11 @@ on every other row. Cached or stale rows never start or trigger a watch.
   APNs device token, delivery state. No location, no account, no vehicle data.
 - One watcher loop reads the **existing** live caches on their normal cadence
   (Endolla and Spirii 60 s). It adds no upstream requests per watcher.
+- The live caches refresh on demand: with no searches they go stale after 180 s
+  (this is why `/api/source-health` can show `stale: true` while searches serve
+  live rows). While at least one watch is active, the loop calls each needed
+  feed's normal `get()`, which keeps its TTL and single-flight fetch: at most one
+  request per feed per minute, and none when no watch is active.
 - Limits: 3 active watches per device, 500 in total; tokens are deleted when a watch
   ends; rows older than 24 h are purged.
 - Endpoints: `POST /api/watches`, `DELETE /api/watches/{id}`, `GET /api/watches?token=…`
