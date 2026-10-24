@@ -67,6 +67,16 @@ did not support) and `retirements_stale` (entries whose ID is no longer gone), s
 entries can be removed. A retirement does not repoint saved references to the old ID. Check
 what references it before adding an entry.
 
+## Regional open-data registries
+
+Catalonia (ICAEN, Generalitat open licence), Navarra (IDENA, CC BY 4.0) and Castilla y
+León (CC BY 4.0, last updated 2022) publish charger locations, operators, connectors and
+power. They are fetched once a day by anonymous GET and stored as corroboration-only
+official rows. They carry no tariff and no live status, and a missing price is never read as
+free. Each registry lists every charger post separately, so posts of one operator within
+15 m form one station. On production data (2026-10-24) they corroborated 1,389 existing
+stations, added 399 new ones, and moved the single-source share from 86.7% to 80.1%.
+
 ## Public-source transport
 
 Public collection defaults to GET. The owner approved narrow read-only POST

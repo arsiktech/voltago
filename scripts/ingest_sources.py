@@ -4682,6 +4682,193 @@ def source_dgt_nap(records: List[Dict[str, Any]]) -> None:
     records.extend(nap_records_from_sites(sites, source_artifact=artifact))
 
 
+# --- Regional open-data charger registries (owner-approved 2026-10-24) ----------------------
+# Official location, operator and hardware facts only: no tariff and no live status. Rows are
+# corroboration-only like the DGT registry, so a missing price is never read as free. Each
+# dataset lists one row per connector; rows sharing operator and coordinates form one station.
+CATALONIA_ICAEN_URL = "https://analisi.transparenciacatalunya.cat/resource/tb2m-m33b.json?$limit=20000"
+CATALONIA_ICAEN_PAGE = "https://analisi.transparenciacatalunya.cat/d/tb2m-m33b"
+NAVARRA_IDENA_URL = (
+    "https://idena.navarra.es/ogc/wfs?service=WFS&version=2.0.0&request=GetFeature"
+    "&typeNames=IDENA:INFRAE_Sym_PuntosRecarga&outputFormat=application/json&srsName=EPSG:4326"
+)
+NAVARRA_IDENA_PAGE = "https://datosabiertos.navarra.es/dataset/puntos-de-recarga-de-vehiculos-electricos"
+CASTILLA_LEON_URL = (
+    "https://analisis.datosabiertos.jcyl.es/api/explore/v2.1/catalog/datasets/"
+    "puntos-de-recarga-del-vehiculo-electrico/exports/json"
+)
+CASTILLA_LEON_PAGE = "https://datosabiertos.jcyl.es/web/jcyl/set/es/energia/puntos-recarga-vehiculo-electrico/1284940776394"
+REGIONAL_OPEN_DATA = {
+    "catalonia": {
+        "source": "Catalonia ICAEN charging points open data",
+        "page": CATALONIA_ICAEN_PAGE,
+        "attribution": "Institut Català d'Energia (ICAEN) — Generalitat de Catalunya",
+        "license": "Llicència oberta d'ús d'informació – Catalunya",
+        "license_url": "https://administraciodigital.gencat.cat/ca/dades/dades-obertes/informacio-practica/llicencies/",
+    },
+    "navarra": {
+        "source": "Navarra IDENA charging points open data",
+        "page": NAVARRA_IDENA_PAGE,
+        "attribution": "Gobierno de Navarra — IDENA",
+        "license": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    },
+    "castilla_leon": {
+        "source": "Castilla y León charging points open data",
+        "page": CASTILLA_LEON_PAGE,
+        "attribution": "Junta de Castilla y León",
+        "license": "CC BY 4.0",
+        "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    },
+}
+
+
+REGIONAL_STATION_RADIUS_KM = 0.015
+
+
+def _split_connectors(text: Any) -> List[str]:
+    labels = []
+    for part in re.split(r"[+,/;]", str(text or "")):
+        label = connector_label_from_token(part.strip())
+        if label:
+            labels.append(label)
+    return labels
+
+
+def regional_open_data_records(
+    region: str,
+    rows: Iterable[Dict[str, Any]],
+    *,
+    source_artifact: Optional[FetchArtifact] = None,
+) -> List[Dict[str, Any]]:
+    """Group normalized connector rows into station records.
+
+    Each input row: lat, lon, operator, address, city, connectors (labels), power_kw,
+    row_id, and optional hours / access. Rows with invalid coordinates are skipped.
+    """
+    meta = REGIONAL_OPEN_DATA[region]
+    stations: Dict[Tuple[float, float, str], Dict[str, Any]] = {}
+    # The registries list each charger post separately, a few metres apart. Posts of one
+    # operator within REGIONAL_STATION_RADIUS_KM join the first station seen there.
+    by_cell: Dict[Tuple[int, int, str], List[Tuple[float, float, str]]] = defaultdict(list)
+    for row in rows:
+        lat, lon = fnum(row.get("lat")), fnum(row.get("lon"))
+        if lat is None or lon is None or not in_bbox(lat, lon, SPAIN_BBOX):
+            continue
+        operator = re.sub(r"\s+", " ", str(row.get("operator") or "")).strip()
+        cell = (int(lat * 2000), int(lon * 2000), operator.lower())
+        key = next((existing for dx in (-1, 0, 1) for dy in (-1, 0, 1)
+                    for existing in by_cell.get((cell[0] + dx, cell[1] + dy, cell[2]), [])
+                    if _dist_km({"lat": lat, "lon": lon}, stations[existing]) <= REGIONAL_STATION_RADIUS_KM), None)
+        if key is None:
+            key = (round(lat, 5), round(lon, 5), operator.lower())
+            by_cell[cell].append(key)
+        station = stations.setdefault(key, {
+            "lat": lat, "lon": lon, "operator": operator, "address": row.get("address") or "",
+            "city": row.get("city") or "", "connectors": [], "row_ids": [], "hours": row.get("hours") or "",
+            "access": row.get("access") or "",
+        })
+        power = fnum(row.get("power_kw"))
+        for label in row.get("connectors") or ["Unknown connector"]:
+            station["connectors"].append((label, power))
+        if row.get("row_id") not in (None, ""):
+            station["row_ids"].append(str(row["row_id"]))
+    out: List[Dict[str, Any]] = []
+    for station in stations.values():
+        counts: Dict[Tuple[str, Optional[float]], int] = defaultdict(int)
+        for label, power in station["connectors"]:
+            counts[(label, power)] += 1
+        connectors = [connector_ref(label, count=count, power_kw=power, status="UNKNOWN", source_url=meta["page"])
+                      for (label, power), count in sorted(counts.items(), key=lambda kv: str(kv[0]))]
+        powers = [power for (_label, power) in station["connectors"] if power]
+        operator = station["operator"] or "Public charger"
+        place = station["address"] or station["city"] or "charging point"
+        add_record(
+            out,
+            source=meta["source"],
+            source_url=meta["page"],
+            name=f"{operator} — {place}",
+            address=station["address"],
+            city=station["city"],
+            lat=station["lat"],
+            lon=station["lon"],
+            price_min=None,
+            free_condition="This regional registry publishes no tariff; check the price in the operator app.",
+            connector_labels=sorted({label for (label, _power) in station["connectors"]}),
+            max_power_kw=max(powers) if powers else None,
+            status="VERIFY",
+            reliability="official-charger-location-price-unknown",
+            evidence=(f"{meta['attribution']} open data lists this charging point with its operator, connectors "
+                      "and power. It publishes no tariff and no live availability."),
+            parking_kind="unknown",
+            parking_note="The regional registry publishes no parking detail; verify signs onsite.",
+            raw={
+                "operator": station["operator"] or None,
+                "regional_row_ids": station["row_ids"][:50],
+                "opening_hours": station["hours"] or None,
+                "access_text": station["access"] or None,
+                "coordinate_source": f"{region}_open_data",
+                "corroboration_only": True,
+                "official_hardware_inventory": True,
+            },
+            connectors=connectors,
+            port_count=len(station["connectors"]),
+            source_artifact=source_artifact,
+        )
+        if out:
+            source_entry = out[-1]["sources"][0]
+            source_entry.update(license=meta["license"], license_url=meta["license_url"], attribution=meta["attribution"],
+                                catalog_url=meta["page"],
+                                transformation="Connector rows grouped by operator and coordinates; normalized by Volta "
+                                               "as corroboration-only evidence. No missing tariff is inferred to be free.")
+    return out
+
+
+def parse_catalonia_icaen(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    return regional_open_data_records("catalonia", (
+        {"lat": row.get("latitud"), "lon": row.get("longitud"), "operator": row.get("promotor_gestor"),
+         "address": row.get("adre_a"), "city": row.get("municipi"), "connectors": _split_connectors(row.get("tipus_connexi")),
+         "power_kw": row.get("kw"), "row_id": row.get("id"), "access": row.get("acces")}
+        for row in rows if isinstance(row, dict)
+    ), source_artifact=source_artifact)
+
+
+def parse_navarra_idena(payload: Dict[str, Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    def rows():
+        for feature in payload.get("features") or []:
+            props = feature.get("properties") or {}
+            coords = (feature.get("geometry") or {}).get("coordinates") or [None, None]
+            power = str(props.get("POTENCIA") or "").replace("kW", "").replace(".", "").replace(",", ".").strip()
+            yield {"lat": coords[1], "lon": coords[0], "operator": props.get("OPERADOR"), "address": props.get("DIRECCION"),
+                   "city": props.get("MUNICIPIO"), "connectors": _split_connectors(props.get("CONEXION")),
+                   "power_kw": power, "row_id": props.get("FEATURE"), "hours": props.get("HORARIO")}
+    return regional_open_data_records("navarra", rows(), source_artifact=source_artifact)
+
+
+def parse_castilla_leon(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+    return regional_open_data_records("castilla_leon", (
+        {"lat": (row.get("dd") or {}).get("lat"), "lon": (row.get("dd") or {}).get("lon"), "operator": row.get("operador"),
+         "address": row.get("direccion"), "city": "", "row_id": row.get("no"),
+         "connectors": [label for item in row.get("tipo") or [] for label in _split_connectors(item)]}
+        for row in rows if isinstance(row, dict)
+    ), source_artifact=source_artifact)
+
+
+def source_catalonia_icaen(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(CATALONIA_ICAEN_URL, "catalonia_icaen_charging_points.json", ttl_hours=24, timeout=90)
+    records.extend(parse_catalonia_icaen(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+
+
+def source_navarra_idena(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(NAVARRA_IDENA_URL, "navarra_idena_charging_points.json", ttl_hours=24, timeout=90)
+    records.extend(parse_navarra_idena(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+
+
+def source_castilla_leon(records: List[Dict[str, Any]]) -> None:
+    artifact = cached_fetch(CASTILLA_LEON_URL, "castilla_leon_charging_points.json", ttl_hours=24 * 7, timeout=90)
+    records.extend(parse_castilla_leon(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+
+
 # --- Canarias te recarga (public Canary Islands charger map) -----------------------------
 # The map export provides markers. Identity-checked station pages add rated power,
 # quantities, full tariffs, source images and access information. The import stays strict:
@@ -5164,6 +5351,9 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_madrid_official,
     source_zaragoza_official,
     source_dgt_nap,
+    source_catalonia_icaen,
+    source_navarra_idena,
+    source_castilla_leon,
     source_fenie,
     source_moraleja_green,
     source_canarias_tecarga,
