@@ -47,6 +47,7 @@ from scripts.json_recordset import load_json_recordset
 from scripts.global_source_catalog import ADAPTERS as GLOBAL_ADAPTERS, ADAPTER_IDS as GLOBAL_ADAPTER_IDS
 from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_sha256
 from scripts.price_evidence import price_evidence_counts
+from scripts import source_matrix
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from scripts import public_live_status
@@ -6150,6 +6151,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, source_health_summary())
         if path == "/api/source-strategy":
             return self.send_json(200, requested_source_strategy())
+        if path == "/api/location-sources":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
+            bbox = parse_bbox_param(params)
+            if bbox is None:
+                return self.send_json(400, {"error": "bbox=south,west,north,east is required"})
+            if (bbox["latitude_ne"] - bbox["latitude_sw"]) > 0.2 or (bbox["longitude_ne"] - bbox["longitude_sw"]) > 0.3:
+                return self.send_json(400, {"error": "Zoom in: the area is limited to about 20 km."})
+            return self.send_json(200, source_matrix.build_matrix(load_intelligence_meta(), bbox))
         if path == "/api/geocode":
             # city-jump is human-paced, so geocode gets its own tighter bucket rather
             # than sharing /api/chargers' budget.

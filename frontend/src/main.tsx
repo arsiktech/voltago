@@ -5,6 +5,7 @@ import './index.css'
 import './vehicles.css'
 import App from './App'
 import { VehicleGarageProvider } from './components/VehicleGarageProvider'
+import SourceMatrix from './components/SourceMatrix'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,10 +26,15 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   })
 }
 
+// The source-coverage matrix is a separate page; the server sends /matrix to this app.
+const page = window.location.pathname.replace(/\/+$/, '') === '/matrix'
+  ? <SourceMatrix />
+  : <VehicleGarageProvider><App /></VehicleGarageProvider>
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <VehicleGarageProvider><App /></VehicleGarageProvider>
+      {page}
     </QueryClientProvider>
   </StrictMode>,
 )
