@@ -4467,7 +4467,9 @@ def apply_source_policy_exclusions_to_payload(
 # and NO live status fields — so every row is corroboration-only (location, operator,
 # connectors, power). Rows that do not match existing cheap/free evidence are dropped by
 # the same gate Madrid/Zaragoza use; a missing price is never treated as free.
-DGT_NAP_FEED_URL = "https://infocar.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml"
+# The resource URL listed on the official NAP dataset page. The same file on
+# infocar.dgt.es has answered HTTP 502 since 2026-10-21; the cache name is unchanged.
+DGT_NAP_FEED_URL = "https://nap.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml"
 DGT_NAP_CATALOG_URL = "https://nap.dgt.es/dataset/puntos-de-recarga-electrica-para-vehiculos"
 
 # Operator identity → the app a driver would actually open. Attribution/handoff ONLY —
