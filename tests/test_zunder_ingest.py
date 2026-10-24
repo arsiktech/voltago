@@ -91,6 +91,43 @@ class ZunderIngestTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)  # stops at the first rate-limit page, within the budget of 5
         self.assertEqual(len(records), 12)  # every active site keeps its map pin
 
+    def test_counts_carry_the_detail_clock_not_the_map_clock(self) -> None:
+        page = ing.FetchArtifact(body=PAGE.encode(), url=ing.ZUNDER_MAP_URL, cache_name="p",
+                                 fetched_at="2026-10-24T10:00:00Z", age_seconds=0, hit=False, fallback=False, stale=False)
+        details = {"4": dict(DETAILS["4"], _fetched_at="2026-09-20T08:00:00Z", _cache_fallback=True)}
+        site = next(row for row in ing.parse_zunder_sites(ing.parse_zunder_markers(PAGE), details, source_artifact=page)
+                    if row["raw"]["zunder_location_id"] == "4")
+        self.assertIn("at 2026-09-20 08:00 UTC", site["sources"][0]["evidence"])
+        self.assertEqual(site["source_fetched_at"], "2026-09-20T08:00:00Z")
+        self.assertTrue(site["sources"][0]["source_cache_fallback"])
+
+    def test_a_rate_limit_absorbed_by_the_cache_fallback_stops_requests(self) -> None:
+        import tempfile
+        many = "".join(marker(100 + i, 40.0 + i / 100, -3.0, f"Site {i}", "icono-marino") for i in range(4))
+        page = ing.FetchArtifact(body=many.encode(), url=ing.ZUNDER_MAP_URL, cache_name="p", fetched_at="2026-10-24T00:00:00Z",
+                                 age_seconds=0, hit=False, fallback=False, stale=False)
+        network = []
+
+        def fetch(url, cache_name, ttl_hours=24, **kwargs):
+            if url == ing.ZUNDER_MAP_URL:
+                return page
+            if ttl_hours != float("inf"):
+                network.append(url)  # a request was allowed; the 429 falls back to the expired copy
+            return ing.FetchArtifact(**{**page.__dict__, "body": b'{"status": {"name": "Activo"}, "connectors": []}',
+                                        "fallback": ttl_hours != float("inf"), "error": "HTTPError"})
+
+        records: list = []
+        with tempfile.TemporaryDirectory() as tmp, patch.object(ing, "CACHE", Path(tmp)), \
+             patch.object(ing, "cached_fetch", side_effect=fetch), patch.object(ing.time, "sleep"):
+            for i in range(4):  # expired copies exist for every site
+                path = Path(tmp) / f"zunder_location_{100 + i}.json"
+                path.write_text("{}")
+                import os
+                os.utime(path, (0, 0))
+            ing.source_zunder(records)
+        self.assertEqual(len(network), 1)
+        self.assertEqual(len(records), 4)
+
     def test_collection_stops_when_the_owner_grant_is_removed(self) -> None:
         records: list = []
         with patch.object(ing, "SOURCE_POLICY_EXCLUSIONS", {"granted_reuse": []}), \

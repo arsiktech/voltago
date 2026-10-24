@@ -5097,8 +5097,10 @@ def parse_zunder_sites(
             labels.add(label)
         if sum(connector["count"] for connector in connectors) != ports:
             connectors = []  # partly typed: keep labels and port count, no partial inventory
+        detail_fetched = str(detail.get("_fetched_at") or "")
+        detail_clock = detail_fetched[:16].replace("T", " ") + " UTC" if detail_fetched else fetched
         if detail:
-            status_text = (f"{available} available, {in_use} in use, {unavailable} unavailable connectors at {fetched}. "
+            status_text = (f"{available} available, {in_use} in use, {unavailable} unavailable connectors at {detail_clock}. "
                            "Those counts have no source timestamp and are not live availability.")
         else:
             status_text = "Connector detail was not available at this refresh."
@@ -5130,6 +5132,13 @@ def parse_zunder_sites(
             port_count=ports or None,
             source_artifact=source_artifact,
         )
+        if out and out[-1]["raw"].get("zunder_location_id") == site["id"] and detail_fetched:
+            # Record freshness is the older of the map page and the detail it used.
+            if detail_fetched < str(out[-1].get("source_fetched_at") or detail_fetched):
+                out[-1]["source_fetched_at"] = detail_fetched
+            out[-1]["sources"][0]["detail_fetched_at"] = detail_fetched
+            if detail.get("_cache_fallback"):
+                out[-1]["sources"][0]["source_cache_fallback"] = True
         if out and out[-1]["raw"].get("zunder_location_id") == site["id"]:
             out[-1]["sources"][0].update(
                 attribution="Zunder (Grupo Easycharger)",
@@ -5164,7 +5173,16 @@ def source_zunder(records: List[Dict[str, Any]]) -> None:
             artifact = cached_fetch(ZUNDER_DETAIL_URL + site["id"], cache_name,
                                     ttl_hours=ZUNDER_DETAIL_TTL_HOURS if allow_network or fresh else float("inf"),
                                     timeout=30)
-            details[site["id"]] = json.loads(artifact.decode("utf-8"))
+            detail = json.loads(artifact.decode("utf-8"))
+            if isinstance(detail, dict):
+                # Keep the detail's own clock: a cached copy can be weeks older than the map.
+                detail["_fetched_at"] = artifact.fetched_at
+                detail["_cache_fallback"] = artifact.fallback
+                details[site["id"]] = detail
+            if artifact.fallback:
+                # cached_fetch absorbed a failed request (a 429 among them) and served the old
+                # copy; stop asking for this refresh either way.
+                throttled = True
         except ValueError:
             # A 429 page or other non-JSON body: drop it and stop asking for this refresh.
             path.unlink(missing_ok=True)
