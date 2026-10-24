@@ -83,6 +83,17 @@ class MapaReveRefusalTests(unittest.TestCase):
             self.assertEqual(self.fetch(), {"data": [], "pagination": {}})
         self.assertFalse(server.mapareve_block_status()["refused"])
 
+    def test_a_page_already_in_flight_cannot_clear_a_new_refusal(self) -> None:
+        in_flight = server._mapareve_block_admit()  # admitted before any refusal
+        self.assertFalse(in_flight)
+        with patch("server.public_get_urlopen", side_effect=refused()):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.fetch()
+        server._mapareve_block_record(False, in_flight)  # the older page then succeeds
+        self.assertTrue(server.mapareve_block_status()["refused"])
+        with self.assertRaises(server.MapaReveRefused):
+            self.fetch()
+
     def test_refused_probe_doubles_the_pause_up_to_the_maximum(self) -> None:
         pauses = []
         with patch("server.public_get_urlopen", side_effect=refused()):
