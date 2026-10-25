@@ -1174,16 +1174,6 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["station_source"] = station_source_for(item)
     attach_google_maps_navigation(item)
     item["verification"] = verification_profile(item, live=live)
-    if item["verification"].get("price_verified") is not True or item.get("cache_stale"):
-        item["current_price_min"] = None
-        if item.get("pricing"):
-            # Preserve the published amount and schedule, not a claim it applies now.
-            for window in item["pricing"]:
-                window["is_currently_valid"] = False
-            item["price_window_status"].update({
-                "current_price_min": None, "current_windows": [],
-                "is_currently_within_standard": False, "label": listed_price_label(item),
-            })
     item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
     if item["tesla_ok"] is None:

@@ -46,13 +46,12 @@ rule, update the shared cases and check all affected clients; a presentation lab
 must not independently promote a station to route-ready.
 
 Published directory/community tariffs remain source claims, even if their amount
-is zero or their schedule covers the current time. Enrichment retains the amount
-and schedule but clears `current_price_min`, current windows and current-validity
-flags unless charging-price verification is affirmative and the row is not stale.
-Their labels say `Listed` with the evidence tier and source year when available.
-Official price authority is separate from live occupancy; status overlays cannot
-promote inherited price claims. Web/iOS price and vehicle-cost views keep their
-existing explicit price-verification gates.
+is zero. Enrichment keeps them as they are, so the apps' free and price filters
+still show listed free leads as leads. Agent-facing (MCP) answers add the label:
+without affirmative, non-stale charging-price verification, `price_now_eur_kwh`
+is null and the label says `Listed` with the evidence tier and source year.
+Status overlays cannot promote inherited price claims. Web/iOS price and
+vehicle-cost views keep their existing explicit price-verification gates.
 
 ## Retired station IDs
 

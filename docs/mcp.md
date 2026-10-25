@@ -95,7 +95,7 @@ native currency and units; the euro price filter does not perform FX conversion.
 | `evidence.route_ready_now` | The strictest check: live, not stale, decision `go` and a free connector now. `available_now: true` keeps only these rows. |
 | `evidence.live_status_stale` | A live-feed status older than three hours. |
 | `price.price_now_eur_kwh` | The tariff valid now, only when charging-price evidence is verified and not stale. Directory/community amounts remain in `lowest_published_eur_kwh` with a dated `Listed` label; live occupancy alone does not verify their price. |
-| `price.is_free` | Verified free charging now. `free_only` and the euro price cap exclude unverified listed/historical prices. |
+| `price.is_free` / `price.price_verified` | `is_free` is the source's free claim; `price_verified` says whether it is a verified current price. `free_only` and the euro price cap keep listed free leads, as the apps do, and label them "current price unverified". |
 | `hardware.connectors` | Source-reported plugs, not a vehicle compatibility promise. MCP has no vehicle input: its decisions, eligibility and ordering use listed hardware without the app's implicit Tesla assumption. Confirm compatibility before routing. |
 | `excluded` | How many rows each filter removed. A filter never guesses: an unknown price, connector or power is excluded, not assumed to match. |
 

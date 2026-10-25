@@ -41,13 +41,17 @@ class StationTruthContractTests(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 row = server.enrich_station(json.loads(json.dumps(case["station"])), live=case["live"])
                 self.assertEqual(row["verification"]["price_verified"], case["expected_verified"])
-                self.assertEqual(row["current_price_min"], case["expected_current_price"])
                 self.assertEqual(server.verified_current_price(row), case["expected_current_price"])
                 if not case["expected_verified"]:
-                    self.assertTrue(row["price_label"].startswith("Listed "))
-                    self.assertFalse(row["price_window_status"]["is_currently_within_standard"])
-                    self.assertEqual(row["price_window_status"]["current_windows"], [])
-                    self.assertTrue(all(not w["is_currently_valid"] for w in row["pricing"]))
+                    self.assertTrue(server.listed_price_label(row).startswith("Listed "))
+
+    def test_listed_free_leads_stay_in_app_free_filter(self) -> None:
+        # Price authority labels a claim; it must not drop community free leads from the apps.
+        case = next(c for c in CORPUS["current_prices"] if c["id"] == "historical-community-free")
+        row = server.enrich_station(json.loads(json.dumps(case["station"])), live=False)
+        self.assertTrue(server.free_row(row))
+        self.assertIsNone(server.verified_current_price(row))
+        self.assertFalse(server.route_ready_now(row))
 
     def test_backend_route_ready_rule_executes_shared_cases(self) -> None:
         for case in CORPUS["route_ready"]:

@@ -274,7 +274,27 @@ def _row_power_kw(row: Mapping[str, Any], backend: Any) -> Optional[float]:
 
 
 def _price_now(row: Mapping[str, Any], backend: Any) -> Optional[float]:
-    return backend.verified_current_price(dict(row))
+    """Filtering price: the same listed/current price the apps filter on."""
+    if backend.station_currency(dict(row)) != "EUR":
+        return 0.0 if row.get("is_free") is True else None
+    current = backend.safe_float(row.get("current_price_min"))
+    if current is not None:
+        return current
+    if row.get("is_free") is True:
+        return 0.0
+    return backend.safe_float(row.get("price_min"))
+
+
+def _price_note(note: Any, price_verified: bool) -> Optional[str]:
+    """Without price authority, never echo a source's "now" wording as current."""
+    if note is None:
+        return None
+    text = str(note)
+    if price_verified:
+        return text
+    if re.match(r"(?i)now\b", text.strip()):
+        return "Listed by the source; the current tariff is not verified."
+    return text
 
 
 def _round(value: Any, digits: int = 2) -> Optional[float]:
@@ -308,7 +328,8 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
     row = _vehicle_neutral_row(row, backend)
     verification = row.get("verification") or {}
     decision = row["decision"]
-    current_price = _price_now(row, backend)
+    current_price = backend.verified_current_price(dict(row))
+    price_verified = current_price is not None
     is_lead = bool(row.get("lead"))
     live_verified = verification.get("live_verified") is True and not is_lead and not row.get("cache_stale")
     status_age = backend.age_minutes(backend.freshness_timestamp(row)) if live_verified else None
@@ -379,14 +400,15 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
             "note": verification.get("note"),
         },
         "price": {
-            "is_free": current_price == 0,
+            "is_free": row.get("is_free") is True,
+            "price_verified": price_verified,
             "currency": backend.station_currency(dict(row)),
             "price_native_min": _round(row.get("price_native_min"), 3),
             "native_unit": (row.get("tariff") or {}).get("unit") or row.get("price_native_unit"),
             "price_now_eur_kwh": _round(current_price, 3),
             "lowest_published_eur_kwh": _round(backend.euro_price(dict(row)), 3),
-            "label": row.get("price_label"),
-            "note": charge_claim.get("summary") or row.get("free_condition"),
+            "label": row.get("price_label") if price_verified else backend.listed_price_label(dict(row)),
+            "note": _price_note(charge_claim.get("summary") or row.get("free_condition"), price_verified),
             "source": charge_claim.get("source"),
             "source_url": charge_claim.get("url"),
         },
@@ -418,7 +440,8 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
         }
     if detail:
         view["price"]["windows"] = [
-            {k: window.get(k) for k in ("label", "price", "unit", "valid_from", "valid_until", "days", "is_currently_valid") if window.get(k) is not None}
+            {**{k: window.get(k) for k in ("label", "price", "unit", "valid_from", "valid_until", "days", "is_currently_valid") if window.get(k) is not None},
+             **({} if price_verified else {"is_currently_valid": False})}
             for window in row.get("pricing") or []
             if isinstance(window, dict)
         ][:24]
@@ -446,12 +469,12 @@ def _summary_line(index: int, view: Mapping[str, Any]) -> str:
     decision = view["decision"]
     parts.append(str(decision.get("label") or decision.get("level")))
     price = view["price"]
-    if price["is_free"]:
-        parts.append("free")
-    elif price.get("price_now_eur_kwh") is not None:
-        parts.append(f"€{price['price_now_eur_kwh']:.2f}/kWh now")
+    if price.get("price_now_eur_kwh") is not None:
+        parts.append("free now" if price["price_now_eur_kwh"] == 0 else f"€{price['price_now_eur_kwh']:.2f}/kWh now")
     elif str(price.get("label") or "").startswith("Listed "):
-        parts.append(str(price["label"]) + "; current price unknown")
+        parts.append(str(price["label"]) + "; current price unverified")
+    elif price["is_free"]:
+        parts.append("listed free; current price unverified")
     else:
         parts.append("price unknown")
     evidence = view["evidence"]
@@ -539,7 +562,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
         if distance is None or distance > radius:
             excluded["outside_radius"] += 1
             continue
-        if free_only and _price_now(row, backend) != 0:
+        if free_only and not backend.free_row(row):
             excluded["not_free"] += 1
             continue
         if max_price is not None:
