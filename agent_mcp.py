@@ -274,14 +274,7 @@ def _row_power_kw(row: Mapping[str, Any], backend: Any) -> Optional[float]:
 
 
 def _price_now(row: Mapping[str, Any], backend: Any) -> Optional[float]:
-    if backend.station_currency(dict(row)) != "EUR":
-        return 0.0 if row.get("is_free") is True else None
-    current = backend.safe_float(row.get("current_price_min"))
-    if current is not None:
-        return current
-    if row.get("is_free") is True:
-        return 0.0
-    return backend.safe_float(row.get("price_min"))
+    return backend.verified_current_price(dict(row))
 
 
 def _round(value: Any, digits: int = 2) -> Optional[float]:
@@ -292,10 +285,30 @@ def _round(value: Any, digits: int = 2) -> Optional[float]:
     return round(number, digits) if math.isfinite(number) else None
 
 
+def _vehicle_neutral_row(row: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
+    """Use the same evidence checks without an implicit vehicle, on a private copy."""
+    item = dict(row)
+    verification = row.get("verification") or {}
+    live = verification.get("live_verified") is True and not row.get("lead") and not row.get("cache_stale")
+    item["decision"] = backend.decision_for(item, live=live, vehicle_neutral=True)
+    labels = list(dict.fromkeys(str(c.get("label") or c.get("type"))
+                                for c in row.get("connectors") or [] if isinstance(c, dict)
+                                and (c.get("label") or c.get("type"))))
+    labels = labels or list(row.get("connector_labels") or [])
+    plugs = f"Source lists {', '.join(labels)}." if labels else "Connector types are unconfirmed."
+    item["decision"]["reason"] += f" {plugs} Confirm vehicle compatibility."
+    # Re-evaluation must not undo a community downgrade applied by the app path.
+    backend.community_store.apply_community_evidence(item, row.get("community"))
+    item["recommendation_score"] = backend.recommendation_score(item)
+    return item
+
+
 def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) -> Dict[str, Any]:
     """Agent-facing projection of an enriched row. Copies evidence; never upgrades it."""
+    row = _vehicle_neutral_row(row, backend)
     verification = row.get("verification") or {}
-    decision = row.get("decision") or {}
+    decision = row["decision"]
+    current_price = _price_now(row, backend)
     is_lead = bool(row.get("lead"))
     live_verified = verification.get("live_verified") is True and not is_lead and not row.get("cache_stale")
     status_age = backend.age_minutes(backend.freshness_timestamp(row)) if live_verified else None
@@ -366,11 +379,11 @@ def charger_view(row: Mapping[str, Any], backend: Any, *, detail: bool = False) 
             "note": verification.get("note"),
         },
         "price": {
-            "is_free": row.get("is_free") is True,
+            "is_free": current_price == 0,
             "currency": backend.station_currency(dict(row)),
             "price_native_min": _round(row.get("price_native_min"), 3),
             "native_unit": (row.get("tariff") or {}).get("unit") or row.get("price_native_unit"),
-            "price_now_eur_kwh": _round(backend.euro_price(dict(row), "current_price_min"), 3),
+            "price_now_eur_kwh": _round(current_price, 3),
             "lowest_published_eur_kwh": _round(backend.euro_price(dict(row)), 3),
             "label": row.get("price_label"),
             "note": charge_claim.get("summary") or row.get("free_condition"),
@@ -437,6 +450,8 @@ def _summary_line(index: int, view: Mapping[str, Any]) -> str:
         parts.append("free")
     elif price.get("price_now_eur_kwh") is not None:
         parts.append(f"€{price['price_now_eur_kwh']:.2f}/kWh now")
+    elif str(price.get("label") or "").startswith("Listed "):
+        parts.append(str(price["label"]) + "; current price unknown")
     else:
         parts.append("price unknown")
     evidence = view["evidence"]
@@ -512,7 +527,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
         raise RuntimeError(f"charger search returned HTTP {status}")
     stations = payload.get("stations") or []
     backend.attach_community_rows(stations)
-    rows = list(stations) + list(payload.get("leads") or [])
+    rows = [_vehicle_neutral_row(row, backend) for row in list(stations) + list(payload.get("leads") or [])]
 
     want_connector = _connector_key(connector) if connector else None
     excluded = {"outside_radius": 0, "not_free": 0, "price_unknown": 0, "over_price": 0,
@@ -524,7 +539,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
         if distance is None or distance > radius:
             excluded["outside_radius"] += 1
             continue
-        if free_only and not backend.free_row(row):
+        if free_only and _price_now(row, backend) != 0:
             excluded["not_free"] += 1
             continue
         if max_price is not None:
@@ -740,7 +755,14 @@ def get_data_status(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
                     "source_manifest": health.get("source_manifest") or {},
                 },
                 "live_sources": {
-                    name: {k: info.get(k) for k in ("name", "status", "has_payload", "age_seconds", "fresh", "stale", "error", "policy") if k in info}
+                    name: {
+                        **{k: info.get(k) for k in ("name", "status", "policy") if k in info},
+                        "has_payload": info.get("has_payload") is True,
+                        "age_seconds": info.get("age_seconds"),
+                        "fresh": info.get("fresh") is True,
+                        "stale": info.get("stale") is True,
+                        "error": info.get("error"),
+                    }
                     for name, info in live_cache.items()
                     if isinstance(info, dict)
                 },
@@ -762,6 +784,16 @@ def get_data_status(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
         f"{dataset.get('deduplicated_chargers')} chargers ({dataset.get('map_eligible')} map-eligible). "
         "Live availability comes only from live feeds; everything else is labelled by evidence tier."
     )
+    live_lines = []
+    for name, source in result["live_sources"].items():
+        label = {"mapareve": "MapaREVE", "gaia": "Gaia", "endolla": "Endolla", "spirii": "Spirii"}.get(name, source.get("name") or name)
+        state = "fresh" if source["fresh"] else "stale" if source["stale"] else "unavailable"
+        age = source["age_seconds"]
+        age_text = f" {age:g} s" if age is not None else ""
+        error_text = f" ({source['error']})" if source["error"] else ""
+        live_lines.append(f"{label} {state}{age_text}{error_text}")
+    if live_lines:
+        text += "\nLive: " + ", ".join(live_lines) + "."
     return {"text": text, "structured": result}
 
 

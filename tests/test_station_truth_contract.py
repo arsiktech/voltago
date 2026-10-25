@@ -36,6 +36,19 @@ class StationTruthContractTests(unittest.TestCase):
                 self.assertEqual(actual["kind"], case["expected"]["kind"])
                 self.assertEqual(actual["quality"], case["expected"]["quality"])
 
+    def test_current_price_authority_executes_shared_cases(self) -> None:
+        for case in CORPUS["current_prices"]:
+            with self.subTest(case=case["id"]):
+                row = server.enrich_station(json.loads(json.dumps(case["station"])), live=case["live"])
+                self.assertEqual(row["verification"]["price_verified"], case["expected_verified"])
+                self.assertEqual(row["current_price_min"], case["expected_current_price"])
+                self.assertEqual(server.verified_current_price(row), case["expected_current_price"])
+                if not case["expected_verified"]:
+                    self.assertTrue(row["price_label"].startswith("Listed "))
+                    self.assertFalse(row["price_window_status"]["is_currently_within_standard"])
+                    self.assertEqual(row["price_window_status"]["current_windows"], [])
+                    self.assertTrue(all(not w["is_currently_valid"] for w in row["pricing"]))
+
     def test_backend_route_ready_rule_executes_shared_cases(self) -> None:
         for case in CORPUS["route_ready"]:
             with self.subTest(case=case["id"]):

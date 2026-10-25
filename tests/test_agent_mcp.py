@@ -488,6 +488,20 @@ class AgentMcpHttpTests(unittest.TestCase):
         self.assertNotIn("Tesla", json.dumps(view["decision"]))
         self.assertIn("compatibility", view["decision"]["reason"])
 
+    def test_vehicleless_live_chademo_has_the_same_eligibility_as_ccs(self) -> None:
+        chademo = live_row("near-chademo", lat=39.4701, lon=-0.37, labels=["CHAdeMO"])
+        chademo["tesla_ok"] = False
+        self.upstream = [chademo, live_row("far-ccs", lat=39.49, lon=-0.37)]
+        found = self.find(available_now=True)
+        self.assertEqual([v["id"] for v in found["chargers"]], ["near-chademo", "far-ccs"])
+        self.assertTrue(all(v["evidence"]["route_ready_now"] for v in found["chargers"]))
+        detail = self.call("get_charger", {"id": "near-chademo", "lat": ORIGIN_LAT, "lon": ORIGIN_LON})
+        self.assertEqual(detail["structuredContent"]["decision"]["level"], "go")
+        _, rest, _ = self.http("GET", f"/api/chargers?lat={ORIGIN_LAT}&lon={ORIGIN_LON}&radius_km=5&max_price=5")
+        assert isinstance(rest, dict)
+        app = next(v for v in rest["stations"] if v["id"] == "near-chademo")
+        self.assertEqual(app["decision"]["label"], "Not Tesla-safe")
+
     def test_data_status_live_sources_have_uniform_fields_and_text(self) -> None:
         fields = {"age_seconds", "fresh", "stale", "error", "has_payload"}
         health = {"live_cache": {
@@ -520,6 +534,37 @@ class AgentMcpHttpTests(unittest.TestCase):
 
 
 class AgentMcpUnitTests(unittest.TestCase):
+    def test_gaia_failed_fetch_cannot_report_fresh_status(self) -> None:
+        with patch.dict(server.GAIA_CACHE, {}, clear=True), \
+                patch("server.GAIA_STATION_SEEDS", [deepcopy(server.GAIA_STATION_SEEDS[0])]), \
+                patch("server.gaia_urls_for_seed", return_value=[server.GAIA_DEFAULT_JUMP_URL]), \
+                patch("server.fetch_gaia_public_html", side_effect=TimeoutError("offline fixture")), \
+                patch.dict(agent_mcp._STATUS_CACHE, {"value": None, "ts": 0}):
+            server.fetch_gaia_live(force=True)
+            result = agent_mcp.get_data_status({}, server)
+        gaia = result["structured"]["live_sources"]["gaia"]
+        self.assertFalse(gaia["fresh"])
+        self.assertIn("TimeoutError", gaia["error"])
+        self.assertNotIn("Gaia fresh", result["text"])
+        self.assertIn("TimeoutError", result["text"])
+
+    def test_neutral_decisions_keep_outages_and_community_downgrades(self) -> None:
+        row = server.enrich_station(live_row("reported-failure", lat=ORIGIN_LAT, lon=ORIGIN_LON), live=True)
+        summary = {"recent_failure": True, "recent_failure_count": 2}
+        community.apply_community_evidence(row, summary)
+        original = deepcopy(row)
+        neutral = agent_mcp._vehicle_neutral_row(row, server)
+        self.assertEqual(neutral["decision"]["level"], "check")
+        self.assertFalse(server.route_ready_now(neutral))
+        self.assertEqual(row, original)
+        row["source_reported_unavailable"] = {"summary": "Source reports closed"}
+        self.assertEqual(agent_mcp._vehicle_neutral_row(row, server)["decision"]["level"], "avoid")
+        row.pop("source_reported_unavailable")
+        row.pop("community")
+        row["connectors"] = []
+        row["connector_labels"] = []
+        self.assertNotEqual(agent_mcp._vehicle_neutral_row(row, server)["decision"]["level"], "go")
+
     def test_rate_limited_tool_call_is_a_tool_error(self) -> None:
         status, payload = agent_mcp.handle_message(
             {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_data_status", "arguments": {}}},

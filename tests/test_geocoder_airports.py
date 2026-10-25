@@ -35,10 +35,10 @@ class AirportGeocoderTests(unittest.TestCase):
                 with self.subTest(query=query):
                     lat, lon, label, _ = agent_mcp._resolve_origin({"place": query}, server)
                     if query == "Barcelona airport":
-                        self.assertIn("Barcelona-el Prat", label)
+                        self.assertIn("Barcelona-el Prat", label or "")
                         self.assertAlmostEqual(lat, 41.3015291, delta=0.1)
                     else:
-                        self.assertIn("Manises", label)
+                        self.assertIn("Manises", label or "")
                         self.assertAlmostEqual(lat, 39.4881796, places=5)
                         self.assertAlmostEqual(lon, -0.4813204, places=5)
         self.assertTrue(all(int(p["limit"][0]) > 1 for p in self.requests))

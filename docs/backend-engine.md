@@ -45,6 +45,15 @@ exercises these boundaries in Python, TypeScript, and Swift. When changing a tru
 rule, update the shared cases and check all affected clients; a presentation label
 must not independently promote a station to route-ready.
 
+Published directory/community tariffs remain source claims, even if their amount
+is zero or their schedule covers the current time. Enrichment retains the amount
+and schedule but clears `current_price_min`, current windows and current-validity
+flags unless charging-price verification is affirmative and the row is not stale.
+Their labels say `Listed` with the evidence tier and source year when available.
+Official price authority is separate from live occupancy; status overlays cannot
+promote inherited price claims. Web/iOS price and vehicle-cost views keep their
+existing explicit price-verification gates.
+
 ## Retired station IDs
 
 The refresh gate (`scripts/qa_ingestion_delta.py`) requires every baseline station ID to
