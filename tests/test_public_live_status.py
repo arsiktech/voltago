@@ -171,6 +171,34 @@ class JoinAndStatusTests(unittest.TestCase):
 
 
 class CacheTests(unittest.TestCase):
+    def test_health_reports_fresh_stale_failed_and_empty_without_fetch(self):
+        for feed in ('endolla', 'spirii'):
+            obj = cache(feed)
+            assert NOW is not None
+            with self.subTest(feed=feed), patch.object(feeds.time, 'time', return_value=NOW + 42), \
+                    patch.object(feeds, 'fetch_document', side_effect=AssertionError('health must not fetch')):
+                state = obj.health()
+                self.assertEqual(state['age_seconds'], 42)
+                self.assertTrue(state['fresh'])
+                self.assertFalse(state['stale'])
+                self.assertTrue(state['has_payload'])
+                self.assertIsNone(state['error'])
+                with patch.object(feeds.time, 'time', return_value=NOW + 400):
+                    old = obj.health()
+                self.assertFalse(old['fresh'])
+                self.assertTrue(old['stale'])
+                self.assertEqual(old['age_seconds'], 400)
+                obj.error = 'TimeoutError'
+                failed = obj.health()
+                self.assertFalse(failed['fresh'])
+                self.assertTrue(failed['stale'])
+                self.assertEqual(failed['error'], 'TimeoutError')
+                empty = feeds.FeedCache(feed).health()
+                self.assertIsNone(empty['age_seconds'])
+                self.assertFalse(empty['has_payload'])
+                self.assertFalse(empty['fresh'])
+                self.assertFalse(empty['stale'])
+
     def test_import_and_health_do_not_fetch(self):
         with patch.object(feeds, 'fetch_document', side_effect=AssertionError('network')):
             self.assertEqual(set(feeds.health()), {'endolla', 'spirii'})

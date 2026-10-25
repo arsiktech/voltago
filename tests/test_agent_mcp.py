@@ -439,6 +439,91 @@ class AgentMcpHttpTests(unittest.TestCase):
         self.assertTrue(result["isError"])
         self.assertIn("lat", result["content"][0]["text"])
 
+    def test_historical_community_price_is_listed_not_current(self) -> None:
+        row = lead_row("old-community-free", lat=39.471, lon=-0.37, price=0,
+                       labels=["CCS2"], reliability="community-verified")
+        row["raw"] = {"LastVerified": "2017-04-12T00:00:00Z"}
+        row = server.enrich_station(row, live=False)
+        self.leads = [row]
+        for tool, args in (("find_chargers", {"lat": ORIGIN_LAT, "lon": ORIGIN_LON}),
+                           ("get_charger", {"id": row["id"]})):
+            with self.subTest(tool=tool), patch("agent_mcp._stored_row", return_value=deepcopy(row)):
+                result = self.call(tool, args)
+                view = result["structuredContent"]
+                if tool == "find_chargers":
+                    view = view["chargers"][0]
+                self.assertIsNone(view["price"]["price_now_eur_kwh"])
+                self.assertFalse(view["price"]["is_free"])
+                self.assertEqual(view["price"]["lowest_published_eur_kwh"], 0)
+                self.assertIn("Listed Free", view["price"]["label"])
+                self.assertIn("2017", view["price"]["label"])
+                self.assertIn("Listed Free", result["content"][0]["text"])
+                self.assertNotIn("Now Free", json.dumps(result))
+                self.assertFalse(view["evidence"]["route_ready_now"])
+        self.assertEqual(self.find(free_only=True)["count"], 0)
+        self.assertEqual(self.find(max_price_eur_kwh=0.25)["count"], 0)
+
+    def test_vehicleless_decisions_are_neutral_without_changing_app_decisions(self) -> None:
+        row = lead_row("chademo-only", lat=39.471, lon=-0.37, price=0,
+                       labels=["CHAdeMO"])
+        self.assertEqual(row["decision"]["label"], "Not Tesla-safe")
+        original = deepcopy(row)
+        self.leads = [row]
+        for tool, args in (("find_chargers", {"lat": ORIGIN_LAT, "lon": ORIGIN_LON}),
+                           ("get_charger", {"id": row["id"]})):
+            with self.subTest(tool=tool), patch("agent_mcp._stored_row", return_value=row):
+                result = self.call(tool, args)
+                view = result["structuredContent"]
+                if tool == "find_chargers":
+                    view = view["chargers"][0]
+                self.assertNotIn("Tesla", json.dumps(view["decision"]))
+                self.assertNotEqual(view["decision"]["level"], "avoid")
+                self.assertIn("CHAdeMO", view["decision"]["reason"])
+                self.assertNotIn("Not Tesla-safe", result["content"][0]["text"])
+        self.assertEqual(row, original)
+
+    def test_positive_vehicleless_decision_does_not_claim_tesla_compatibility(self) -> None:
+        self.upstream = [live_row("live-ccs", lat=39.471, lon=-0.37)]
+        view = self.find()["chargers"][0]
+        self.assertNotIn("Tesla", json.dumps(view["decision"]))
+        self.assertIn("compatibility", view["decision"]["reason"])
+
+    def test_vehicleless_live_chademo_has_the_same_eligibility_as_ccs(self) -> None:
+        chademo = live_row("near-chademo", lat=39.4701, lon=-0.37, labels=["CHAdeMO"])
+        chademo["tesla_ok"] = False
+        self.upstream = [chademo, live_row("far-ccs", lat=39.49, lon=-0.37)]
+        found = self.find(available_now=True)
+        self.assertEqual([v["id"] for v in found["chargers"]], ["near-chademo", "far-ccs"])
+        self.assertTrue(all(v["evidence"]["route_ready_now"] for v in found["chargers"]))
+        detail = self.call("get_charger", {"id": "near-chademo", "lat": ORIGIN_LAT, "lon": ORIGIN_LON})
+        self.assertEqual(detail["structuredContent"]["decision"]["level"], "go")
+        _, rest, _ = self.http("GET", f"/api/chargers?lat={ORIGIN_LAT}&lon={ORIGIN_LON}&radius_km=5&max_price=5")
+        assert isinstance(rest, dict)
+        app = next(v for v in rest["stations"] if v["id"] == "near-chademo")
+        self.assertEqual(app["decision"]["label"], "Not Tesla-safe")
+
+    def test_data_status_live_sources_have_uniform_fields_and_text(self) -> None:
+        fields = {"age_seconds", "fresh", "stale", "error", "has_payload"}
+        health = {"live_cache": {
+            "endolla": {"name": "endolla", "has_payload": True, "age_seconds": 42,
+                        "fresh": True, "stale": False, "error": None},
+            "spirii": {"name": "spirii", "has_payload": True, "age_seconds": 301,
+                       "fresh": False, "stale": True, "error": None},
+            "gaia": {"name": "Gaia", "has_payload": False, "error": None},
+            "mapareve": {"name": "MapaREVE", "has_payload": False, "fresh": False,
+                         "stale": False, "error": "MapaReveRefused"},
+        }}
+        with patch.dict(agent_mcp._STATUS_CACHE, {"value": None, "ts": 0}), \
+                patch("server.source_health_summary", return_value=health):
+            result = self.call("get_data_status", {})
+        sources = result["structuredContent"]["live_sources"]
+        for name, state in sources.items():
+            self.assertTrue(fields <= set(state), name)
+        text = result["content"][0]["text"]
+        for label in ("Live:", "Endolla fresh 42 s", "Spirii stale 301 s", "Gaia unavailable",
+                      "MapaREVE unavailable (MapaReveRefused)"):
+            self.assertIn(label, text)
+
     def test_data_status_reports_dataset_and_live_cache(self) -> None:
         result = self.call("get_data_status", {})
         status = result["structuredContent"]
@@ -449,6 +534,37 @@ class AgentMcpHttpTests(unittest.TestCase):
 
 
 class AgentMcpUnitTests(unittest.TestCase):
+    def test_gaia_failed_fetch_cannot_report_fresh_status(self) -> None:
+        with patch.dict(server.GAIA_CACHE, {}, clear=True), \
+                patch("server.GAIA_STATION_SEEDS", [deepcopy(server.GAIA_STATION_SEEDS[0])]), \
+                patch("server.gaia_urls_for_seed", return_value=[server.GAIA_DEFAULT_JUMP_URL]), \
+                patch("server.fetch_gaia_public_html", side_effect=TimeoutError("offline fixture")), \
+                patch.dict(agent_mcp._STATUS_CACHE, {"value": None, "ts": 0}):
+            server.fetch_gaia_live(force=True)
+            result = agent_mcp.get_data_status({}, server)
+        gaia = result["structured"]["live_sources"]["gaia"]
+        self.assertFalse(gaia["fresh"])
+        self.assertIn("TimeoutError", gaia["error"])
+        self.assertNotIn("Gaia fresh", result["text"])
+        self.assertIn("TimeoutError", result["text"])
+
+    def test_neutral_decisions_keep_outages_and_community_downgrades(self) -> None:
+        row = server.enrich_station(live_row("reported-failure", lat=ORIGIN_LAT, lon=ORIGIN_LON), live=True)
+        summary = {"recent_failure": True, "recent_failure_count": 2}
+        community.apply_community_evidence(row, summary)
+        original = deepcopy(row)
+        neutral = agent_mcp._vehicle_neutral_row(row, server)
+        self.assertEqual(neutral["decision"]["level"], "check")
+        self.assertFalse(server.route_ready_now(neutral))
+        self.assertEqual(row, original)
+        row["source_reported_unavailable"] = {"summary": "Source reports closed"}
+        self.assertEqual(agent_mcp._vehicle_neutral_row(row, server)["decision"]["level"], "avoid")
+        row.pop("source_reported_unavailable")
+        row.pop("community")
+        row["connectors"] = []
+        row["connector_labels"] = []
+        self.assertNotEqual(agent_mcp._vehicle_neutral_row(row, server)["decision"]["level"], "go")
+
     def test_rate_limited_tool_call_is_a_tool_error(self) -> None:
         status, payload = agent_mcp.handle_message(
             {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "get_data_status", "arguments": {}}},

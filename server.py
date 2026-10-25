@@ -947,7 +947,7 @@ def tesla_compatibility(item: Dict[str, Any]) -> Optional[bool]:
     return False if known else None
 
 
-def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
+def decision_for(item: Dict[str, Any], *, live: bool, vehicle_neutral: bool = False) -> Dict[str, str]:
     # The source itself reports the charger out of service: keep it on the map so drivers
     # know it exists, but never offer it as a destination, whatever its price or live data.
     outage = item.get("source_reported_unavailable")
@@ -964,7 +964,11 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
     price_ok_now = price_ok and (price_window_status.get("is_currently_within_standard", True) if has_time_pricing else True)
     next_window = price_window_status.get("next_matching_window") or {}
     window_label = next_window.get("label") or price_window_status.get("label")
-    tesla_ok = item.get("tesla_ok") is True
+    labels = list(item.get("connector_labels") or [])
+    labels += [c.get("label") or c.get("type") for c in item.get("connectors") or [] if isinstance(c, dict)]
+    known_connectors = [str(label) for label in labels if label and "unspecified" not in str(label).lower()
+                        and str(label).lower() not in {"unknown", "other"}]
+    connector_ok = bool(known_connectors) if vehicle_neutral else item.get("tesla_ok") is True
     available = bool(item.get("available", 0) > 0 or item.get("status") == "AVAILABLE")
     stale_mins = age_minutes(freshness_timestamp(item))
     stale_live = live and stale_mins is not None and stale_mins > 180
@@ -975,19 +979,22 @@ def decision_for(item: Dict[str, Any], *, live: bool) -> Dict[str, str]:
         if price_ok and (item.get("verification") or {}).get("price_verified") is not True:
             return {"level": "verify", "label": "Verify price", "reason": "Live status does not verify the inherited charging-price claim. Confirm the tariff with the operator."}
 
-    if live and price_ok and not price_ok_now and tesla_ok:
+    if live and price_ok and not price_ok_now and connector_ok:
         reason = f"Matches the price standard only in a tariff window ({window_label}); keep it on the map, but verify current app price before routing now."
         return {"level": "check", "label": "Cheap later", "reason": reason}
-    if live and price_ok_now and tesla_ok and available and not stale_live and parking_risky:
+    if live and price_ok_now and connector_ok and available and not stale_live and parking_risky:
         return {"level": "check", "label": "Check parking", "reason": f"Live cheap/free charger, but source indicates {parking.get('label', 'paid parking').lower()}; open source before routing."}
-    if live and price_ok_now and tesla_ok and available and not stale_live:
-        reason = "Live status, Tesla-compatible connector, and price is within the cap right now."
+    if live and price_ok_now and connector_ok and available and not stale_live:
+        reason = ("Live status and price is within the cap right now." if vehicle_neutral else
+                  "Live status, Tesla-compatible connector, and price is within the cap right now.")
         return {"level": "go", "label": "Go now", "reason": reason}
-    if live and price_ok_now and tesla_ok and available:
+    if live and price_ok_now and connector_ok and available:
         return {"level": "check", "label": "Check first", "reason": "Live feed is cheap and available, but the last station timestamp is old."}
-    if live and price_ok_now and tesla_ok:
-        return {"level": "check", "label": "Check first", "reason": "Cheap and Tesla-compatible, but no currently available bay is confirmed."}
-    if item.get("tesla_ok") is False:
+    if live and price_ok_now and connector_ok:
+        reason = ("Cheap with listed connectors, but no currently available bay is confirmed." if vehicle_neutral else
+                  "Cheap and Tesla-compatible, but no currently available bay is confirmed.")
+        return {"level": "check", "label": "Check first", "reason": reason}
+    if not vehicle_neutral and item.get("tesla_ok") is False:
         return {"level": "avoid", "label": "Not Tesla-safe", "reason": "The source lists only connectors a Tesla can't use (no CCS2, Type 2 or Tesla)."}
     if not price_ok:
         # Paid and unpriced chargers stay on the map as known places, ranked after every
@@ -1113,6 +1120,30 @@ def euro_price(item: Dict[str, Any], field: str = "price_min") -> Optional[float
     return value if station_currency(item) == "EUR" or value == 0 else None
 
 
+def verified_current_price(item: Dict[str, Any]) -> Optional[float]:
+    """A listed tariff is not a current price without separate price authority."""
+    if (item.get("verification") or {}).get("price_verified") is not True or item.get("cache_stale"):
+        return None
+    return euro_price(item, "current_price_min")
+
+
+def listed_price_label(item: Dict[str, Any]) -> str:
+    verification = item.get("verification") or {}
+    tier = verification.get("level") or "unverified"
+    if tier == "live" and verification.get("price_verified") is not True:
+        tier = "unverified price"
+    claim = item.get("charge_claim") or {}
+    raw = item.get("raw") or {}
+    updated = (claim.get("source_updated_at") or raw.get("LastVerified") or raw.get("DateLastVerified")
+               or raw.get("DateLastStatusUpdate") or item.get("source_updated_at")
+               or item.get("source_last_updated") or item.get("last_seen"))
+    year = re.match(r"\d{4}", str(updated or ""))
+    provenance = f"{tier}, {year.group()}" if year else tier
+    price = euro_price(item)
+    value = "Free" if item.get("is_free") or price == 0 else f"€{price:.2f}/kWh" if price is not None else "tariff"
+    return f"Listed {value} ({provenance})"
+
+
 def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     currency = station_currency(item)
     item["price_currency"] = currency
@@ -1143,6 +1174,16 @@ def enrich_station(item: Dict[str, Any], *, live: bool) -> Dict[str, Any]:
     item["station_source"] = station_source_for(item)
     attach_google_maps_navigation(item)
     item["verification"] = verification_profile(item, live=live)
+    if item["verification"].get("price_verified") is not True or item.get("cache_stale"):
+        item["current_price_min"] = None
+        if item.get("pricing"):
+            # Preserve the published amount and schedule, not a claim it applies now.
+            for window in item["pricing"]:
+                window["is_currently_valid"] = False
+            item["price_window_status"].update({
+                "current_price_min": None, "current_windows": [],
+                "is_currently_within_standard": False, "label": listed_price_label(item),
+            })
     item["tesla_ok"] = tesla_compatibility(item)
     item["decision"] = decision_for(item, live=live)
     if item["tesla_ok"] is None:
@@ -4107,6 +4148,20 @@ GEOCODE_UA = (
 )
 
 
+def _english_airport_query(q: str) -> str:
+    """'Aeropuerto de Valencia' -> 'Valencia airport'. Plain string ops, no backtracking."""
+    head, _, rest = q.partition(" ")
+    if head.casefold() not in {"aeropuerto", "aeroport", "aéroport"}:
+        return q
+    rest = rest.strip()
+    low = rest.casefold() + " "
+    for prefix in ("del ", "de ", "d'", "d’"):
+        if low.startswith(prefix):
+            rest = rest[len(prefix):].strip()
+            break
+    return f"{rest} airport" if rest else q
+
+
 def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """Public Nominatim proxy (worldwide), cached, so users can jump to any city/place.
 
@@ -4115,15 +4170,20 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     q = (query or "").strip()
     if len(q) < 2:
         return []
-    key = q.lower()[:80]
+    limit = max(1, min(limit, 8))
+    airport_query = bool(re.search(r"\b(?:airport|aeropuerto|aeroport|aéroport)\b", q, re.I))
+    # Nominatim handles translated leading airport phrases as broad regional
+    # airfield searches. Use its English place-name form without a city allowlist.
+    search_q = _english_airport_query(q) if airport_query else q
+    key = q.casefold()
     now = time.time()
     with _CACHE_LOCKS["geocode"]:
         cached = GEOCODE_CACHE.get(key)
         if cached and now - cached["ts"] < GEOCODE_TTL_SECONDS:
-            return cached["results"]
+            return cached["results"][:limit]
     qs = urllib.parse.urlencode({
-        "q": q, "format": "jsonv2",
-        "limit": max(1, min(limit, 8)), "addressdetails": 0,
+        "q": search_q, "format": "jsonv2",
+        "limit": 8, "addressdetails": 0,
     })
     req = urllib.request.Request(
         f"{NOMINATIM_URL}?{qs}",
@@ -4133,7 +4193,13 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
         with urllib.request.urlopen(req, timeout=8) as resp:
             raw = json.loads(resp.read().decode("utf-8", "replace"))
     except Exception:
-        return cached["results"] if cached else []
+        return cached["results"][:limit] if cached else []
+    if airport_query:
+        # A shop, street or metro stop named Airport is not an airport origin.
+        raw = [r for r in raw if (r.get("category") or r.get("class")) == "aeroway"
+               and r.get("type") == "aerodrome"]
+        raw.sort(key=lambda r: (safe_float(r.get("importance")) or 0,
+                                safe_float(r.get("place_rank")) or 0), reverse=True)
     results: List[Dict[str, Any]] = []
     for r in raw:
         lat, lon = safe_float(r.get("lat")), safe_float(r.get("lon"))
@@ -4156,7 +4222,7 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
         if len(GEOCODE_CACHE) > 500:
             for k in list(GEOCODE_CACHE.keys())[:100]:
                 GEOCODE_CACHE.pop(k, None)
-    return results
+    return results[:limit]
 
 
 def crawlable_page_families(item: Dict[str, Any]) -> set:
@@ -5433,15 +5499,17 @@ def source_health_map_eligible(item: Dict[str, Any]) -> bool:
 def source_health_cache_status(name: str, cache: Dict[str, Any], ttl_seconds: int) -> Dict[str, Any]:
     ts = safe_float(cache.get("ts"))
     age_seconds = round(time.time() - ts, 1) if ts else None
-    payload = cache.get("payload") if isinstance(cache.get("payload"), dict) else {}
+    payload_value = cache.get("payload")
+    payload = payload_value if isinstance(payload_value, dict) else {}
+    error = cache.get("error") or "; ".join(str(value) for value in payload.get("errors") or []) or None
     return {
         "name": name,
         "has_payload": bool(payload),
         "age_seconds": age_seconds,
         "ttl_seconds": ttl_seconds,
-        "fresh": bool(age_seconds is not None and age_seconds <= ttl_seconds),
-        "stale": bool(age_seconds is not None and age_seconds > ttl_seconds),
-        "error": cache.get("error"),
+        "fresh": bool(payload) and age_seconds is not None and age_seconds <= ttl_seconds and not error,
+        "stale": bool(payload) and (age_seconds is None or age_seconds > ttl_seconds or bool(error)),
+        "error": error,
         "stations": len(payload.get("stations") or []) if isinstance(payload, dict) else 0,
         "leads": len(payload.get("leads") or []) if isinstance(payload, dict) else 0,
     }

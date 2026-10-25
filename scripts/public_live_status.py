@@ -410,10 +410,17 @@ class FeedCache:
         return payload
 
     def health(self):
+        now = time.time()
         with self.lock:
-            payload = self._snapshot(time.time(), True)
+            payload = self._snapshot(now, True)
         operators = sorted({row["owner"]["name"] for row in payload["stations"]})
-        return {"name": self.name, "has_payload": bool(payload["stations"]), "stations": len(payload["stations"]),
+        cache = payload["cache"]
+        checked_at = epoch(cache.get("checked_at"))
+        has_payload = bool(payload["stations"])
+        return {"name": self.name, "has_payload": has_payload, "stations": len(payload["stations"]),
+                "age_seconds": max(0, round(now - checked_at)) if checked_at is not None else None,
+                "fresh": has_payload and not cache["stale"],
+                "stale": has_payload and cache["stale"], "error": cache.get("error"),
                 "static_sites": payload.get("static_sites", 0), "static_stations": payload.get("static_stations", 0),
                 "ports": payload["raw_count"], "matched_ports": payload.get("matched_ports", 0),
                 "unlocated_ports": payload.get("unlocated_ports", 0), "cache": payload["cache"],

@@ -75,6 +75,12 @@ reconsidered first.
 Each result has a short text summary for the model and the full data in
 `structuredContent`.
 
+`get_data_status` includes a short `Live:` line for each source. Every entry in
+`live_sources` has `has_payload`, `age_seconds`, `fresh`, `stale`, and `error`.
+An unpopulated cache has no age and is unavailable, never fresh. Endolla/Spirii
+ages use successful status validation, not a socket's last state change.
+Snapshot-only or disabled sources retain their policy and cannot report freshness.
+
 Directory results do not imply current availability. Check truncation metadata
 before claiming an exhaustive nearby inventory. Foreign tariffs retain their
 native currency and units; the euro price filter does not perform FX conversion.
@@ -88,7 +94,9 @@ native currency and units; the euro price filter does not perform FX conversion.
 | `evidence.live_verified` | Only `true` rows have live availability. Connector status and `available_connectors` are blank for every other row. |
 | `evidence.route_ready_now` | The strictest check: live, not stale, decision `go` and a free connector now. `available_now: true` keeps only these rows. |
 | `evidence.live_status_stale` | A live-feed status older than three hours. |
-| `price.price_now_eur_kwh` | The tariff valid now; `lowest_published_eur_kwh` may apply only in a time window (see `get_charger` → `price.windows`). |
+| `price.price_now_eur_kwh` | The tariff valid now, only when charging-price evidence is verified and not stale. Directory/community amounts remain in `lowest_published_eur_kwh` with a dated `Listed` label; live occupancy alone does not verify their price. |
+| `price.is_free` | Verified free charging now. `free_only` and the euro price cap exclude unverified listed/historical prices. |
+| `hardware.connectors` | Source-reported plugs, not a vehicle compatibility promise. MCP has no vehicle input: its decisions, eligibility and ordering use listed hardware without the app's implicit Tesla assumption. Confirm compatibility before routing. |
 | `excluded` | How many rows each filter removed. A filter never guesses: an unknown price, connector or power is excluded, not assumed to match. |
 
 The provider's own app and signs at the site always override this data.

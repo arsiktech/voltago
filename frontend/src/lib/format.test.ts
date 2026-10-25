@@ -476,6 +476,7 @@ describe('publicWebUrl', () => {
 })
 
 type StationTruthCorpus = {
+  current_prices: Array<{ id: string; station: Station; expected_verified: boolean; expected_current_price: number | null }>
   route_ready: Array<{ id: string; station: Station; expected: boolean }>
   decision_fallback: Array<{ id: string; station: Station; expected: string }>
   public_web_urls: Array<{ value: string; valid: boolean }>
@@ -484,6 +485,14 @@ type StationTruthCorpus = {
 const stationTruthCorpus = JSON.parse(stationTruthCasesRaw) as StationTruthCorpus
 
 describe('language-neutral station truth corpus', () => {
+  it.each(stationTruthCorpus.current_prices)('$id price authority', ({ station, expected_verified, expected_current_price }) => {
+    expect(hasVerifiedPrice(station)).toBe(expected_verified)
+    expect(station.current_price_min).toBe(expected_current_price)
+    if (!expected_verified) {
+      expect(isRouteReady(station)).toBe(false)
+    }
+  })
+
   it.each(stationTruthCorpus.route_ready)('$id route readiness', ({ station, expected }) => {
     expect(isRouteReady(station)).toBe(expected)
   })

@@ -1,0 +1,457 @@
+{
+  "source": "https://nominatim.openstreetmap.org/search",
+  "recorded_at": "2026-10-25T11:35:02.149306Z",
+  "queries": {
+    "Valencia airport": [
+      {
+        "place_id": 296421948,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 12851719534,
+        "lat": "38.9890934",
+        "lon": "-0.5233630",
+        "category": "shop",
+        "type": "clothes",
+        "place_rank": 30,
+        "importance": 6.205157549396531e-05,
+        "addresstype": "shop",
+        "name": "Airport",
+        "display_name": "Airport, Calle de San Francisco, El Carmen, Játiva, La Costera, Valencia, Comunidad Valenciana, 46800, España",
+        "boundingbox": [
+          "38.9890434",
+          "38.9891434",
+          "-0.5234130",
+          "-0.5233130"
+        ]
+      },
+      {
+        "place_id": 295959362,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 20242344,
+        "lat": "39.4881796",
+        "lon": "-0.4813204",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.5066262793305429,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto Internacional de Valencia",
+        "display_name": "Aeropuerto Internacional de Valencia, Calle de Penàguila, Polígono Industrial La Cova, Manises, L'Horta Sud, Valencia, Comunidad Valenciana, 46940, España",
+        "boundingbox": [
+          "39.4764576",
+          "39.5000099",
+          "-0.5095692",
+          "-0.4557214"
+        ]
+      },
+      {
+        "place_id": 307188867,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 833428977,
+        "lat": "2.4547051",
+        "lon": "-76.6087509",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.3767390548248983,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto Guillermo León Valencia",
+        "display_name": "Aeropuerto Guillermo León Valencia, Avenida Carrera 17, El Modelo, Comuna 1, Perímetro Urbano Popayán, Popayán, Centro, Cauca, RAP Pacífico, 190003, Colombia",
+        "boundingbox": [
+          "2.4503144",
+          "2.4590142",
+          "-76.6184307",
+          "-76.5986082"
+        ]
+      },
+      {
+        "place_id": 292232403,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 3445023406,
+        "lat": "39.6236348",
+        "lon": "-0.4722956",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.07194870560319186,
+        "addresstype": "aeroway",
+        "name": "Base Aérea de Valencia-Bétera",
+        "display_name": "Base Aérea de Valencia-Bétera, CV-331, Campamento Militar, Bétera, El Camp de Túria, Valencia, Comunidad Valenciana, 46117, España",
+        "boundingbox": [
+          "39.6086348",
+          "39.6386348",
+          "-0.4872956",
+          "-0.4572956"
+        ]
+      }
+    ],
+    "Aeropuerto de Valencia": [
+      {
+        "place_id": 292171515,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 5892784156,
+        "lat": "39.6579332",
+        "lon": "-0.8115032",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.051951968101024835,
+        "addresstype": "aeroway",
+        "name": "Club ULM Fenix",
+        "display_name": "Club ULM Fenix, Camino del Pesudo, Bodega Vanacloig, Chulilla, La Serranía, Valencia, Comunidad Valenciana, España",
+        "boundingbox": [
+          "39.6429332",
+          "39.6729332",
+          "-0.8265032",
+          "-0.7965032"
+        ]
+      },
+      {
+        "place_id": 329263114,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 808082684,
+        "lat": "34.6459292",
+        "lon": "-106.8304086",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.08893359256912223,
+        "addresstype": "aeroway",
+        "name": "Belen Regional Airport",
+        "display_name": "Belen Regional Airport, 4900, Camino del Llano, Belen, Valencia County, Nuevo México, 87002, Estados Unidos de América",
+        "boundingbox": [
+          "34.6379362",
+          "34.6527106",
+          "-106.8469588",
+          "-106.8249394"
+        ]
+      },
+      {
+        "place_id": 330937826,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 369158764,
+        "lat": "34.7596703",
+        "lon": "-106.7447050",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.10910150918526346,
+        "addresstype": "aeroway",
+        "name": "Mid Valley Airpark",
+        "display_name": "Mid Valley Airpark, 11, East West Drive, Los Chaves, Los Lunas, Valencia County, Nuevo México, 87031, Estados Unidos de América",
+        "boundingbox": [
+          "34.7446703",
+          "34.7746703",
+          "-106.7597050",
+          "-106.7297050"
+        ]
+      },
+      {
+        "place_id": 329255095,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 1342676778,
+        "lat": "34.7608750",
+        "lon": "-106.7448991",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.1092192807008063,
+        "addresstype": "aeroway",
+        "name": "E98",
+        "display_name": "E98, Luscombe Lane, Los Chaves, Valencia County, Nuevo México, 87060, Estados Unidos de América",
+        "boundingbox": [
+          "34.7548343",
+          "34.7670184",
+          "-106.7467479",
+          "-106.7418992"
+        ]
+      },
+      {
+        "place_id": 2935169,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 1116180151,
+        "lat": "-0.9406542",
+        "lon": "-79.3139206",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.1711542374188262,
+        "addresstype": "aeroway",
+        "name": "San Pablo",
+        "display_name": "San Pablo, Vía a Penisola, Urbanización Las Violetas, Chipe Hamburgo, Valencia, Los Ríos, Ecuador",
+        "boundingbox": [
+          "-0.9446205",
+          "-0.9358777",
+          "-79.3153185",
+          "-79.3118570"
+        ]
+      },
+      {
+        "place_id": 296910628,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 1177449402,
+        "lat": "39.4890227",
+        "lon": "-0.9018058",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.1867614249682467,
+        "addresstype": "aeroway",
+        "name": "Aeródromo La Loma",
+        "display_name": "Aeródromo La Loma, Avenida Fuente de la Gota, Siete Aguas, La Hoya de Buñol, Valencia, Comunidad Valenciana, 46392, España",
+        "boundingbox": [
+          "39.4740227",
+          "39.5040227",
+          "-0.9168058",
+          "-0.8868058"
+        ]
+      },
+      {
+        "place_id": 2798432,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 641423130,
+        "lat": "-0.9295321",
+        "lon": "-79.4205180",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.1882511506106958,
+        "addresstype": "aeroway",
+        "name": "Concordia",
+        "display_name": "Concordia, Vía a El Vergel, San Pablo, Valencia, Los Ríos, Ecuador",
+        "boundingbox": [
+          "-0.9378493",
+          "-0.9257165",
+          "-79.4210630",
+          "-79.4197475"
+        ]
+      },
+      {
+        "place_id": 2807311,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 1116180149,
+        "lat": "-0.9531930",
+        "lon": "-79.3750681",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": -0.19130077709086699,
+        "addresstype": "aeroway",
+        "name": "Los Perez Airport",
+        "display_name": "Los Perez Airport, Avenida 13 de Diciembre, Los Olvidados de Dios, Valencia, Los Ríos, Ecuador",
+        "boundingbox": [
+          "-0.9535966",
+          "-0.9527384",
+          "-79.3796995",
+          "-79.3707047"
+        ]
+      }
+    ],
+    "Valencia Airport (VLC)": [
+      {
+        "place_id": 295959362,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 20242344,
+        "lat": "39.4881796",
+        "lon": "-0.4813204",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.5066262793305429,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto Internacional de Valencia",
+        "display_name": "Aeropuerto Internacional de Valencia, Calle de Penàguila, Polígono Industrial La Cova, Manises, L'Horta Sud, Valencia, Comunidad Valenciana, 46940, España",
+        "boundingbox": [
+          "39.4764576",
+          "39.5000099",
+          "-0.5095692",
+          "-0.4557214"
+        ]
+      }
+    ],
+    "Barcelona airport": [
+      {
+        "place_id": 83130955,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 314726876,
+        "lat": "41.2969440",
+        "lon": "2.0790474",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.5391643140449698,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto Josep Tarradellas Barcelona-el Prat",
+        "display_name": "Aeropuerto Josep Tarradellas Barcelona-el Prat, Avinguda de Pepa Colomer, el Prat de Llobregat, Bajo Llobregat, Barcelona, Cataluña, 08820, España",
+        "boundingbox": [
+          "41.2801518",
+          "41.3135601",
+          "2.0556573",
+          "2.1097210"
+        ]
+      },
+      {
+        "place_id": 84064625,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 20333619,
+        "lat": "41.7650242",
+        "lon": "1.8632367",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.13618373728802152,
+        "addresstype": "aeroway",
+        "name": "Aeròdrom Barcelona-Bages",
+        "display_name": "Aeròdrom Barcelona-Bages, Eix Transversal, Sant Fruitós de Bages, Bages, Barcelona, Cataluña, 08272, España",
+        "boundingbox": [
+          "41.7641431",
+          "41.7662348",
+          "1.8577471",
+          "1.8675997"
+        ]
+      }
+    ],
+    "aeroport de Valencia": [
+      {
+        "place_id": 293991473,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 3353533886,
+        "lat": "39.4921903",
+        "lon": "-0.4743740",
+        "category": "railway",
+        "type": "station",
+        "place_rank": 30,
+        "importance": 0.2861574737770128,
+        "addresstype": "railway",
+        "name": "Aeroport",
+        "display_name": "Aeroport, CV-37, San Francisco, Molí de Daroqui, Manises, L'Horta Sud, Valencia, Comunidad Valenciana, 46940, España",
+        "boundingbox": [
+          "39.4871903",
+          "39.4971903",
+          "-0.4793740",
+          "-0.4693740"
+        ]
+      },
+      {
+        "place_id": 295597967,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "node",
+        "osm_id": 3353533875,
+        "lat": "39.4927349",
+        "lon": "-0.4742589",
+        "category": "railway",
+        "type": "stop",
+        "place_rank": 30,
+        "importance": 5.909437705038556e-05,
+        "addresstype": "railway",
+        "name": "Aeroport",
+        "display_name": "Aeroport, CV-37, San Francisco, Molí de Daroqui, Manises, L'Horta Sud, Valencia, Comunidad Valenciana, 46940, España",
+        "boundingbox": [
+          "39.4926849",
+          "39.4927849",
+          "-0.4743089",
+          "-0.4742089"
+        ]
+      },
+      {
+        "place_id": 295653976,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 20242344,
+        "lat": "39.4881796",
+        "lon": "-0.4813204",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.5066262793305429,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto Internacional de Valencia",
+        "display_name": "Aeropuerto Internacional de Valencia, Plaza dels Drets Humans, Ascensión Chirivella, Molí de Daroqui, Manises, L'Horta Sud, Valencia, Comunidad Valenciana, 46940, España",
+        "boundingbox": [
+          "39.4764576",
+          "39.5000099",
+          "-0.5095692",
+          "-0.4557214"
+        ]
+      },
+      {
+        "place_id": 296037375,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 12132147,
+        "lat": "38.2844177",
+        "lon": "-0.5657529",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.5027363594524359,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto de Alicante-Elche Miguel Hernández",
+        "display_name": "Aeropuerto de Alicante-Elche Miguel Hernández, Avinguda del Mediterrani, Torrellano, Elche, El Baix Vinalopó, Alicante, Comunidad Valenciana, 03320, España",
+        "boundingbox": [
+          "38.2778425",
+          "38.2910519",
+          "-0.5902896",
+          "-0.5307982"
+        ]
+      },
+      {
+        "place_id": 83859922,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "relation",
+        "osm_id": 11087462,
+        "lat": "40.2122584",
+        "lon": "0.0697405",
+        "category": "aeroway",
+        "type": "aerodrome",
+        "place_rank": 30,
+        "importance": 0.43106034210224703,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto de Castellón-Costa Azahar",
+        "display_name": "Aeropuerto de Castellón-Costa Azahar, Carretera Benlloc - Torreblanca, Benlloch, La Plana Alta, Castellón, Comunidad Valenciana, 12183, España",
+        "boundingbox": [
+          "40.2003647",
+          "40.2250541",
+          "0.0497945",
+          "0.0935147"
+        ]
+      },
+      {
+        "place_id": 83811008,
+        "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+        "osm_type": "way",
+        "osm_id": 87716350,
+        "lat": "40.2054326",
+        "lon": "0.0669518",
+        "category": "aeroway",
+        "type": "terminal",
+        "place_rank": 30,
+        "importance": 0.43106034210224703,
+        "addresstype": "aeroway",
+        "name": "Aeropuerto de Castellón-Costa Azahar",
+        "display_name": "Aeropuerto de Castellón-Costa Azahar, Carretera Benlloc - Torreblanca, Benlloch, La Plana Alta, Castellón, Comunidad Valenciana, 12183, España",
+        "boundingbox": [
+          "40.2049230",
+          "40.2059362",
+          "0.0662091",
+          "0.0676655"
+        ]
+      }
+    ]
+  }
+}

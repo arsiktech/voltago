@@ -20,6 +20,13 @@ private struct StationTruthCorpus: Decodable {
         var valid: Bool
     }
 
+    struct PriceCase: Decodable {
+        var id: String
+        var station: Station
+        var expectedVerified: Bool
+    }
+
+    var currentPrices: [PriceCase]
     var routeReady: [StationCase]
     var decisionFallback: [DecisionCase]
     var publicWebUrls: [URLCase]
@@ -84,6 +91,15 @@ final class DecisionKindFallbackTests: XCTestCase {
 /// A true route-ready row must be live (never a lead/directory row), decided "go", AND have a
 /// free connector right now -- all three, not any one alone.
 final class IsRouteReadyTests: XCTestCase {
+    func testSharedPriceAuthorityKeepsListedClaimsUnverified() throws {
+        for item in try StationTruthCorpus.load().currentPrices {
+            XCTAssertEqual(item.station.hasVerifiedPrice, item.expectedVerified, item.id)
+            if !item.expectedVerified {
+                XCTAssertFalse(item.station.isRouteReady, item.id)
+            }
+        }
+    }
+
     func testLanguageNeutralStationTruthCorpus() throws {
         for item in try StationTruthCorpus.load().routeReady {
             XCTAssertEqual(item.station.isRouteReady, item.expected, item.id)

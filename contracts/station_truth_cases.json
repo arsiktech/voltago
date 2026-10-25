@@ -103,6 +103,33 @@
     { "id": "missing-lead", "station": { "id": "k", "name": "K", "lat": 1, "lon": 2, "lead": true }, "expected": "verify" },
     { "id": "valid-go-lead", "station": { "id": "l", "name": "L", "lat": 1, "lon": 2, "lead": true, "decision": { "level": "go" } }, "expected": "go" }
   ],
+  "current_prices": [
+    {
+      "id": "historical-community-free",
+      "station": { "id": "community-2017", "name": "Historical community claim", "lat": 39.47, "lon": -0.38, "lead": true, "reliability": "community-verified", "source_updated_at": "2017-04-12T00:00:00Z", "price_min": 0, "is_free": true, "current_price_min": null, "verification": { "level": "community", "price_verified": false } },
+      "live": false, "expected_verified": false, "expected_current_price": null
+    },
+    {
+      "id": "undated-directory-price",
+      "station": { "id": "directory-price", "name": "Listed directory tariff", "lat": 39.47, "lon": -0.38, "lead": true, "reliability": "directory-map", "price_min": 0.2, "current_price_min": null, "verification": { "level": "directory", "price_verified": false } },
+      "live": false, "expected_verified": false, "expected_current_price": null
+    },
+    {
+      "id": "official-price",
+      "station": { "id": "official-price", "name": "Official tariff", "lat": 39.47, "lon": -0.38, "lead": true, "reliability": "official-free-policy", "price_min": 0.2, "current_price_min": 0.2, "verification": { "level": "official", "price_verified": true } },
+      "live": false, "expected_verified": true, "expected_current_price": 0.2
+    },
+    {
+      "id": "official-free",
+      "station": { "id": "official-free", "name": "Official free policy", "lat": 39.47, "lon": -0.38, "lead": true, "reliability": "official-free-policy", "price_min": 0, "is_free": true, "current_price_min": 0, "verification": { "level": "official", "price_verified": true } },
+      "live": false, "expected_verified": true, "expected_current_price": 0
+    },
+    {
+      "id": "live-status-does-not-verify-community-price",
+      "station": { "id": "status-only", "name": "Status with inherited tariff", "lat": 39.47, "lon": -0.38, "price_min": 0, "is_free": true, "current_price_min": null, "reliability": "official-live", "live_status": { "valid": true }, "live_claim_verification": { "price_verified": false }, "verification": { "level": "live", "price_verified": false, "live_verified": true } },
+      "live": true, "expected_verified": false, "expected_current_price": null
+    }
+  ],
   "public_web_urls": [
     { "value": "https://example.com/station", "valid": true },
     { "value": "http://example.com/station", "valid": true },
