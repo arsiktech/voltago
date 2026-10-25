@@ -1,7 +1,9 @@
+import CoreLocation
 import XCTest
 
-/// Real locate-control/Core Location coverage with live responses held back. Configure the
-/// selected Simulator's location before running serially; no app-only coordinate override.
+/// Real locate-control/Core Location coverage with live responses held back. The test sets
+/// the simulated device location itself (Valencia, matching the nearby fixture) so it no
+/// longer depends on whatever location the Simulator was left with; no app-only override.
 final class NearbyLoadingUITests: XCTestCase {
     private var server: StubServer!
 
@@ -39,6 +41,7 @@ final class NearbyLoadingUITests: XCTestCase {
         // cannot raise a permission dialog while the next test is launching.
         app.terminate()
         app.resetAuthorizationStatus(for: .location)
+        XCUIDevice.shared.location = XCUILocation(location: CLLocation(latitude: 39.4699, longitude: -0.3763))
         var permissionGranted = false
         let permissionMonitor = addUIInterruptionMonitor(withDescription: "Location permission") { alert in
             let allow = alert.buttons["Allow While Using App"]
