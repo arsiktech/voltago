@@ -4154,7 +4154,7 @@ def _english_airport_query(q: str) -> str:
     if head.casefold() not in {"aeropuerto", "aeroport", "aéroport"}:
         return q
     rest = rest.strip()
-    low = rest.casefold()
+    low = rest.casefold() + " "
     for prefix in ("del ", "de ", "d'", "d’"):
         if low.startswith(prefix):
             rest = rest[len(prefix):].strip()
