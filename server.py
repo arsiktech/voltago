@@ -4148,6 +4148,20 @@ GEOCODE_UA = (
 )
 
 
+def _english_airport_query(q: str) -> str:
+    """'Aeropuerto de Valencia' -> 'Valencia airport'. Plain string ops, no backtracking."""
+    head, _, rest = q.partition(" ")
+    if head.casefold() not in {"aeropuerto", "aeroport", "aéroport"}:
+        return q
+    rest = rest.strip()
+    low = rest.casefold()
+    for prefix in ("del ", "de ", "d'", "d’"):
+        if low.startswith(prefix):
+            rest = rest[len(prefix):].strip()
+            break
+    return f"{rest} airport" if rest else q
+
+
 def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """Public Nominatim proxy (worldwide), cached, so users can jump to any city/place.
 
@@ -4160,8 +4174,7 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     airport_query = bool(re.search(r"\b(?:airport|aeropuerto|aeroport|aéroport)\b", q, re.I))
     # Nominatim handles translated leading airport phrases as broad regional
     # airfield searches. Use its English place-name form without a city allowlist.
-    search_q = re.sub(r"^(?:aeropuerto|aeroport|aéroport)\s+(?:de\s+|del\s+|d['’])?(.+)$",
-                      r"\1 airport", q, flags=re.I) if airport_query else q
+    search_q = _english_airport_query(q) if airport_query else q
     key = q.casefold()
     now = time.time()
     with _CACHE_LOCKS["geocode"]:
