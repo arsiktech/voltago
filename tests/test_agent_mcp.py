@@ -453,15 +453,19 @@ class AgentMcpHttpTests(unittest.TestCase):
                 if tool == "find_chargers":
                     view = view["chargers"][0]
                 self.assertIsNone(view["price"]["price_now_eur_kwh"])
-                self.assertFalse(view["price"]["is_free"])
+                self.assertTrue(view["price"]["is_free"])  # the listed claim, kept as a lead
+                self.assertFalse(view["price"]["price_verified"])
                 self.assertEqual(view["price"]["lowest_published_eur_kwh"], 0)
                 self.assertIn("Listed Free", view["price"]["label"])
                 self.assertIn("2017", view["price"]["label"])
                 self.assertIn("Listed Free", result["content"][0]["text"])
                 self.assertNotIn("Now Free", json.dumps(result))
                 self.assertFalse(view["evidence"]["route_ready_now"])
-        self.assertEqual(self.find(free_only=True)["count"], 0)
-        self.assertEqual(self.find(max_price_eur_kwh=0.25)["count"], 0)
+        # Free filters keep listed free leads, as the apps do; the label carries the doubt.
+        free = self.find(free_only=True)
+        self.assertEqual(free["count"], 1)
+        self.assertIn("current price unverified", self.call("find_chargers", {"lat": ORIGIN_LAT, "lon": ORIGIN_LON, "free_only": True})["content"][0]["text"])
+        self.assertEqual(self.find(max_price_eur_kwh=0.25)["count"], 1)
 
     def test_vehicleless_decisions_are_neutral_without_changing_app_decisions(self) -> None:
         row = lead_row("chademo-only", lat=39.471, lon=-0.37, price=0,
