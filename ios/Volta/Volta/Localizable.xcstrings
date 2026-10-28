@@ -1,6 +1,351 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Offline. Showing chargers saved on this iPhone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline. Showing chargers saved on this iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión. Se muestran los cargadores guardados en este iPhone."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подключения к сети. Показаны зарядные станции, сохранённые на этом iPhone."
+          }
+        }
+      }
+    },
+    "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión. Se muestran los cargadores guardados en este iPhone el %@. La disponibilidad y los precios pueden haber cambiado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подключения к сети. Показаны зарядные станции, сохранённые на этом iPhone %@. Доступность и цены могли измениться."
+          }
+        }
+      }
+    },
+    "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las notificaciones de Volta Go están desactivadas. Actívalas en Ajustes para recibir avisos de cargadores."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уведомления Volta Go отключены. Включите их в настройках, чтобы получать уведомления о зарядных станциях."
+          }
+        }
+      }
+    },
+    "This build can't receive alerts yet. Push notifications are not set up.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This build can't receive alerts yet. Push notifications are not set up."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta versión aún no puede recibir avisos. Las notificaciones push no están configuradas."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эта сборка пока не может получать уведомления. Push-уведомления не настроены."
+          }
+        }
+      }
+    },
+    "Couldn't start the watch. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't start the watch. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo activar el aviso. Inténtalo de nuevo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось начать отслеживание. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "Couldn't reach Volta Go. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't reach Volta Go. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con Volta Go. Inténtalo de nuevo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подключиться к Volta Go. Попробуйте ещё раз."
+          }
+        }
+      }
+    },
+    "A connector showed free. Check the current status before driving.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A connector showed free. Check the current status before driving."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se detectó un conector disponible. Comprueba el estado actual antes de desplazarte."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разъём отображался как свободный. Проверьте текущее состояние перед поездкой."
+          }
+        }
+      }
+    },
+    "The watch ended without a free connector.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The watch ended without a free connector."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El aviso finalizó sin que hubiera un conector disponible."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание завершено: свободный разъём не найден."
+          }
+        }
+      }
+    },
+    "Watch stopped: live status unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch stopped: live status unavailable."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aviso desactivado: el estado en tiempo real no está disponible."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание остановлено: данные в реальном времени недоступны."
+          }
+        }
+      }
+    },
+    "The watch has ended.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The watch has ended."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El aviso ha finalizado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание завершено."
+          }
+        }
+      }
+    },
+    "Alert me when a connector is free": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alert me when a connector is free"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisarme cuando haya un conector disponible"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщить, когда освободится разъём"
+          }
+        }
+      }
+    },
+    "Stop watching": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop watching"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivar aviso"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановить отслеживание"
+          }
+        }
+      }
+    },
+    "An alert never reserves a connector. It may be taken before you arrive.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An alert never reserves a connector. It may be taken before you arrive."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un aviso nunca reserva un conector. Puede estar ocupado antes de que llegues."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уведомление не бронирует разъём. Его могут занять до вашего прибытия."
+          }
+        }
+      }
+    },
+    "Watching this charger.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching this charger."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aviso activo para este cargador."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание этой зарядной станции."
+          }
+        }
+      }
+    },
+    "Watching until %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching until %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aviso activo hasta las %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание до %@."
+          }
+        }
+      }
+    },
     "Copy AI prompt": {
       "extractionState": "manual",
       "localizations": {
