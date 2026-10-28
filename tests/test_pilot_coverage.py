@@ -121,9 +121,18 @@ class PilotCoverageTests(unittest.TestCase):
         row.update(price_min=None, current_price_min=None,
                    tariff_details={"hour_eur": 1.5, "conditions": ["First hour only"]})
         counts = self.counts(row)
-        self.assertEqual(counts["conditional_or_source_text_price_locations"], 1)
+        self.assertEqual(counts["conditional_sourced_price_locations"], 1)
         self.assertEqual(counts["sourced_numeric_price_locations"], 0)
         self.assertEqual(counts["verified_current_price_locations"], 0)
+
+    def test_contact_only_source_text_is_not_a_sourced_tariff(self):
+        row = station()
+        row.update(price_min=None, current_price_min=None,
+                   tariff_details={"text": "Call the operator for tariff information"})
+        counts = self.counts(row)
+        self.assertEqual(counts["conditional_sourced_price_locations"], 0)
+        self.assertEqual(counts["source_text_only_locations"], 1)
+        self.assertEqual(counts["unknown_primary_price_locations"], 1)
 
     def test_stale_future_missing_and_conflicting_evidence_fail_closed(self):
         variants = [
@@ -151,6 +160,29 @@ class PilotCoverageTests(unittest.TestCase):
             self.assertEqual(counts["fresh_live_locations"], 0)
             self.assertEqual(counts["fetch_time_snapshot_locations"], 1)
             self.assertEqual(counts["verified_current_price_locations"], 0)
+
+    def test_expired_and_unknown_expiry_withhold_live_and_current_price(self):
+        for expiry in (OLD, AS_OF, None, "unknown"):
+            with self.subTest(expiry=expiry):
+                row = station()
+                row["expires_at"] = expiry
+                counts = self.counts(row)
+                self.assertEqual(counts["fresh_live_locations"], 0)
+                self.assertEqual(counts["verified_current_price_locations"], 0)
+
+    def test_new_live_status_does_not_refresh_old_price_claim(self):
+        row = station()
+        row["charge_claim"] = {"checked_at": OLD, "price_min": 0.0}
+        counts = self.counts(row)
+        self.assertEqual(counts["fresh_live_locations"], 1)
+        self.assertEqual(counts["verified_current_price_locations"], 0)
+
+    def test_source_fetch_without_status_observation_is_not_live(self):
+        row = station()
+        row["last_seen"] = None
+        counts = self.counts(row)
+        self.assertEqual(counts["fresh_live_locations"], 0)
+        self.assertEqual(counts["verified_current_price_locations"], 0)
 
     def test_bundle_never_grants_runtime_acceptance_or_current_live(self):
         result = self.report([station()], mode="admitted-bundle")
@@ -186,6 +218,16 @@ class PilotCoverageTests(unittest.TestCase):
         self.assertFalse(report["input"]["complete_inventory"])
         self.assertTrue(any("total_matches" in issue for issue in report["issues"]))
         self.assertFalse(report["runtime_acceptance"])
+
+    def test_response_denial_of_live_authority_is_not_overridden_by_rows(self):
+        report = coverage.build_report(
+            {"stations": [station()], "leads": [],
+             "cache": {"live_supported": False, "fresh_live_authority": False}},
+            mode="served-capture", as_of=AS_OF, observed_at=RECENT, source_revision=REVISION,
+        )
+        counts = report["regions"]["valencia"]["counts"]
+        self.assertEqual(counts["fresh_live_locations"], 0)
+        self.assertEqual(counts["verified_current_price_locations"], 0)
 
     def test_bad_counts_and_ambiguous_envelopes_are_rejected(self):
         for payload in ({"records": [], "stations": []}, {"stations": [station()], "count": 2}):
