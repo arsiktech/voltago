@@ -36,8 +36,12 @@ DEFAULT_REGIONS = {
     },
 }
 SNAPSHOT_MODES = {"community_snapshot", "community_tags", "official_snapshot", "public_map_snapshot"}
+# Mirror scripts/public_live_status.py's canonical caps, independent of caller overrides.
+PUBLIC_STATUS_MAX_AGE = 180
+PUBLICATION_MAX_AGE = 300
 COUNT_KEYS = (
-    "sourced_numeric_price_locations", "conditional_sourced_price_locations", "source_text_only_locations",
+    "sourced_numeric_price_locations", "structured_sourced_tariff_locations",
+    "conditional_sourced_price_locations", "source_text_only_locations",
     "unknown_primary_price_locations", "verified_current_price_locations",
     "price_annotation_locations", "fresh_live_locations", "fetch_time_snapshot_locations",
     "policy_excluded_locations", "conflicting_evidence_locations", "returned_by_api_locations",
@@ -233,11 +237,22 @@ def classify(row: dict, *, mode: str, as_of: datetime, captured_fresh: bool,
     base_ok = mode == "served-capture" and captured_fresh and not (exclusions or snapshot or conflict or stale or expired)
     # Match server.freshness_timestamp's distinction without importing the server.
     # A status feed's validation/publication clock is not a last-state-change clock.
-    status_clock = (status.get("published_at") or status.get("checked_at")) if status else row.get("last_seen")
+    public_feed = status.get("feed") in {"endolla", "spirii"}
+    status_clock = (status.get("checked_at") if public_feed else
+                    (status.get("published_at") or status.get("checked_at"))) if status else row.get("last_seen")
     status_fresh = fresh(status_clock, as_of, live_max_age)
     status_valid = (not status or status.get("valid") is True)
     if status:
-        status_valid = status_valid and fresh(status.get("checked_at"), as_of, live_max_age)
+        validation_limit = min(live_max_age, PUBLIC_STATUS_MAX_AGE) if public_feed else live_max_age
+        status_fresh = status_fresh and fresh(status.get("checked_at"), as_of, validation_limit)
+        status_valid = status_valid and status_fresh
+        if status.get("valid") is not True:
+            reasons.append("no_affirmative_status_authority")
+        if status.get("feed") == "spirii":
+            publication_fresh = fresh(status.get("published_at"), as_of, min(live_max_age, PUBLICATION_MAX_AGE))
+            status_valid = status_valid and publication_fresh
+            if not publication_fresh:
+                reasons.append("public_status_publication_missing_stale_or_future")
     live = bool(base_ok and row.get("lead") is not True and verification.get("level") == "live"
                 and verification.get("live_verified") is True and status_valid and status_fresh and refs)
     if not status_fresh:
@@ -246,11 +261,25 @@ def classify(row: dict, *, mode: str, as_of: datetime, captured_fresh: bool,
         reasons.append("no_affirmative_live_authority")
     numeric = number(row.get("price_min")) and bool(refs)
     tariff = obj(row.get("tariff_details"))
+    components = [value for value in tariff.get("components") or []
+                  if isinstance(value, dict) and number(value.get("price"))]
+    windows = [value for value in row.get("pricing") or []
+               if isinstance(value, dict) and number(value.get("price"))]
     structured_tariff = (any(number(tariff.get(field)) for field in (
         "hour_eur", "minute_eur", "session_eur", "minimum_eur"))
-        or bool(tariff.get("components")) or bool(row.get("pricing")))
-    conditional = bool(refs and (structured_tariff or (numeric and (
-        claim.get("conditions") or claim.get("type") in {"access_limited_free", "conditional"}))))
+        or bool(components) or bool(windows))
+    # A server-synthesized always-valid scalar window is structured, not conditional.
+    # Keep monetary evidence separate from its explicit time/access restrictions.
+    def restricted_window(value: dict) -> bool:
+        days = value.get("days")
+        restricted_days = bool(days) and (not isinstance(days, list)
+            or any(type(day) is not int for day in days) or set(days) != set(range(7)))
+        return bool(value.get("valid_from") or value.get("valid_until") or restricted_days
+                    or value.get("conditions") or value.get("restrictions"))
+
+    conditional = bool(refs and (numeric or structured_tariff) and (
+        claim.get("conditions") or claim.get("type") in {"access_limited_free", "conditional"}
+        or tariff.get("conditions") or any(restricted_window(value) for value in windows + components)))
     source_text_only = bool(tariff.get("text")) and not structured_tariff
     # Do not calculate a tariff or infer zero from free flags. Consume the server's
     # current_price_min and price_verified, with conservative independent age gates.
@@ -301,9 +330,10 @@ def classify(row: dict, *, mode: str, as_of: datetime, captured_fresh: bool,
         "connector_count": connectors, "reported_total_evse": reported_evse if integer(reported_evse) else None,
         "flags": {
             "sourced_numeric_price_locations": bool(numeric),
+            "structured_sourced_tariff_locations": bool(refs and structured_tariff),
             "conditional_sourced_price_locations": conditional,
             "source_text_only_locations": source_text_only,
-            "unknown_primary_price_locations": not numeric and not conditional,
+            "unknown_primary_price_locations": not numeric and not (refs and structured_tariff),
             "verified_current_price_locations": current,
             "price_annotation_locations": bool(annotations), "fresh_live_locations": live,
             "fetch_time_snapshot_locations": snapshot, "policy_excluded_locations": bool(exclusions),

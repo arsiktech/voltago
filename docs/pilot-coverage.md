@@ -90,12 +90,16 @@ multirow hardware prevent a total while keeping a known subtotal.
 Numeric sourced prices require a real nonnegative finite `price_min`, including
 explicit numeric zero, and a source reference. Missing/null prices and `is_free`
 flags do not imply zero. These counts describe retained source claims, not current
-price acceptance. Structured hourly/minimum/component tariffs, windows and
-conditional prices have a separate, possibly overlapping count. The report does
-not parse or convert them. Unparsed source text has its own `source_text_only_locations`
-count and never establishes a tariff. Contact-only text stays price-unknown.
-`unknown_primary_price_locations` excludes structured conditional price evidence,
-not unparsed text. This can overlap with additive-only annotation locations.
+price acceptance. `structured_sourced_tariff_locations` separately counts structured
+hourly/minimum/component tariffs and windows containing finite monetary amounts.
+`conditional_sourced_price_locations` requires an explicit time, day or access
+restriction on monetary evidence. An always-valid window synthesized by the server
+from a scalar price is not conditional. All seven weekday numbers are unrestricted.
+These counts overlap; they are not a partition or a second tariff calculator.
+Unparsed source text has its own `source_text_only_locations` count and never
+establishes a tariff. Contact-only text and moneyless wrappers stay price-unknown.
+`unknown_primary_price_locations` excludes valid numeric or structured monetary
+evidence, not unparsed text. This can overlap with additive-only annotation locations.
 
 Verified current price consumes the server's `current_price_min` and affirmative
 `verification.price_verified == true`, with a live/official verification level,
@@ -119,11 +123,15 @@ Their socket availability is retained source/fetch-time evidence only. Existing
 structured source-policy exclusions are reused, not reimplemented. Excluded rows
 remain visible in inventory and exclusion counters but cannot supply authority.
 
-The default age bound is a conservative 180 minutes for both live and current
-price evidence, matching the existing general runtime freshness boundary. Override
-with `--live-max-age-seconds` and `--price-max-age-seconds` when a documented source
-contract requires a stricter bound. Unknown, stale, future and conflicting evidence
-fails closed. The report preserves original source, acquisition, observation,
+The general age bound defaults to 180 minutes for live and current price evidence,
+matching the general runtime boundary. Public Endolla/Spirii status validation is
+automatically capped at 180 seconds. Spirii publication independently expires after
+300 seconds; missing or future publication fails closed. Endolla uses validation,
+not its optional publication or last-change clock. These caps mirror
+`scripts/public_live_status.py`; a frozen `valid=true` cannot outlive them.
+`--live-max-age-seconds` can tighten, never relax, these public-feed caps.
+`--price-max-age-seconds` controls the independent price clock. Unknown, stale,
+future and conflicting evidence fails closed. The report preserves original source, acquisition, observation,
 publication and status-validation clocks and additive price annotations separately.
 A fresh annotation fetch never updates its `source_updated_at` or creates primary
 price authority. Retained annotation counts include old annotations; inspect their
