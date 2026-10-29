@@ -36,6 +36,8 @@ struct AIConnectionPrompt: View {
             Button(action: copyPrompt) {
                 HStack(spacing: 7) {
                     Image(systemName: copySucceeded ? "checkmark" : "doc.on.doc")
+                        .resizable()
+                        .scaledToFit()
                         .frame(width: 16, height: 16)
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {

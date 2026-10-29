@@ -75,6 +75,17 @@ class IOSNativeQualityContractTests(unittest.TestCase):
                     self.assertEqual(re.sub(r"%(?:1\$)?@", "", value).count("%"), 0)
                     self.assertNotIn("\\(", value)
 
+    def test_header_symbols_scale_inside_their_reserved_frames(self):
+        # Source guard complements the rendered XXXL inspection; it is not pixel proof.
+        for filename, symbol, side in [
+            ("AIConnectionView.swift", r'copySucceeded \? "checkmark" : "doc.on.doc"', 16),
+            ("SheetView.swift", r'"gearshape"', 18),
+        ]:
+            with self.subTest(filename=filename):
+                source = (IOS / "Volta" / filename).read_text(encoding="utf-8")
+                self.assertRegex(source, rf'Image\(systemName: {symbol}\)\s*'
+                    rf'\.resizable\(\)\s*\.scaledToFit\(\)\s*\.frame\(width: {side}, height: {side}\)')
+
     def test_all_four_header_cases_pin_location_before_launch(self):
         source = (IOS / "VoltaUITests" / "DiscoveryHeaderUITests.swift").read_text(
             encoding="utf-8"
