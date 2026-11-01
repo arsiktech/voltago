@@ -8,6 +8,83 @@
       "reason": "Fenie corrected this station's latitude, so its coordinate-derived ID changed. The refresh gate rejected every candidate from 2026-10-22 onward because this one baseline ID had no match, and the identity rule only carries an ID forward within 250 m.",
       "evidence": "The 2026-10-24 refresh candidate holds the same Fenie code (0870), name and station page (recarga.fenieenergia.es/punto-recarga/0870) under the successor ID. Only the latitude differs, 40.4379 in the baseline and 40.46817 in the candidate, about 3.4 km. References to the old ID were not checked.",
       "approved_by": "repository owner, 2026-10-24"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-amare-ibiza-1_38.9722_1.28492",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"Amare Ibiza 1\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-safa-2_36.7089_-4.48659",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"Safa 2\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vw-hyper-el-viso_36.70915_-4.48685",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"VW Hyper El Viso\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vw-fuengirola_36.5573_-4.61231",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"VW Fuengirola\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-bmw-velazquez-taller_36.68537_-4.46562",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"BMW Velazquez Taller\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-bmw-velazquez-recepci-n_36.68524_-4.46557",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"BMW Velazquez Recepción\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vw-fuengirola-2_36.55708_-4.61252",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"VW Fuengirola 2\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-bmw-puerto-banus-wallbox_36.5_-4.96",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"BMW Puerto Banus - Wallbox\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-bmw-el-viso-1_36.70761_-4.47799",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"BMW El Viso 1\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-samotor-el-viso-chapa-pintura_36.70914_-4.48729",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"Samotor El Viso (Chapa/Pintura)\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-livoltek-volkswagen-san-pedro-alcantara_36.49615_-4.99397",
+      "retired_on": "2026-11-01",
+      "reason": "Etecnic withdrew \"LIVOLTEK VOLKSWAGEN SAN PEDRO ALCANTARA\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
+      "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
+      "approved_by": "repository owner, 2026-11-01"
     }
   ]
 }
