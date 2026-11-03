@@ -3,7 +3,7 @@
   "private": true,
   "description": "Root-level QA tooling deps for scripts/qa_*.js (Playwright library; browsers NOT downloaded \u2014 scripts launch the system Chrome via VOLTA_QA_CHROME/executablePath).",
   "devDependencies": {
-    "playwright": "^1.63.0"
+    "playwright": "^1.64.1"
   },
   "engines": {
     "node": ">=26.12.1",
