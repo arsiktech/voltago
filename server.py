@@ -49,7 +49,7 @@ from scripts.intelligence_index import IndexedRecords, IntelligenceIndex, file_s
 from scripts.price_evidence import price_evidence_counts
 from scripts import source_matrix
 from scripts import seo_pages
-from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
+from scripts.source_policy import compile_source_policy, load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from scripts import public_live_status
 from station_truth import (
@@ -3703,9 +3703,10 @@ def load_intelligence_meta() -> Dict[str, Any]:
                 _INTEL_RAW.update(data=payload, mtime=mtime)
                 return payload
             excluded_count = 0
+            policy = compile_source_policy(SOURCE_POLICY_EXCLUSIONS)
             def clean_record(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 nonlocal excluded_count
-                kept, removed = partition_records([row], SOURCE_POLICY_EXCLUSIONS)
+                kept, removed = partition_records([row], policy)
                 excluded_count += len(removed)
                 return kept[0] if kept else None
             payload = load_json_recordset(p, object_pairs_hook=_interning_object_hook(), record_transform=clean_record)
