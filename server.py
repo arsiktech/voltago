@@ -52,6 +52,7 @@ from scripts import seo_pages
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from scripts import public_live_status
+from scripts.spain_geography import point_in_spain
 from station_truth import (
     classify_source_resource,
     normalize_connector_label,
@@ -101,12 +102,20 @@ def source_policy_record_allowed(record: Dict[str, Any]) -> bool:
 # missing, the request handlers below still degrade safely to a 404 (they
 # already .exists()-check before serving), never a crash.
 WEB_DIST = ROOT / "frontend" / "dist"
+# The map bundle has one client-side route. Any other extensionless path is a
+# real document or a 404. Falling back to index.html served /about and /pricing
+# as the home map with HTTP 200.
+SPA_CLIENT_ROUTES = frozenset({"matrix"})
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 def web_root() -> Path:
     return WEB_DIST
+
+
+def is_spa_client_route(safe: Path) -> bool:
+    return len(safe.parts) == 1 and safe.parts[0] in SPA_CLIENT_ROUTES
 
 VALENCIA_BBOX = {
     "latitude_ne": 40.20,
@@ -5435,6 +5444,31 @@ def source_health_has_valid_coordinates(item: Dict[str, Any]) -> bool:
     return lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180
 
 
+def source_health_country(item: Dict[str, Any]) -> str:
+    """ISO country for the coverage inventory.
+
+    Explicit codes win, including the ESP alias. The Spain ingest never stores a
+    country field, so a blank code is Spain when the point is inside Spain or
+    just off its simplified shoreline. A blank code farther outside stays UNKNOWN
+    and is not a country on the coverage page.
+    """
+    country = str(item.get("country_code") or item.get("country") or "").strip().upper()
+    country = {"ESP": "ES"}.get(country, country)
+    if country:
+        return country
+    lat, lon = safe_float(item.get("lat")), safe_float(item.get("lon"))
+    if lat is None or lon is None:
+        return "UNKNOWN"
+    if point_in_spain(lat, lon):
+        return "ES"
+    # The simplified outline sits inland of piers and beaches (a few hundred
+    # metres). A blank code that close is still the Spain catalogue.
+    step = 0.006
+    if any(point_in_spain(lat + dy, lon + dx) for dy in (-step, 0, step) for dx in (-step, 0, step) if dy or dx):
+        return "ES"
+    return "UNKNOWN"
+
+
 def source_health_outside_spain(item: Dict[str, Any]) -> bool:
     lat = safe_float(item.get("lat"))
     lon = safe_float(item.get("lon"))
@@ -5594,8 +5628,7 @@ def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = F
     by_country: Dict[str, int] = {}
     for item in leads:
         deduped_leads += 1
-        country = str(item.get("country_code") or item.get("country") or "unknown").upper()
-        country = {"ESP": "ES"}.get(country, country)
+        country = source_health_country(item)
         by_country[country] = by_country.get(country, 0) + 1
         tier = source_health_tier(item)
         reliability = str(item.get("reliability") or "unknown")
@@ -6130,7 +6163,7 @@ class Handler(BaseHTTPRequestHandler):
         if file_path.is_dir():
             file_path = file_path / "index.html"
         if not file_path.exists() or not file_path.is_file():
-            if not safe.suffix:
+            if is_spa_client_route(safe):
                 file_path = web_root() / "index.html"
             if not file_path.exists() or not file_path.is_file():
                 self.send_error(404)
@@ -6644,8 +6677,9 @@ class Handler(BaseHTTPRequestHandler):
             # get a real 404 ("no sign-in here"), never the app shell with 200.
             if safe.parts[:1] == (".well-known",):
                 return self.send_json(404, {"error": "not_found"})
-            # SPA client-side routes have no file suffix: fall back to index.html.
-            if not safe.suffix:
+            # Only the map app's client route is the shell. /about and /pricing
+            # have no documents, so they must 404 instead of rendering the map.
+            if is_spa_client_route(safe):
                 file_path = root / "index.html"
             if not file_path.exists() or not file_path.is_file():
                 self.send_error(404)

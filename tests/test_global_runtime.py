@@ -322,6 +322,26 @@ class WorldScaleTests(unittest.TestCase):
         self.assertNotIn("outside_spain", result["intelligence"]["coordinate_issues"])
         self.assertEqual(result["source_manifest"], manifests)
 
+    def test_uncoded_spain_records_count_as_spain_on_the_coverage_page(self):
+        """Spain ingest omits country_code. The coverage page counts only ISO alpha-2
+        rows, so bucketing those records as UNKNOWN displayed 0 countries."""
+        rows = [
+            {"id": "valencia", "name": "Valencia", "lat": 39.47, "lon": -0.37, "source": "DGT"},
+            {"id": "madrid", "name": "Madrid", "lat": 40.42, "lon": -3.70, "country": "ESP", "source": "DGT"},
+            # Marina pin just outside the simplified Spain outline.
+            {"id": "barcelona-marina", "name": "Marina", "lat": 41.36754, "lon": 2.18776, "source": "DGT"},
+            {"id": "tokyo", "name": "Tokyo", "lat": 35.68, "lon": 139.76, "country_code": "jp", "source": "OpenChargeMap"},
+            # Inside the Spain rectangle, outside the country. Etecnic publishes these.
+            {"id": "montpellier", "name": "Montpellier", "lat": 43.61, "lon": 3.88, "source": "Etecnic"},
+        ]
+        raw = {"records": rows, "generated_at": "2026-11-05T00:00:00Z"}
+        with patch.object(server, "load_intelligence_meta", return_value=raw), patch.object(server, "_SOURCE_INVENTORY", {}), patch.object(server, "_INTEL_SCOPE_THRESHOLD", 1), patch.object(server, "_raw_seed_records", return_value=[]), patch.object(server, "_normalize_lead", side_effect=AssertionError("full enrichment")):
+            result = server.source_health_summary()
+        by_country = result["intelligence"]["by_country"]
+        self.assertEqual(by_country, {"ES": 3, "JP": 1, "UNKNOWN": 1})
+        headline = sum(1 for code, value in by_country.items() if len(code) == 2 and code.isalpha() and value > 0)
+        self.assertEqual(headline, 2)
+
 
 class IndexedRuntimeTests(unittest.TestCase):
     """Public runtime paths must query the index without decoding the catalogue."""
