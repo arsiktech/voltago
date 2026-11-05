@@ -96,6 +96,7 @@ Each station/lead row is enriched with optional fields mirrored in
 ## Static Serving
 
 `web_root()` serves [frontend/dist](../../frontend/dist). Startup fails loudly
-when that build is absent; there is no legacy static fallback. Client-side
-routes without a file suffix fall back to `index.html`; `assets/*` uses
-immutable caching.
+when that build is absent; there is no legacy static fallback. The only
+client-side route that falls back to `index.html` is `/matrix`. Any other
+missing extensionless path, including `/about` and `/pricing`, is a real 404.
+`assets/*` uses immutable caching.

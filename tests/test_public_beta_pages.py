@@ -6,6 +6,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 import sys
 from pathlib import Path
@@ -74,6 +75,54 @@ class PublicBetaPageServingTests(unittest.TestCase):
                             self.assertEqual(response.status, 200)
                             self.assertEqual(response.headers.get_content_type(), "text/html")
                             self.assertEqual(response.read().decode("utf-8"), f"PAGE {route}")
+                finally:
+                    httpd.shutdown()
+                    httpd.server_close()
+                    thread.join(timeout=3)
+
+    def test_about_and_pricing_are_real_404s_and_matrix_stays_the_app(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "index.html").write_text('<div id="root">SPA SHELL</div>', encoding="utf-8")
+            page_dir = root / "privacy"
+            page_dir.mkdir()
+            (page_dir / "index.html").write_text("PAGE privacy", encoding="utf-8")
+
+            with mock.patch.object(server, "WEB_DIST", root):
+                httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    base = f"http://127.0.0.1:{httpd.server_port}"
+
+                    def body(path: str, method: str = "GET") -> tuple[int, str]:
+                        request = urllib.request.Request(base + path, method=method)
+                        try:
+                            with urllib.request.urlopen(request, timeout=3) as response:
+                                return response.status, response.read().decode("utf-8")
+                        except urllib.error.HTTPError as error:
+                            return error.code, error.read().decode("utf-8")
+
+                    for path in ("/about", "/about/", "/pricing", "/pricing/", "/not-a-page"):
+                        status, payload = body(path)
+                        self.assertEqual(status, 404, path)
+                        self.assertIn("404", payload, path)
+                        self.assertNotIn("SPA SHELL", payload, path)
+                        self.assertNotIn('id="root"', payload, path)
+                        status, payload = body(path, "HEAD")
+                        self.assertEqual(status, 404, f"HEAD {path}")
+                        self.assertNotIn("SPA SHELL", payload)
+                    for path in ("/matrix", "/matrix/"):
+                        for method in ("GET", "HEAD"):
+                            status, payload = body(path, method)
+                            self.assertEqual(status, 200, f"{method} {path}")
+                            if method == "GET":
+                                self.assertIn("SPA SHELL", payload, path)
+                    status, payload = body("/privacy")
+                    self.assertEqual((status, payload), (200, "PAGE privacy"))
+                    status, home = body("/")
+                    self.assertEqual(status, 200)
+                    self.assertIn("SPA SHELL", home)
                 finally:
                     httpd.shutdown()
                     httpd.server_close()
