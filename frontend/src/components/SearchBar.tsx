@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { MapPin, Search, X } from 'lucide-react'
 import { useGeocode } from '../lib/api'
 import type { GeocodeResult } from '../types'
+import { chosenPlaceText } from '../lib/chosenPlaceText'
 import { fadeSlide, popIn, quickEase } from '../lib/motion'
 
 export function SearchBar({
@@ -58,7 +59,7 @@ export function SearchBar({
 
   const pick = (r: GeocodeResult) => {
     onPlaceSelect?.(r)
-    onChange('')
+    onChange(chosenPlaceText(r.name, value))
     setActiveIndex(-1)
     setFocused(false)
   }

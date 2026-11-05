@@ -61,6 +61,17 @@ describe('compact station cards', () => {
     }
   })
 
+  it('shows Sign in on a charger only when saving is offered, and Save after sign-in', () => {
+    const guest = renderToStaticMarkup(<StationCard st={row()} animateIn={false} onSave={() => {}} />)
+    expect(guest).toContain('>Sign in<')
+    expect(guest).toContain('aria-label="Sign in for Example charger"')
+    expect(guest).not.toContain('>Save<')
+    const member = renderToStaticMarkup(<StationCard st={row()} animateIn={false} signedIn saved onSave={() => {}} />)
+    expect(member).toContain('>Saved<')
+    expect(member).toContain('aria-label="Saved Example charger"')
+    expect(member).toContain('aria-pressed="true"')
+  })
+
   it('keeps an unknown price explicit, never substituting zero', () => {
     const markup = renderToStaticMarkup(<StationCard st={row({ price_min: null })} animateIn={false} />)
     expect(markup).toContain('Unknown')

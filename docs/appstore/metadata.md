@@ -28,6 +28,7 @@ must also complete a jurisdiction-appropriate name/mark review before publicatio
 
 - Privacy Policy URL: `https://[OWNER-DOMAIN]/privacy`
 - Support URL: `https://[OWNER-DOMAIN]/support`
+- Support email: `support@voltago.app`
 - Terms URL used inside the app/paywall: `https://[OWNER-DOMAIN]/terms`
 - Marketing URL, optional: `https://[OWNER-DOMAIN]/volta`
 

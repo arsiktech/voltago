@@ -7,7 +7,7 @@
 **Effective date:** `[EFFECTIVE DATE]`<br>
 **Data controller / operator:** `[FULL LEGAL NAME]`<br>
 **Address:** `[LEGAL OR BUSINESS ADDRESS]`<br>
-**Privacy contact:** `[PRIVACY EMAIL OR CONTACT FORM URL]`<br>
+**Privacy contact:** `support@voltago.app`<br>
 **Support:** `https://[OWNER-DOMAIN]/support`
 
 ## 1. Scope
@@ -148,7 +148,7 @@ PUBLISH THIS INSTRUCTION.]`
 - Depending on applicable law, you may request access, correction, deletion,
   restriction, portability, or objection, and may complain to a supervisory authority.
 
-Send privacy requests to `[PRIVACY EMAIL OR CONTACT FORM URL]`. **There is no Volta
+Send privacy requests to `support@voltago.app`. **There is no Volta
 account to delete; privacy/data-rights requests remain available.** A request may require
 enough information to locate relevant logs, and some data may not be identifiable or
 recoverable from volatile caches.
@@ -158,13 +158,13 @@ recoverable from volatile caches.
 Release builds are designed to use a configured public HTTPS endpoint. Volta applies
 bounded requests, rate limiting, reduced request logging, and fail-closed presentation
 when source data is uncertain. No method of transmission or storage is completely secure.
-Report security issues privately to `[SECURITY CONTACT]`.
+Report security issues privately to `support@voltago.app`.
 
 ## 9. Children
 
 Volta is a driving utility and is not directed to children or listed in the App Store
 Kids category. Volta does not knowingly ask children for personal information. Contact
-`[PRIVACY CONTACT]` if you believe information was handled improperly.
+`support@voltago.app` if you believe information was handled improperly.
 
 ## 10. Changes
 
@@ -175,5 +175,5 @@ law requires another form of notice or consent, the operator will provide it.
 
 `[FULL LEGAL NAME]`<br>
 `[POSTAL ADDRESS]`<br>
-`[PRIVACY EMAIL]`<br>
+`support@voltago.app`<br>
 `[SUPPORT URL]`

@@ -1,12 +1,13 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, List, Map } from 'lucide-react'
+import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, List, Map as MapIcon } from 'lucide-react'
 import { publicTransportErrorMessage, useChargers } from './lib/api'
 import { discoveryRows, selectedMapRow } from './lib/discovery'
 import { boxAround, containsCoordinate, isLiveBbox, normalizeBbox, widerBoxAround } from './lib/geo'
 import {
   DEFAULT_FILTERS,
   ageText,
+  displayName,
   chooseChargersData,
   inViewport,
   isMapLocationVerified,
@@ -19,6 +20,15 @@ import {
   sortNearbyBySafetyAndDistance,
   statusTrustSummary,
 } from './lib/format'
+import {
+  browserStorage,
+  readSaved,
+  readSignedIn,
+  toggleSaved,
+  writeSaved,
+  writeSignedIn,
+  type SavedCharger,
+} from './lib/savedChargers'
 import type { Bbox, Coords, FilterKey, Filters, GeocodeResult, Station, Viewport } from './types'
 import { useTheme } from './hooks/useTheme'
 import { useGeolocation } from './hooks/useGeolocation'
@@ -179,7 +189,7 @@ function ViewToggle({ expanded, onChange }: { expanded: boolean; onChange: (expa
       whileTap={reduceMotion ? undefined : { scale: 0.96 }}
       transition={pressSpring}
     >
-      {expanded ? <Map size={15} /> : <List size={15} />}
+      {expanded ? <MapIcon size={15} /> : <List size={15} />}
       {expanded ? 'Map' : 'List'}
     </motion.button>
   )
@@ -341,6 +351,15 @@ export default function App() {
   }, [filters.maxPrice])
   const requestFilters = { ...filters, maxPrice: requestMaxPrice }
   const [search, setSearch] = useState('')
+  const [showSaved, setShowSaved] = useState(false)
+  const [signedIn, setSignedIn] = useState(() => {
+    const storage = browserStorage()
+    return storage ? readSignedIn(storage) : false
+  })
+  const [saved, setSaved] = useState<SavedCharger[]>(() => {
+    const storage = browserStorage()
+    return storage ? readSaved(storage) : []
+  })
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [overview, setOverview] = useState(true)
   const [region, setRegion] = useState('Mainland')
@@ -414,6 +433,7 @@ export default function App() {
 
   const requestLocation = useCallback(() => {
     claimSearchArea()
+    setSearch('')
     requestDeviceLocation((coords) => {
       setOrigin({ coords, label: 'your location', kind: 'device' })
       setOverview(false)
@@ -465,6 +485,7 @@ export default function App() {
     claimSearchArea()
     geo.cancel()
     lastAutoAreaKey.current = bboxKey(viewport.bbox)
+    setSearch('')
     setOrigin({ coords: viewport.center, label: 'map center', kind: 'map' })
     setOverview(!isLiveBbox(viewport.bbox))
     setCommittedBbox(viewport.bbox)
@@ -513,6 +534,16 @@ export default function App() {
       : listRows,
     [listRows, selectedRow],
   )
+  const savedIds = useMemo(() => new Set(saved.map((item) => item.id)), [saved])
+  const stationsById = useMemo(() => new Map(allRows.map((station) => [station.id, station])), [allRows])
+  const savedInResults = useMemo(
+    () => saved.flatMap((item) => {
+      const station = stationsById.get(item.id)
+      return station ? [station] : []
+    }),
+    [saved, stationsById],
+  )
+  const savedMissing = showSaved && signedIn ? saved.filter((item) => !stationsById.has(item.id)) : []
   // Clear before committing the panel/map; retaining an invalid ID would revive
   // an old selection if a filter or later response makes that station reappear.
   if (selectedId && !selectedRow) setSelectedId(null)
@@ -632,8 +663,99 @@ export default function App() {
               }
             : null
 
+  const signIn = () => {
+    const storage = browserStorage()
+    if (storage) writeSignedIn(storage, true)
+    setSignedIn(true)
+  }
+  const onSave = (station: Station) => {
+    const record = { id: station.id, name: station.name, city: station.city ?? null }
+    if (!signedIn) {
+      signIn()
+      if (saved.some((item) => item.id === station.id)) return
+    }
+    const next = toggleSaved(saved, record)
+    const storage = browserStorage()
+    if (storage) writeSaved(storage, next)
+    setSaved(next)
+  }
+  const removeSaved = (id: string) => {
+    const next = saved.filter((item) => item.id !== id)
+    const storage = browserStorage()
+    if (storage) writeSaved(storage, next)
+    setSaved(next)
+  }
+  const saveProps = {
+    signedIn,
+    savedIds,
+    onSave,
+  }
+
   let body: React.ReactNode
-  if (query.isLoading && !effectiveData) {
+  if (showSaved && !signedIn) {
+    body = (
+      <div className="card p-5 text-center">
+        <button
+          type="button"
+          onClick={signIn}
+          className="min-h-11 rounded-xl bg-brand px-5 text-sm font-semibold text-brand-contrast transition-colors hover:bg-brand-strong"
+        >
+          Sign in
+        </button>
+      </div>
+    )
+  } else if (showSaved && saved.length === 0) {
+    body = (
+      <div className="card p-5 text-center">
+        <p className="text-sm font-semibold text-fg">No saved chargers</p>
+        <button
+          type="button"
+          onClick={() => setShowSaved(false)}
+          className="mt-3 min-h-11 rounded-xl border border-border bg-surface-2 px-4 text-xs font-semibold text-fg-soft transition-colors hover:border-border-strong"
+        >
+          Show chargers
+        </button>
+      </div>
+    )
+  } else if (showSaved) {
+    body = (
+      <>
+        {savedInResults.length > 0 && (
+          <StationList
+            rows={savedInResults}
+            selectedId={selectedId}
+            onSelect={onStationSelect}
+            scrollRef={listRef}
+            scrollMargin={listOffsets.margin}
+            scrollPaddingStart={listOffsets.heading}
+            {...saveProps}
+          />
+        )}
+        {savedMissing.length > 0 && (
+          <ul className="space-y-3">
+            {savedMissing.map((item) => {
+              const name = displayName(item.name)
+              return (
+                <li key={item.id} className="card p-4">
+                  <p className="text-base font-semibold text-fg">{name}</p>
+                  {item.city && <p className="mt-1 text-xs text-muted">{item.city}</p>}
+                  <p className="mt-1 text-xs text-muted">Not in this search</p>
+                  <button
+                    type="button"
+                    onClick={() => removeSaved(item.id)}
+                    aria-label={`Remove ${name}`}
+                    className="mt-3 min-h-11 rounded-xl border border-border bg-surface px-3 text-sm font-semibold text-fg-soft transition-colors hover:border-border-strong"
+                  >
+                    Remove
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </>
+    )
+  } else if (query.isLoading && !effectiveData) {
     body = <LoadingCards />
   } else if (query.isError && !effectiveData) {
     body = (
@@ -734,10 +856,13 @@ export default function App() {
         scrollRef={listRef}
         scrollMargin={listOffsets.margin}
         scrollPaddingStart={listOffsets.heading}
+        {...saveProps}
       />
     )
   }
-  const bodyKey = query.isLoading && !effectiveData ? 'loading' : query.isError && !effectiveData ? 'error' : !panelRows.length ? 'empty' : 'list'
+  const bodyKey = showSaved
+    ? (!signedIn ? 'sign-in' : saved.length ? 'saved' : 'saved-empty')
+    : query.isLoading && !effectiveData ? 'loading' : query.isError && !effectiveData ? 'error' : !panelRows.length ? 'empty' : 'list'
 
   return (
     <div className="discovery-app relative h-[100dvh] w-full overflow-hidden" data-view={fullList ? 'list' : 'split'}>
@@ -795,6 +920,7 @@ export default function App() {
             onClick={() => {
               claimSearchArea()
               geo.cancel()
+              setSearch('')
               lastAutoAreaKey.current = null
               setRegion(item.label === 'Spain' ? 'Mainland' : item.label)
               setOverview(true)
@@ -890,13 +1016,25 @@ export default function App() {
         >
           <div ref={headingRef} className="results-heading" data-scrolled={scrolled || undefined}>
             <div className="min-w-0">
-              <p className="text-xs text-muted" data-search-area>{placeLabel}</p>
+              <p className="text-xs text-muted" data-search-area>{showSaved ? 'Saved chargers' : placeLabel}</p>
               <h1 className="mt-0.5 text-lg font-semibold">
-                <CountSwap value={panelRows.length} className="tabular-nums" />{' '}
-                {overview ? scopeLabel : 'nearby'}
+                {showSaved && !signedIn ? 'Saved' : (
+                  <>
+                    <CountSwap value={showSaved ? saved.length : panelRows.length} className="tabular-nums" />{' '}
+                    {showSaved ? 'saved' : overview ? scopeLabel : 'nearby'}
+                  </>
+                )}
               </h1>
             </div>
             <div className="flex flex-none items-center gap-1">
+              <button
+                type="button"
+                aria-pressed={showSaved}
+                onClick={() => setShowSaved((open) => !open)}
+                className="min-h-11 rounded-full border border-border px-3 text-xs font-semibold text-fg-soft aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-brand-contrast"
+              >
+                Saved
+              </button>
               <ViewToggle expanded={fullList} onChange={setFullList} />
               <IconButton label={overview ? 'Refresh known charger leads' : 'Refresh live data'} onClick={() => query.refetch()}>
                 <RefreshCw size={16} className={query.isFetching ? 'animate-spin' : ''} />
