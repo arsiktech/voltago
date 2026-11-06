@@ -98,6 +98,7 @@ native currency and units; the euro price filter does not perform FX conversion.
 | `price.is_free` / `price.price_verified` | `is_free` is the source's free claim; `price_verified` says whether it is a verified current price. `free_only` and the euro price cap keep listed free leads, as the apps do, and label them "current price unverified". |
 | `hardware.connectors` | Source-reported plugs, not a vehicle compatibility promise. MCP has no vehicle input: its decisions, eligibility and ordering use listed hardware without the app's implicit Tesla assumption. Confirm compatibility before routing. |
 | `excluded` | How many rows each filter removed. A filter never guesses: an unknown price, connector or power is excluded, not assumed to match. |
+| `connector_unconfirmed` | With a `connector` filter: up to 5 nearest chargers that pass every other filter but publish no connector type. They are not matches and are not in `chargers` or `total_matches`. The type is unknown, not absent; confirm the plug before driving. |
 
 The provider's own app and signs at the site always override this data.
 

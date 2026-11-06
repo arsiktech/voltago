@@ -293,7 +293,7 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertNotIn(".presentationCornerRadius(28)", self.root_view)
         self.assertNotIn("Rectangle()\n                .fill(station.decisionKind.color)\n                .frame(width: 5)", self.sheet_view)
         self.assertNotIn(".shadow(", self.station_views.split("struct StationCard", 1)[1].split("struct StationCardSkeleton", 1)[0])
-        self.assertIn("StationCard(station: st)", self.sheet_view)
+        self.assertIn("StationCard(station: st, plugUnconfirmed: state.isPlugUnconfirmed(st))", self.sheet_view)
         self.assertIn(".voltaCard(selected: state.focusedStationID == st.id)", self.sheet_view)
         self.assertIn("selected ? Theme.selectedSurface : Theme.surface", self.theme)
 

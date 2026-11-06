@@ -414,7 +414,7 @@ struct SheetView: View {
                         rowTapFeedback.toggle()
                         onSelect(st)
                     } label: {
-                        StationCard(station: st)
+                        StationCard(station: st, plugUnconfirmed: state.isPlugUnconfirmed(st))
                     }
                     .buttonStyle(VoltaPressButtonStyle(pressedScale: 0.985))
                     .accessibilityIdentifier("stationRow-\(st.id)")

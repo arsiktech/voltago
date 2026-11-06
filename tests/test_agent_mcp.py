@@ -323,6 +323,54 @@ class AgentMcpHttpTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in ready["chargers"]], ["live-go-far"])
         self.assertEqual(ready["excluded"]["not_route_ready"], 2)
 
+    def _puerto_de_la_cruz(self, **args: Any) -> Dict[str, Any]:
+        """The owner's 5 Nov 2026 search: the nearer Lidl publishes no connector type."""
+        self.upstream = []
+        self.leads = [
+            lead_row("lidl-santa-ursula", lat=28.42734, lon=-16.48916, price=0.0, labels=["Type 2"]),
+            lead_row("lidl-puerto-de-la-cruz", lat=28.39831, lon=-16.54171, price=0.0, labels=[]),
+        ]
+        return self.find(lat=28.415902, lon=-16.553296, radius_km=10, free_only=True, **args)
+
+    def test_connector_filter_shows_nearer_unknown_plug_apart_from_matches(self) -> None:
+        result = self._puerto_de_la_cruz(connector="Type 2")
+        self.assertEqual([row["id"] for row in result["chargers"]], ["lidl-santa-ursula"])
+        self.assertEqual(result["total_matches"], 1)
+        self.assertEqual(result["excluded"]["connector_unknown"], 1)
+        [unconfirmed] = result["connector_unconfirmed"]
+        self.assertEqual(unconfirmed["id"], "lidl-puerto-de-la-cruz")
+        self.assertLess(unconfirmed["distance_km"], result["chargers"][0]["distance_km"])
+        # The plug stays unknown: not invented, not incompatible, not available.
+        self.assertEqual(unconfirmed["hardware"]["connectors"], [])
+        self.assertIsNone(unconfirmed["hardware"]["available_connectors"])
+        self.assertFalse(unconfirmed["evidence"]["live_verified"])
+        self.assertTrue(unconfirmed["price"]["is_free"])
+
+        text = self.call("find_chargers", {"lat": 28.415902, "lon": -16.553296, "radius_km": 10,
+                                           "free_only": True, "connector": "Type 2"})["content"][0]["text"]
+        self.assertIn("no published connector type", text)
+        self.assertLess(text.index("no published connector type"), text.index("lidl-puerto-de-la-cruz"))
+
+    def test_unfiltered_free_search_orders_the_nearer_store_first(self) -> None:
+        result = self._puerto_de_la_cruz()
+        self.assertEqual([row["id"] for row in result["chargers"]], ["lidl-puerto-de-la-cruz", "lidl-santa-ursula"])
+        self.assertEqual(result["connector_unconfirmed"], [])
+
+    def test_connector_unconfirmed_still_obeys_every_other_filter(self) -> None:
+        result = self._puerto_de_la_cruz(connector="Type 2", available_now=True)
+        self.assertEqual(result["connector_unconfirmed"], [])
+        self.assertEqual(result["excluded"]["connector_unknown"], 1)
+        self.assertEqual(self._puerto_de_la_cruz(connector="Type 2", min_power_kw=1)["connector_unconfirmed"], [])
+
+    def test_place_and_exact_coordinates_return_the_same_nearby_rows(self) -> None:
+        self.leads = [lead_row("near", lat=39.471, lon=-0.37, price=0.0, labels=["Type 2"]),
+                      lead_row("far", lat=39.49, lon=-0.37, price=0.0, labels=[])]
+        by_place = self.find(place="Valencia", lat=None, lon=None, radius_km=5)
+        self.assertEqual(by_place["query"]["origin"], "place")
+        by_point = self.find(lat=ORIGIN_LAT, lon=ORIGIN_LON, radius_km=5)
+        self.assertEqual([r["id"] for r in by_place["chargers"]], [r["id"] for r in by_point["chargers"]])
+        self.assertEqual(by_place["excluded"], by_point["excluded"])
+
     def test_filters_exclude_unknowns_instead_of_guessing(self) -> None:
         self.upstream = [live_row("cheap-ccs", lat=39.471, lon=-0.37, price=0.2, labels=["CCS2"], power=50)]
         self.leads = [

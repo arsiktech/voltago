@@ -12567,6 +12567,29 @@
           }
         }
       }
+    },
+    "Plug unconfirmed": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plug unconfirmed"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conector sin confirmar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разъём не подтверждён"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

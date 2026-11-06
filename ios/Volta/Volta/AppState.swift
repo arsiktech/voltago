@@ -319,12 +319,14 @@ final class AppState: NSObject, ObservableObject {
             }
         }
         if !connectorTypes.isEmpty {
-            rows = rows.filter { station in
-                let labels = (station.connectorLabels ?? []) + (station.connectors ?? []).flatMap { [$0.type, $0.label].compactMap { $0 } }
-                return labels.contains { label in
+            // No published type means unknown, not incompatible: keep the charger, after the
+            // confirmed matches, and let the card say so.
+            let matching = rows.filter { station in
+                station.publishedConnectorLabels.contains { label in
                     connectorTypes.contains { ConnectorKind.matches(label, selection: $0) }
                 }
             }
+            rows = matching + rows.filter { $0.publishedConnectorLabels.isEmpty }
         }
         if minimumPowerKW > 0 {
             rows = rows.filter { station in
@@ -350,7 +352,16 @@ final class AppState: NSObject, ObservableObject {
         let bbox = visibleRegion.bbox
         return filteredRows
             .filter { bbox.contains($0) }
-            .sorted { score($0) > score($1) }
+            .sorted { first, second in
+                let firstUnconfirmed = isPlugUnconfirmed(first), secondUnconfirmed = isPlugUnconfirmed(second)
+                if firstUnconfirmed != secondUnconfirmed { return secondUnconfirmed }
+                return score(first) > score(second)
+            }
+    }
+
+    /// True only under a plug filter, where the driver asked about a type this charger doesn't publish.
+    func isPlugUnconfirmed(_ station: Station) -> Bool {
+        !connectorTypes.isEmpty && station.publishedConnectorLabels.isEmpty
     }
 
     private func score(_ st: Station) -> Double {

@@ -4163,25 +4163,43 @@ def _english_airport_query(q: str) -> str:
     return f"{rest} airport" if rest else q
 
 
-def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
-    """Public Nominatim proxy (worldwide), cached, so users can jump to any city/place.
+def _place_key(text: str) -> str:
+    """Case, accent and punctuation-insensitive form used to match place aliases."""
+    folded = unicodedata.normalize("NFKD", text or "")
+    folded = "".join(ch for ch in folded if not unicodedata.combining(ch)).casefold()
+    return " ".join(re.sub(r"[^\w]+", " ", folded).split())
 
-    Returns [{label, name, lat, lon, type, bbox}]. bbox uses Volta's bbox dict shape.
-    """
-    q = (query or "").strip()
-    if len(q) < 2:
-        return []
-    limit = max(1, min(limit, 8))
-    airport_query = bool(re.search(r"\b(?:airport|aeropuerto|aeroport|aéroport)\b", q, re.I))
-    # Nominatim handles translated leading airport phrases as broad regional
-    # airfield searches. Use its English place-name form without a city allowlist.
-    search_q = _english_airport_query(q) if airport_query else q
-    key = q.casefold()
-    now = time.time()
-    with _CACHE_LOCKS["geocode"]:
-        cached = GEOCODE_CACHE.get(key)
-        if cached and now - cached["ts"] < GEOCODE_TTL_SECONDS:
-            return cached["results"][:limit]
+
+# Destinations drivers name differently from OpenStreetMap, so Nominatim cannot find them.
+# Add a place only with a public source for the name and the address. Whole-query match
+# only: a bare "Hospital Vithas" is a chain name and stays with the geocoder.
+_VITHAS_TENERIFE = {
+    # Vithas publishes Calle Enrique Wolfson 8, Santa Cruz de Tenerife. OSM's only hospital
+    # on that street is "Clinica Santa Cruz" (these coordinates), with no Vithas name.
+    "label": "Hospital Vithas Tenerife, Calle Enrique Wolfson 8, 38006 Santa Cruz de Tenerife, España",
+    "name": "Hospital Vithas Tenerife",
+    "lat": 28.4714743,
+    "lon": -16.2591622,
+    "type": "hospital",
+    "bbox": None,
+    "match": "alias",
+}
+PLACE_ALIASES: Dict[str, Dict[str, Any]] = {
+    _place_key(alias): _VITHAS_TENERIFE
+    for alias in (
+        "Hospital Vithas Tenerife", "Vithas Tenerife", "Vithas Tenerife Hospital",
+        "Hospital Vithas Santa Cruz", "Vithas Hospital Santa Cruz", "Vithas Santa Cruz",
+        "Hospital Vithas Santa Cruz de Tenerife", "Vithas Hospital Santa Cruz de Tenerife",
+        "Vithas Santa Cruz de Tenerife",
+    )
+}
+# A "<place>, <town>" fallback may only land on a settlement, never a province or country.
+_TOWN_ADDRESS_TYPES = {"city", "town", "village", "municipality", "suburb", "hamlet"}
+# Nominatim's usage policy allows one request per second, and the fallback is a second one.
+_NOMINATIM_MIN_INTERVAL_SECONDS = 1.05
+
+
+def _nominatim_raw(search_q: str) -> List[Dict[str, Any]]:
     qs = urllib.parse.urlencode({
         "q": search_q, "format": "jsonv2",
         "limit": 8, "addressdetails": 0,
@@ -4190,17 +4208,37 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
         f"{NOMINATIM_URL}?{qs}",
         headers={"User-Agent": GEOCODE_UA, "Accept": "application/json", "Accept-Language": "es,en"},
     )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        return json.loads(resp.read().decode("utf-8", "replace"))
+
+
+def _town_fallback(q: str) -> List[Dict[str, Any]]:
+    """Resolve "<unknown place>, <town>" to the named town, and say so in the label.
+
+    The driver still gets chargers in the place they named, not an error. The label keeps
+    the miss visible, so nobody reads the town centre as the destination itself.
+    """
+    wanted, _, town = q.rpartition(",")
+    wanted, town = wanted.strip(), town.strip()
+    if not wanted or len(town) < 2:
+        return []
+    time.sleep(_NOMINATIM_MIN_INTERVAL_SECONDS)
     try:
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            raw = json.loads(resp.read().decode("utf-8", "replace"))
+        raw = _nominatim_raw(town)
     except Exception:
-        return cached["results"][:limit] if cached else []
-    if airport_query:
-        # A shop, street or metro stop named Airport is not an airport origin.
-        raw = [r for r in raw if (r.get("category") or r.get("class")) == "aeroway"
-               and r.get("type") == "aerodrome"]
-        raw.sort(key=lambda r: (safe_float(r.get("importance")) or 0,
-                                safe_float(r.get("place_rank")) or 0), reverse=True)
+        return []
+    for result in raw:
+        if result.get("addresstype") not in _TOWN_ADDRESS_TYPES:
+            continue
+        rows = _geocode_rows([result], q)
+        for row in rows:
+            row["label"] = f"{row['label']} (\u201c{wanted}\u201d not found; showing the town centre)"
+            row["match"] = "town"
+        return rows
+    return []
+
+
+def _geocode_rows(raw: Iterable[Dict[str, Any]], q: str) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for r in raw:
         lat, lon = safe_float(r.get("lat")), safe_float(r.get("lon"))
@@ -4218,6 +4256,44 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
             "name": r.get("name") or label.split(",")[0],
             "lat": lat, "lon": lon, "type": r.get("type"), "bbox": bbox,
         })
+    return results
+
+
+def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Public Nominatim proxy (worldwide), cached, so users can jump to any city/place.
+
+    Returns [{label, name, lat, lon, type, bbox}]. bbox uses Volta's bbox dict shape.
+    """
+    q = (query or "").strip()
+    if len(q) < 2:
+        return []
+    limit = max(1, min(limit, 8))
+    alias = PLACE_ALIASES.get(_place_key(q))
+    if alias:
+        return [dict(alias)]
+    airport_query = bool(re.search(r"\b(?:airport|aeropuerto|aeroport|aéroport)\b", q, re.I))
+    # Nominatim handles translated leading airport phrases as broad regional
+    # airfield searches. Use its English place-name form without a city allowlist.
+    search_q = _english_airport_query(q) if airport_query else q
+    key = q.casefold()
+    now = time.time()
+    with _CACHE_LOCKS["geocode"]:
+        cached = GEOCODE_CACHE.get(key)
+        if cached and now - cached["ts"] < GEOCODE_TTL_SECONDS:
+            return cached["results"][:limit]
+    try:
+        raw = _nominatim_raw(search_q)
+    except Exception:
+        return cached["results"][:limit] if cached else []
+    if airport_query:
+        # A shop, street or metro stop named Airport is not an airport origin.
+        raw = [r for r in raw if (r.get("category") or r.get("class")) == "aeroway"
+               and r.get("type") == "aerodrome"]
+        raw.sort(key=lambda r: (safe_float(r.get("importance")) or 0,
+                                safe_float(r.get("place_rank")) or 0), reverse=True)
+    results = _geocode_rows(raw, q)
+    if not results and not airport_query:
+        results = _town_fallback(q)
     with _CACHE_LOCKS["geocode"]:
         GEOCODE_CACHE[key] = {"ts": now, "results": results}
         if len(GEOCODE_CACHE) > 500:
