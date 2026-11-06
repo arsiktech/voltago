@@ -460,15 +460,46 @@ class ListingClockTests(unittest.TestCase):
         self.assertEqual(listing_clocks(record, "dgt"), {
             "fetched_at": FETCHED_AT, "published_at": "2026-11-06T09:16:16Z", "source_last_updated": "2023-11-21T10:39:04Z"})
 
-    def test_canarias_map_edit_time_is_the_source_update_time(self) -> None:
+    def test_canarias_states_no_source_update_time(self) -> None:
+        # The live map's properties are id, name, address, zoom, icon, popup, link and maps.
         feature = ct_feature("9", "Sin precio", -16.25, 28.46, "marcador-4.png", "<p>x</p>")
-        feature["properties"]["modified"] = "1762000000"
-        without = ct_feature("10", "Otro", -16.26, 28.47, "marcador-4.png", "<p>y</p>")
-        rows = ing.parse_canarias_tecarga_geojson(ct_payload([feature, without]), minimum_features=1,
+        rows = ing.parse_canarias_tecarga_geojson(ct_payload([feature]), minimum_features=1,
                                                   source_artifact=fetch_artifact_at(FETCHED_AT))
-        by_name = {row["name"]: row["sources"][0] for row in rows}
-        self.assertEqual(by_name["Sin precio"]["source_last_updated"], iso_from_epoch(1762000000))
-        self.assertNotIn("source_last_updated", by_name["Otro"])
+        self.assertEqual(listing_clocks(rows[0], "canarias"), {
+            "fetched_at": FETCHED_AT, "published_at": None, "source_last_updated": None})
+
+    def drop_rows_named(self, dropped: str):
+        real = ing.add_record
+
+        def add_unless_dropped(*args, **kwargs):
+            if dropped in str(kwargs.get("name")).lower():
+                return None
+            return real(*args, **kwargs)
+        return mock.patch.object(ing, "add_record", side_effect=add_unless_dropped)
+
+    def test_a_dropped_mapareve_row_keeps_its_clock_to_itself(self) -> None:
+        energy = [{"type": "ENERGY", "price": 0.2}]
+        dropped = json.loads(json.dumps(reve_row("b", "Dropped", 28.2, -16.5, energy)).replace("2026-09-16T13:48:10.288Z", "2099-01-01T00:00:00Z"))
+        pages = [{"data": [reve_row("a", "Kept", 28.1, -16.5, energy), dropped]}]
+        with self.drop_rows_named("dropped"):
+            rows = ing.parse_mapareve_public_pages(pages, source_artifacts=[fetch_artifact_at(FETCHED_AT)])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["sources"][0]["source_last_updated"], "2026-09-16T13:48:10.288Z")
+
+    def test_a_dropped_dgt_site_keeps_its_clock_to_itself(self) -> None:
+        site = """<egi:energyInfrastructureSite id="{id}"><fac:name><com:values><com:value>{name}</com:value></com:values></fac:name>
+          <fac:lastUpdated>{updated}</fac:lastUpdated>
+          <fac:locationReference><latitude>40.4</latitude><longitude>{lon}</longitude></fac:locationReference>
+          <egi:energyInfrastructureStation><egi:refillPoint/></egi:energyInfrastructureStation>
+          </egi:energyInfrastructureSite>"""
+        feed = ('<?xml version="1.0"?><p xmlns:com="urn:com" xmlns:fac="urn:fac" xmlns:egi="urn:egi">'
+                + site.format(id=1, name="Kept", updated="2023-11-21T11:39:04.000+01:00", lon="-3.7")
+                + site.format(id=2, name="Dropped", updated="2099-01-01T00:00:00.000+01:00", lon="-3.8") + "</p>")
+        sites = ing.parse_dgt_nap_feed(io.BytesIO(feed.encode()), minimum_sites=1)
+        with self.drop_rows_named("dropped"):
+            rows = ing.nap_records_from_sites(sites, source_artifact=fetch_artifact_at(FETCHED_AT))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(listing_clocks(rows[0], "dgt")["source_last_updated"], "2023-11-21T10:39:04Z")
 
 
 class DatasetPublishedAtTests(unittest.TestCase):

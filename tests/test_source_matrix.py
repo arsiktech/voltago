@@ -103,6 +103,16 @@ class SourceMatrixTests(unittest.TestCase):
                                                    "cache": {"fallback": True}}]}}
         self.assertEqual(cells(intel, "a")["ocm"]["state"], "unknown")
 
+    def test_failed_metadata_fetch_says_nothing_about_the_listing(self) -> None:
+        rows_at, metadata_at = "2026-11-06T18:00:00Z", "2026-11-01T00:00:00Z"
+        for prefix, source in (("catalonia_icaen", "catalonia"), ("castilla_leon", "castilla_leon")):
+            intel = {"errors": [], "fetch_evidence": {"artifacts": [
+                {"cache_name": f"{prefix}.json", "fetched_at": rows_at, "cache": {"fallback": False}},
+                {"cache_name": f"{prefix}_metadata.json", "fetched_at": metadata_at, "cache": {"fallback": True}}]}}
+            self.assertNotIn(source, sm.degraded_columns(intel, []))
+            self.assertEqual(sm.column_fetches(intel)[source],
+                             {"at": rows_at, "oldest_part_at": rows_at, "parts": 1, "failed_parts": 0})
+
     def test_listing_clocks_come_only_from_that_listing(self) -> None:
         record = row("a", "DGT National Access Point charging registry", "OpenStreetMap public tags")
         record["source_fetched_at"] = "2026-11-04T00:00:00Z"  # Oldest across sources: not attributable to a cell.

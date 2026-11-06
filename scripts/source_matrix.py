@@ -81,6 +81,8 @@ CACHE_COLUMNS = {
     "red_movem": "movem", "acciona": "acciona", "moraleja": "moraleja", "electromaps": "electromaps",
     "chargemap": "chargemap",
 }
+# Fetched only for a dataset's publication time. Their fetches say nothing about the listing rows.
+CLOCK_ONLY_FILES = ("catalonia_icaen_metadata", "castilla_leon_metadata")
 SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_cache_fallback")
 PRICE_FIELDS = ("source", "label", "price_per_kwh", "currency", "source_url")
 
@@ -151,6 +153,8 @@ def _listed_columns(record: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
 
 def _cache_column(cache_name: Any) -> Optional[str]:
     name = str(cache_name or "").lower()
+    if name.startswith(CLOCK_ONLY_FILES):
+        return None
     return next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
 
 

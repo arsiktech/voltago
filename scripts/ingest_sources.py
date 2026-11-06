@@ -4667,6 +4667,7 @@ def nap_records_from_sites(sites: List[Dict[str, Any]], *, source_artifact: Opti
         operator_app = nap_operator_app(site["operator_name"], site["operator_id"])
         display_name = (site["name"] or "official site").replace("_", " ").strip()
         operator_prefix = site["operator_name"] or "Official registry"
+        before_add = len(out)
         add_record(
             out,
             source="DGT National Access Point charging registry",
@@ -4706,7 +4707,7 @@ def nap_records_from_sites(sites: List[Dict[str, Any]], *, source_artifact: Opti
             port_count=site["port_count"],
             source_artifact=source_artifact,
         )
-        if out:
+        if len(out) > before_add:
             out[-1]["sources"][0]["license"] = "CC BY"
             out[-1]["sources"][0]["license_url"] = "https://creativecommons.org/licenses/by/4.0/"
             out[-1]["sources"][0]["attribution"] = "DGT / MITECO — Punto de Acceso Nacional"
@@ -5467,8 +5468,6 @@ def parse_canarias_tecarga_geojson(
             port_count=port_count,
             source_artifact=source_artifact,
         )
-        if fnum(props.get("modified")):
-            parsed[-1]["sources"][0]["source_last_updated"] = epoch_iso(float(props["modified"]))
         if connectors and any(c.get("count") is None for c in connectors):
             parsed[-1]["connector_count"] = parsed[-1]["total_evse"] = None
             parsed[-1]["hardware_claim"]["port_count"] = None
@@ -5631,6 +5630,7 @@ def parse_mapareve_public_pages(
             + (f"cheapest published ENERGY component {price_min} €/kWh. " if price_min is not None else "no ENERGY price component published. ")
             + "This row is a cached intelligence snapshot; live status and prices always come from the live MapaREVE fetch."
         )
+        before_add = len(parsed)
         add_record(
             parsed,
             source=MAPAREVE_PUBLIC_SOURCE,
@@ -5675,7 +5675,7 @@ def parse_mapareve_public_pages(
             port_count=len(connectors) or None,
             source_artifact=source_artifact,
         )
-        if parsed and last_updated:
+        if last_updated and len(parsed) > before_add:
             parsed[-1]["sources"][0]["source_last_updated"] = last_updated
     if not parsed and rows:
         print(f"mapareve_public: 0 rows from {len(rows)} scanned rows (skipped: {dict(skipped)})")

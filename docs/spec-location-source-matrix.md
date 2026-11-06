@@ -116,7 +116,7 @@ not state it. Build time never stands in for a fetch time, and nothing here esti
 | OpenStreetMap | Yes | Overpass `timestamp_osm_base`, the database state that answered | Element `timestamp` |
 | OpenChargeMap | Yes | Not offered | Verified, status or confirmed date |
 | MapaREVE | Yes, per page | Not offered | Newest EVSE `last_updated` |
-| Canarias te recarga | Yes | Not offered | Map marker `modified`, where present |
+| Canarias te recarga | Yes | Not offered | Not offered |
 | Catalonia | Yes | Dataset `rowsUpdatedAt` | Not offered |
 | Castilla y León | Yes | Dataset `data_processed` | Not offered |
 | Navarra | Yes | Not stored (see below) | Not stored (see below) |
@@ -140,6 +140,9 @@ Values that exist but are not stored:
 - Madrid sends an HTTP `Last-Modified` header, and Catalonia sends `X-SODA2-Truth-Last-Modified`.
   Ingestion does not keep response headers.
 - Zunder's page states `article:modified_time`, which dates the web page and not its markers.
+
+The Catalonia and Castilla y León metadata files supply only `published_at`. They do not count
+toward the column's `last_fetch`, and a failed metadata fetch does not mark the column as failed.
 
 Repsol, Chargemap and Electromaps report `last_fetch` through
 `price_evidence_collection.fetch_clocks`, not `fetch_evidence`. Source policy removes any
