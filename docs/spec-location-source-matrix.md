@@ -82,8 +82,9 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
   returns the columns, the 150 locations nearest the centre, and each cell's state with
   its source entries, reason or nearby candidate. Built by `scripts/source_matrix.py`.
 - `/matrix` is the web page: address search, the matrix, and a detail panel per cell.
-- A column is marked stale, and cannot show "Not listed", when its adapter failed or its
-  latest fetch fell back to an older cached copy.
+- A column is marked stale, and cannot show "Not listed", when its adapter failed, its
+  latest fetch fell back to an older cached copy, or its listing is outside its freshness
+  window (see below).
 - Not yet included: the runtime live feeds (MapaREVE live, Endolla and Spirii status,
   Gaia), and the MCP tool.
 
@@ -145,3 +146,50 @@ Repsol, Chargemap and Electromaps report `last_fetch` through
 `fetch_evidence` artifact that names an excluded family, so these clocks hold no URL or host. A
 request that the refresh budget withheld is not counted as a failed fetch; the older copy's date
 still shows.
+
+## Freshness windows (2026-11-06)
+
+"Not listed" requires that the source's listing was fetched inside its freshness window at
+the moment of the request. The API compares against the current time, not the build time,
+because a snapshot keeps ageing while it is served. Otherwise the cell is Unknown with a
+reason, and the column header shows "(stale)".
+
+Window = cache TTL + 6 h refresh + 1 h margin. A run just before the TTL ends still hits the
+cache, so a healthy file reaches TTL + 6 h before the next run replaces it. The 2026-11-06
+candidate build shows this: its DGT file followed a 30 h cycle. The margin covers the timer's
+5-minute jitter and the run's time until it publishes.
+
+| Column | Listing files | Cache TTL | Window |
+| --- | --- | --- | --- |
+| DGT registry | `dgt_nap_electrolineras.xml` | 24 h | 31 h |
+| OpenStreetMap | `osm_es_area_chargers_*` (24 tiles) | 12 h | 19 h |
+| OpenChargeMap | `ocm_poi.json.gz` | 7 days | 175 h |
+| MapaREVE snapshot | `mapareve_public_tenerife_p*` (12 pages) | 12 h | 19 h |
+| Canarias te recarga | `canarias_tecarga_map*` | 24 h | 31 h |
+
+Only these five columns can show grey. Network and price columns are always Unknown or
+Restricted when absent, so they have no window.
+
+- **Several files: the oldest decides.** Evidence does not say which file covers which point,
+  so one fresh tile cannot vouch for an old tile that may cover the location.
+- **Only listing files count.** Canarias detail pages enrich a row but do not decide what the
+  source lists, so their age does not affect the window.
+- **Missing or unusable evidence is Unknown.** This covers a listing with no evidence, any
+  listing file with an unreadable or zoneless time, and a time over 5 minutes in the future.
+- **A failed fetch stays the reason shown** when both apply, because it is more specific.
+- **Out of scope stays the reason shown** for a place outside the source's area.
+
+Effect on the production build of 2026-11-04 (first 150 locations in each of 11 sampled areas,
+1,513 locations), measured against 2026-11-06 14:30 UTC:
+
+| Column | Grey before | Grey after | Why |
+| --- | ---: | ---: | --- |
+| DGT registry | 444 | 0 | File fetched 2026-11-03 12:39 UTC; window ended 2026-11-04 19:39 UTC. |
+| MapaREVE snapshot | 71 | 0 | Oldest page fetched 2026-11-04 00:48 UTC; window ended 2026-11-04 19:48 UTC. |
+| OpenChargeMap | 1,314 | 1,314 | Inside its window until 2026-11-11 07:47 UTC. |
+| OpenStreetMap, Canarias te recarga | 0 | 0 | Already Unknown: that build used cached copies after failed fetches. |
+| **Total** | **1,829** | **1,314** | **515 cells change to Unknown.** |
+
+The same build at publication changes 0 cells. If refreshes stay rejected, all 1,829 become
+Unknown after 2026-11-11 07:47 UTC. That is the intended result: the page says it cannot prove
+absence, and the cause is the refresh gate, not the matrix.

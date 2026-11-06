@@ -195,12 +195,18 @@ function StationCardBase({
   onSelect,
   index = 0,
   animateIn = true,
+  signedIn = false,
+  saved = false,
+  onSave,
 }: {
   st: Station
   selected?: boolean
   onSelect?: (id: string) => void
   index?: number
   animateIn?: boolean
+  signedIn?: boolean
+  saved?: boolean
+  onSave?: (station: Station) => void
 }) {
   const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
@@ -360,6 +366,18 @@ function StationCardBase({
             {sourceAction}
             {mapsAction}
           </>
+        )}
+        {onSave && (
+          <button
+            type="button"
+            data-save-charger={st.id}
+            aria-pressed={signedIn ? saved : undefined}
+            aria-label={signedIn ? `${saved ? 'Saved' : 'Save'} ${stationTitle(st)}` : `Sign in for ${stationTitle(st)}`}
+            onClick={() => onSave(st)}
+            className={`${secondaryActionClass} aria-pressed:border-brand aria-pressed:bg-brand aria-pressed:text-brand-contrast`}
+          >
+            {signedIn ? (saved ? 'Saved' : 'Save') : 'Sign in'}
+          </button>
         )}
         <motion.button
           onClick={() => setOpen((v) => !v)}

@@ -80,7 +80,7 @@ this file in the same change.
   `Place search is unavailable. Try again.`, or `No matching home area found.` Arrow
   Up/Down move `aria-activedescendant` through the options, Enter picks the active (or first)
   result only while suggestions are open, and Escape dismisses without selecting.
-  Further typing or Arrow Up/Down reopens suggestions. Picking a row flies the map and enters live mode.
+  Further typing or Arrow Up/Down reopens suggestions. Picking a row keeps that place's name in the box, closes the suggestions, flies the map and enters live mode.
   Changing the query clears prior-query suggestions immediately; pending results cannot
   send Enter to a previous city.
 

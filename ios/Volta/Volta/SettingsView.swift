@@ -182,7 +182,7 @@ struct SettingsView: View {
             }
             .accessibilityIdentifier("settingsPrivacyLink")
 
-            Link(destination: URL(string: "mailto:arsik2121@icloud.com?subject=Volta%20Go%20Support")!) {
+            Link(destination: URL(string: "mailto:support@voltago.app?subject=Volta%20Go%20Support")!) {
                 Label("Support", systemImage: "questionmark.circle")
             }
             .accessibilityIdentifier("settingsSupportLink")

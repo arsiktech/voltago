@@ -4,8 +4,8 @@ A cell shows source coverage, never availability, price or whether charging is f
 See docs/spec-location-source-matrix.md. Five states:
 
 - listed: the source lists this location (a matched listing).
-- not_listed: the source covers this area completely and its latest snapshot is current,
-  and it does not list the location.
+- not_listed: the source covers this area completely, its latest snapshot was fetched inside
+  the source's freshness window, and it does not list the location.
 - unknown: absence is not proven (out of scope, network-only source, failed or stale fetch).
 - uncertain: the source lists a separate location within 80 m that did not pass the
   identity checks.
@@ -16,11 +16,18 @@ Standard library only.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 UNCERTAIN_KM = 0.08
 MAX_LOCATIONS = 150
+
+# A listing file is refetched by the first gated refresh after its cache TTL ends. A run just
+# before the TTL ends still hits the cache, so a healthy file reaches TTL + one refresh interval.
+# The margin covers the timer's jitter and the run's own time until it publishes.
+REFRESH_HOURS = 6
+WINDOW_MARGIN_HOURS = 1
+FUTURE_TOLERANCE = timedelta(minutes=5)
 
 SPAIN = (27.4, -18.4, 43.9, 4.5)
 CANARIES = (27.4, -18.4, 29.5, -13.3)
@@ -28,12 +35,14 @@ CANARIES = (27.4, -18.4, 29.5, -13.3)
 # id, label, name prefixes in sources[].name or price_evidence[].source, coverage, scope.
 # coverage "complete": absence inside scope is evidence; "network": the source lists only
 # its own network, so absence proves nothing; "price": price annotations only.
+# A complete column also names the cache files that decide what it lists, and their cache TTL
+# in scripts/ingest_sources.py. Other files of that source (Canarias detail pages) do not count.
 COLUMNS: List[Dict[str, Any]] = [
-    {"id": "dgt", "label": "DGT registry", "prefixes": ("DGT National Access Point",), "coverage": "complete", "scope": SPAIN},
-    {"id": "osm", "label": "OpenStreetMap", "prefixes": ("OpenStreetMap",), "coverage": "complete", "scope": SPAIN},
-    {"id": "ocm", "label": "OpenChargeMap", "prefixes": ("OpenChargeMap",), "coverage": "complete", "scope": SPAIN},
-    {"id": "mapareve", "label": "MapaREVE snapshot", "prefixes": ("MapaREVE",), "coverage": "complete", "scope": (28.0, -17.0, 28.7, -15.9)},
-    {"id": "canarias", "label": "Canarias te recarga", "prefixes": ("Canarias te recarga",), "coverage": "complete", "scope": CANARIES},
+    {"id": "dgt", "label": "DGT registry", "prefixes": ("DGT National Access Point",), "coverage": "complete", "scope": SPAIN, "listing_files": "dgt_nap_electrolineras", "ttl_hours": 24},
+    {"id": "osm", "label": "OpenStreetMap", "prefixes": ("OpenStreetMap",), "coverage": "complete", "scope": SPAIN, "listing_files": "osm_es_area_chargers_", "ttl_hours": 12},
+    {"id": "ocm", "label": "OpenChargeMap", "prefixes": ("OpenChargeMap",), "coverage": "complete", "scope": SPAIN, "listing_files": "ocm_poi", "ttl_hours": 7 * 24},
+    {"id": "mapareve", "label": "MapaREVE snapshot", "prefixes": ("MapaREVE",), "coverage": "complete", "scope": (28.0, -17.0, 28.7, -15.9), "listing_files": "mapareve_public_tenerife_p", "ttl_hours": 12},
+    {"id": "canarias", "label": "Canarias te recarga", "prefixes": ("Canarias te recarga",), "coverage": "complete", "scope": CANARIES, "listing_files": "canarias_tecarga_map", "ttl_hours": 24},
     # Official regional registries; completeness is not verified, so absence proves nothing.
     {"id": "catalonia", "label": "Catalonia open data", "prefixes": ("Catalonia ICAEN",), "coverage": "network", "scope": (40.5, 0.15, 42.9, 3.4)},
     {"id": "navarra", "label": "Navarra open data", "prefixes": ("Navarra IDENA",), "coverage": "network", "scope": (41.9, -2.5, 43.35, -0.7)},
@@ -194,6 +203,46 @@ def column_fetches(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return fetches
 
 
+def freshness_window_hours(column: Dict[str, Any]) -> int:
+    return column["ttl_hours"] + REFRESH_HOURS + WINDOW_MARGIN_HOURS
+
+
+def stale_columns(intel: Dict[str, Any], now: datetime) -> Dict[str, str]:
+    """Complete columns whose listing is not proven fresh at `now`, with the reason.
+
+    Judged on the oldest listing file. Evidence does not say which file covers which point, so
+    one fresh file cannot vouch for another: absence needs every file inside the window.
+    An unusable time on any listing file fails closed, because that file could be the oldest.
+    """
+    stale: Dict[str, str] = {}
+    artifacts = [a for a in (intel.get("fetch_evidence") or {}).get("artifacts") or [] if isinstance(a, dict)]
+    for column in COLUMNS:
+        if column["coverage"] != "complete":
+            continue
+        prefix = column.get("listing_files")
+        files = [a for a in artifacts if prefix and str(a.get("cache_name") or "").lower().startswith(prefix)]
+        stamps = [clock(a.get("fetched_at")) for a in files]
+        if not files:
+            stale[column["id"]] = "No fetch evidence for this source's listing, so absence is not proven."
+        elif not all(stamp and stamp.endswith("Z") for stamp in stamps):
+            stale[column["id"]] = "A listing file has no usable fetch time, so absence is not proven."
+        else:
+            # A build can carry several records of one file; only its newest fetch counts.
+            newest: Dict[str, str] = {}
+            for artifact, stamp in zip(files, stamps):
+                name = str(artifact["cache_name"]).lower()
+                newest[name] = max(stamp, newest.get(name, stamp))
+            oldest = min(newest.values())
+            fetched = datetime.fromisoformat(oldest.replace("Z", "+00:00"))
+            window = freshness_window_hours(column)
+            if fetched > now + FUTURE_TOLERANCE:
+                stale[column["id"]] = f"A listing file's fetch time ({oldest}) is in the future, so absence is not proven."
+            elif now - fetched > timedelta(hours=window):
+                which = f"Oldest of {len(newest)} listing files" if len(newest) > 1 else "Listing"
+                stale[column["id"]] = f"{which} fetched {oldest}, outside this source's {window} h freshness window."
+    return stale
+
+
 def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -> Dict[str, str]:
     """Columns whose latest snapshot cannot prove absence, with the reason."""
     degraded: Dict[str, str] = {}
@@ -218,7 +267,9 @@ def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -
     return degraded
 
 
-def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = MAX_LOCATIONS) -> Dict[str, Any]:
+def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = MAX_LOCATIONS,
+                 now: Optional[datetime] = None) -> Dict[str, Any]:
+    """`now` defaults to the current time: a snapshot ages after its build, while it is served."""
     records = [r for r in intel.get("records") or [] if isinstance(r.get("lat"), (int, float)) and isinstance(r.get("lon"), (int, float))]
     box = (bbox["latitude_sw"], bbox["longitude_sw"], bbox["latitude_ne"], bbox["longitude_ne"])
     margin = UNCERTAIN_KM / 111.32 * 2
@@ -228,7 +279,8 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
     inside.sort(key=lambda r: _distance_km(centre, r))
     truncated = len(inside) > limit
     inside = inside[:limit]
-    degraded = degraded_columns(intel, records)
+    # A failed fetch is the more specific reason, so it wins over age.
+    degraded = {**stale_columns(intel, now or datetime.now(timezone.utc)), **degraded_columns(intel, records)}
     fetches = column_fetches(intel)
     listed_near = [(r, _listed_columns(r)) for r in near]
 
@@ -252,8 +304,8 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
             elif column["coverage"] == "complete" and _inside(record["lat"], record["lon"], column["scope"]) and cid not in degraded:
                 cells[cid] = {"state": "not_listed"}
             else:
-                reason = (degraded.get(cid) if cid in degraded
-                          else "Outside this source's area." if not _inside(record["lat"], record["lon"], column["scope"])
+                reason = ("Outside this source's area." if not _inside(record["lat"], record["lon"], column["scope"])
+                          else degraded[cid] if cid in degraded
                           else "This source annotates prices only; it cannot show a location is missing." if column["coverage"] == "price"
                           else "This source lists only its own network, so absence proves nothing.")
                 cells[cid] = {"state": "unknown", "reason": reason}

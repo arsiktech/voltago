@@ -254,7 +254,7 @@ find a way to remove it.
   pending, unavailable or declined. A newer city, region, station or map choice wins
   over a delayed automatic fix. The fixed cached catalogue remains available when a
   nearby request fails; device-location and viewport queries are never stored offline.
-  No sign-in or onboarding is needed.
+  No sign-in wall or onboarding is needed. Sign in appears only when saving a charger or viewing saved chargers.
 - **One tap for the common filters.** Free and maximum price sit next to search; the
   full filter sheet holds the rest. A changed-filter summary and one-tap reset sit in
   view.

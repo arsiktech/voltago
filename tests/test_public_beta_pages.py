@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import tempfile
 import threading
 import unittest
@@ -21,23 +22,35 @@ import server
 
 
 PUBLIC = ROOT / "frontend" / "public"
-CONTACT = "arsik2121@icloud.com"
+
+
+def support_email() -> tuple[str, str, str]:
+    text = (ROOT / "frontend" / "src" / "lib" / "supportContact.ts").read_text(encoding="utf-8")
+    match = re.search(r"^export const SUPPORT_EMAIL = '([^']+)'$", text, re.M)
+    if not match:
+        raise AssertionError("SUPPORT_EMAIL constant missing")
+    email = match.group(1)
+    local, domain = email.split("@", 1)
+    return email, local, domain
 
 
 class PublicBetaPageSourceTests(unittest.TestCase):
     def test_pages_are_distinct_complete_and_contactable(self) -> None:
+        email, local, domain = support_email()
+        aria = f'{local} at {domain.replace(".", " dot ")}'
         pages = {}
         for route in ("privacy", "terms", "support"):
             path = PUBLIC / route / "index.html"
             self.assertTrue(path.is_file(), path)
             html = path.read_text(encoding="utf-8")
             pages[route] = html
-            self.assertNotIn(CONTACT, html)
+            self.assertNotIn(email, html)
+            self.assertNotIn("icloud.com", html)
             self.assertNotIn("mailto:", html)
-            self.assertIn('aria-label="arsik2121 at icloud dot com"', html)
+            self.assertIn(f'aria-label="{aria}"', html)
             self.assertIn('<span class="email-at" aria-hidden="true"></span>', html)
-            self.assertIn("<span>arsik2121</span>", html)
-            self.assertIn("<span>icloud.com</span>", html)
+            self.assertIn(f"<span>{local}</span>", html)
+            self.assertIn(f"<span>{domain}</span>", html)
             self.assertIn('name="viewport"', html)
             self.assertIn("Volta Go", html)
             self.assertNotIn("[INSERT", html)
@@ -52,6 +65,26 @@ class PublicBetaPageSourceTests(unittest.TestCase):
         self.assertIn("testflight", pages["terms"].lower())
         self.assertIn("do not use", pages["terms"].lower())
         self.assertIn("build number", pages["support"].lower())
+        self.assertIn("smartcar", pages["privacy"].lower())
+        self.assertIn("vehicle connection is enabled", pages["privacy"].lower())
+        self.assertIn("saved chargers", pages["privacy"].lower())
+        self.assertNotIn("icloud", pages["privacy"].lower())
+
+    def test_support_address_matches_the_constant_everywhere(self) -> None:
+        email, _, domain = support_email()
+        self.assertTrue(domain.endswith("voltago.app"), email)
+        swift = (ROOT / "ios" / "Volta" / "Volta" / "SettingsView.swift").read_text(encoding="utf-8")
+        self.assertIn(f"mailto:{email}?subject=Volta%20Go%20Support", swift)
+        self.assertNotIn("icloud.com", swift)
+        for relative in (
+            "docs/appstore/metadata.md",
+            "docs/appstore/support.md",
+            "docs/appstore/privacy.md",
+            "docs/appstore/terms.md",
+        ):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn(email, text, relative)
+            self.assertNotIn("icloud.com", text, relative)
 
 
 class PublicBetaPageServingTests(unittest.TestCase):

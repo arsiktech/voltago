@@ -6,6 +6,7 @@ import json
 import sys
 import unittest
 import urllib.request
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,21 @@ from scripts import source_matrix as sm  # noqa: E402
 LAT, LON = 41.6100, 0.6200
 METRE = 1 / 111_320
 BBOX = {"latitude_sw": 41.60, "longitude_sw": 0.61, "latitude_ne": 41.62, "longitude_ne": 0.63}
+
+
+NOW = datetime(2026, 11, 6, 14, 0, tzinfo=timezone.utc)
+LISTING_FILES = {"dgt": "dgt_nap_electrolineras.xml", "osm": "osm_es_area_chargers_00.json", "ocm": "ocm_poi.json.gz",
+                 "mapareve": "mapareve_public_tenerife_p1.json", "canarias": "canarias_tecarga_map4.geojson.json"}
+
+
+def fetched(hours_ago: float, name: str, *, now: datetime = NOW, **cache: bool) -> dict:
+    stamp = (now - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return {"cache_name": name, "fetched_at": stamp, "cache": cache}
+
+
+def fresh_evidence(*artifacts: dict) -> dict:
+    """Every listing fetched an hour ago, plus the given files."""
+    return {"artifacts": [fetched(1, name) for name in LISTING_FILES.values()] + list(artifacts)}
 
 
 def row(id_: str, *sources: str, north_m: float = 0, price_sources=(), fallback: bool = False) -> dict:
@@ -30,7 +46,7 @@ def row(id_: str, *sources: str, north_m: float = 0, price_sources=(), fallback:
 
 
 def cells(intel: dict, id_: str) -> dict:
-    matrix = sm.build_matrix(intel, BBOX)
+    matrix = sm.build_matrix({"fetch_evidence": fresh_evidence(), **intel}, BBOX, now=NOW)
     location = next(item for item in matrix["locations"] if item["id"] == id_)
     return location["cells"]
 
@@ -144,6 +160,124 @@ class SourceMatrixTests(unittest.TestCase):
         self.assertTrue(matrix["truncated"])
         self.assertNotIn("outside", [item["id"] for item in matrix["locations"]])
         self.assertEqual(len(matrix["columns"]), len(sm.COLUMNS))
+
+
+class FreshnessWindowTests(unittest.TestCase):
+    RECORDS = [row("a", "DGT National Access Point charging registry")]
+
+    def ocm(self, *artifacts: dict, now: datetime = NOW) -> dict:
+        intel = {"records": self.RECORDS, "fetch_evidence": {"artifacts": list(artifacts)}}
+        location = sm.build_matrix(intel, BBOX, now=now)["locations"][0]
+        return location["cells"]["ocm"]
+
+    def test_windows_are_cache_ttl_plus_one_refresh_and_a_margin(self) -> None:
+        windows = {c["id"]: sm.freshness_window_hours(c) for c in sm.COLUMNS if c["coverage"] == "complete"}
+        self.assertEqual(windows, {"dgt": 31, "osm": 19, "ocm": 175, "mapareve": 19, "canarias": 31})
+
+    def test_window_inputs_match_the_ingest_ttls_and_the_refresh_timer(self) -> None:
+        ingest = (ROOT / "scripts/ingest_sources.py").read_text(encoding="utf-8")
+        for expected in ('"dgt_nap_electrolineras.xml", ttl_hours=24', 'f"osm_es_area_chargers_{label}.json", ttl_hours=12',
+                         '"ocm_poi.json.gz", ttl_hours=7 * 24', "MAPAREVE_PUBLIC_TTL_HOURS = 12",
+                         'f"mapareve_public_tenerife_p{page}.json"', 'CANARIAS_TE_RECARGA_CACHE_NAME = "canarias_tecarga_map4.geojson.json"'):
+            self.assertIn(expected, ingest)
+        self.assertRegex(ingest, r"CANARIAS_TE_RECARGA_CACHE_NAME,\s+ttl_hours=24,")
+        timer = (ROOT / "deploy/systemd/volta-data-refresh.timer").read_text(encoding="utf-8")
+        self.assertIn("OnCalendar=*-*-* 00,06,12,18:30:00 UTC", timer)
+        self.assertEqual(sm.REFRESH_HOURS, 6)
+
+    def test_every_complete_column_names_its_listing_files(self) -> None:
+        complete = [c for c in sm.COLUMNS if c["coverage"] == "complete"]
+        self.assertEqual({c["id"] for c in complete}, set(LISTING_FILES))
+        for column in complete:
+            self.assertTrue(LISTING_FILES[column["id"]].startswith(column["listing_files"]))
+
+    def test_a_listing_inside_its_window_can_show_not_listed(self) -> None:
+        self.assertEqual(self.ocm(fetched(175, "ocm_poi.json.gz"))["state"], "not_listed")
+
+    def test_a_listing_past_its_window_is_unknown_and_says_why(self) -> None:
+        cell = self.ocm(fetched(175.5, "ocm_poi.json.gz"))
+        self.assertEqual(cell["state"], "unknown")
+        self.assertIn("175 h freshness window", cell["reason"])
+        self.assertIn((NOW - timedelta(hours=175.5)).strftime("%Y-%m-%dT%H:%M:%SZ"), cell["reason"])
+
+    def test_each_source_uses_its_own_window(self) -> None:
+        intel = {"records": self.RECORDS + [row("b", "OpenChargeMap", north_m=500)],
+                 "fetch_evidence": {"artifacts": [fetched(30, "osm_es_area_chargers_00.json"), fetched(30, "ocm_poi.json.gz"),
+                                                  fetched(30, "dgt_nap_electrolineras.xml")]}}
+        location = next(item for item in sm.build_matrix(intel, BBOX, now=NOW)["locations"] if item["id"] == "b")
+        self.assertEqual(location["cells"]["osm"]["state"], "unknown")
+        self.assertEqual(location["cells"]["dgt"]["state"], "not_listed")
+
+    def test_no_evidence_for_the_listing_is_unknown(self) -> None:
+        for name, artifacts in (("none", ()), ("other source", (fetched(1, "dgt_nap_electrolineras.xml"),))):
+            with self.subTest(name):
+                cell = self.ocm(*artifacts)
+                self.assertEqual(cell["state"], "unknown")
+                self.assertIn("No fetch evidence", cell["reason"])
+
+    def test_an_unusable_fetch_time_is_unknown(self) -> None:
+        for value in ("unknown", "", None, "2026-11-06", "2026-11-06T13:00:00"):
+            with self.subTest(value=value):
+                cell = self.ocm({"cache_name": "ocm_poi.json.gz", "fetched_at": value, "cache": {}})
+                self.assertEqual(cell["state"], "unknown")
+                self.assertIn("no usable fetch time", cell["reason"])
+
+    def test_a_fetch_time_in_the_future_is_unknown(self) -> None:
+        cell = self.ocm(fetched(-1, "ocm_poi.json.gz"))
+        self.assertEqual(cell["state"], "unknown")
+        self.assertIn("in the future", cell["reason"])
+        self.assertEqual(self.ocm(fetched(-0.05, "ocm_poi.json.gz"))["state"], "not_listed")
+
+    def test_the_oldest_file_decides_for_a_multi_file_source(self) -> None:
+        intel = {"records": self.RECORDS, "fetch_evidence": {"artifacts": [
+            fetched(1, "osm_es_area_chargers_00.json"), fetched(20, "osm_es_area_chargers_01.json")]}}
+        cell = sm.build_matrix(intel, BBOX, now=NOW)["locations"][0]["cells"]["osm"]
+        self.assertEqual(cell["state"], "unknown")
+        self.assertIn("Oldest of 2 listing files", cell["reason"])
+
+    def test_one_file_with_an_unusable_time_blocks_a_multi_file_source(self) -> None:
+        intel = {"records": self.RECORDS, "fetch_evidence": {"artifacts": [
+            fetched(1, "osm_es_area_chargers_00.json"), {"cache_name": "osm_es_area_chargers_01.json", "fetched_at": "unknown"}]}}
+        self.assertEqual(sm.build_matrix(intel, BBOX, now=NOW)["locations"][0]["cells"]["osm"]["state"], "unknown")
+
+    def test_only_the_newest_record_of_a_file_counts(self) -> None:
+        self.assertEqual(self.ocm(fetched(500, "ocm_poi.json.gz"), fetched(1, "ocm_poi.json.gz"))["state"], "not_listed")
+
+    def test_detail_pages_do_not_age_the_listing(self) -> None:
+        intel = {"records": [dict(row("a", "DGT National Access Point charging registry"), lat=28.1, lon=-15.4)],
+                 "fetch_evidence": {"artifacts": [fetched(1, "canarias_tecarga_map4.geojson.json"),
+                                                  fetched(900, "canarias_details/abc.html")]}}
+        bbox = {"latitude_sw": 28.05, "longitude_sw": -15.45, "latitude_ne": 28.15, "longitude_ne": -15.35}
+        self.assertEqual(sm.build_matrix(intel, bbox, now=NOW)["locations"][0]["cells"]["canarias"]["state"], "not_listed")
+        intel["fetch_evidence"]["artifacts"][0] = fetched(32, "canarias_tecarga_map4.geojson.json")
+        self.assertEqual(sm.build_matrix(intel, bbox, now=NOW)["locations"][0]["cells"]["canarias"]["state"], "unknown")
+
+    def test_the_build_time_cannot_refresh_an_old_fetch_or_expire_a_new_one(self) -> None:
+        now = datetime.now(timezone.utc)
+        recent_build = (now - timedelta(minutes=1)).isoformat()
+        old_build = (now - timedelta(days=30)).isoformat()
+        for build, hours, expected in ((recent_build, 200, "unknown"), (old_build, 1, "not_listed")):
+            with self.subTest(build=build):
+                intel = {"generated_at": build, "records": self.RECORDS,
+                         "fetch_evidence": {"artifacts": [fetched(hours, "ocm_poi.json.gz", now=now)]}}
+                self.assertEqual(sm.build_matrix(intel, BBOX)["locations"][0]["cells"]["ocm"]["state"], expected)
+
+    def test_a_stale_column_is_marked_in_the_header(self) -> None:
+        intel = {"records": self.RECORDS, "fetch_evidence": {"artifacts": [fetched(200, "ocm_poi.json.gz")]}}
+        columns = {c["id"]: c for c in sm.build_matrix(intel, BBOX, now=NOW)["columns"]}
+        self.assertIn("freshness window", columns["ocm"]["degraded"])
+
+    def test_a_failed_fetch_outranks_age_and_a_place_outside_scope_says_so(self) -> None:
+        intel = {"records": self.RECORDS, "fetch_evidence": {"artifacts": [
+            fetched(200, "ocm_poi.json.gz", fallback=True), fetched(200, "canarias_tecarga_map4.geojson.json")]}}
+        result = sm.build_matrix(intel, BBOX, now=NOW)["locations"][0]["cells"]
+        self.assertIn("cached copy", result["ocm"]["reason"])
+        self.assertEqual(result["canarias"]["reason"], "Outside this source's area.")
+
+    def test_network_and_price_columns_are_not_judged_by_a_window(self) -> None:
+        columns = {c["id"]: c for c in sm.build_matrix({"records": self.RECORDS}, BBOX, now=NOW)["columns"]}
+        self.assertIsNone(columns["fenie"]["degraded"])
+        self.assertIsNone(columns["repsol"]["degraded"])
 
 
 class LocationSourcesEndpointTests(unittest.TestCase):
