@@ -59,6 +59,8 @@ from station_truth import (  # noqa: E402
     classify_source_resource,
     normalize_connector_label as connector_label_from_token,
     normalize_public_source_url,
+    OSM_SOCKET_LABELS,
+    parse_osm_socket_output,
     primary_source_for,
     source_candidates,
 )
@@ -2014,36 +2016,47 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
             raw_count = tags.get(key)
             count = count_int(raw_count, default=1)
             output = tags.get(key + ":output")
-            power = None
-            if output:
-                m = re.search(r"([0-9]+[,.]?[0-9]*)\s*kw", str(output), re.I)
-                power = fnum(m.group(1)) if m else fnum(output)
-            connector_rows.append(connector_ref(label, count=count, power_kw=power, status="UNKNOWN", source_url=source_url, connector_id=key, raw={"osm_key": key, "count": raw_count, "output": output}))
+            parsed = parse_osm_socket_output(output, label)
+            connector_rows.append(connector_ref(label, count=count, power_kw=parsed["power_kw"], status="UNKNOWN", source_url=source_url, connector_id=key, raw={"osm_key": key, "count": raw_count, "output": output, "output_reading": parsed["basis"]}))
         if not connector_rows:
             connector_rows = osm_description_connector_rows(charge_text, source_url)
             labels = sorted({str(c.get("label") or c.get("type")) for c in connector_rows if c.get("label") or c.get("type")})
         if not osm_has_car_charger_evidence(tags, connector_rows):
             continue
-        max_kw = None
-        max_kw_basis = ""
+        tagged_kw: List[float] = []
+        unit_stated_kw: List[float] = []
+        output_rejected = False
         for key, value in tags.items():
-            if key.startswith("socket:") and key.endswith(":output"):
-                m = re.search(r"([0-9]+[,.]?[0-9]*)\s*kw", str(value), re.I)
-                if m:
-                    max_kw = max(max_kw or 0, fnum(m.group(1)) or 0)
-                    max_kw_basis = "OSM socket output tag"
-        if max_kw is None:
+            if not (key.startswith("socket:") and key.endswith(":output")):
+                continue
+            family_key = key[: -len(":output")]
+            parsed = parse_osm_socket_output(value, OSM_SOCKET_LABELS.get(family_key))
+            if parsed["power_kw"] is not None:
+                tagged_kw.append(parsed["power_kw"])
+                if not parsed["basis"].startswith("bare_"):
+                    unit_stated_kw.append(parsed["power_kw"])
+            elif family_key in OSM_SOCKET_LABELS and str(value or "").strip():
+                output_rejected = True
+        # A rejected output tag is a contradiction, not a gap: station text cannot rescue it.
+        fallback_kw = None
+        fallback_basis = ""
+        if not unit_stated_kw and not output_rejected:
             m = re.search(r"([0-9]+[,.]?[0-9]*)\s*kw", charge_text, re.I)
             if m:
-                max_kw = fnum(m.group(1))
-                max_kw_basis = "OSM charge/description text"
-        if max_kw is None:
-            volts = fnum(tags.get("voltage"))
-            amps = fnum(tags.get("amperage"))
-            if volts and amps:
-                max_kw = round(volts * amps / 1000, 1)
-                max_kw_basis = "OSM voltage/amperage"
-        movem_price = red_movem_price(tags, max_kw)
+                fallback_kw = fnum(m.group(1))
+                fallback_basis = "OSM charge/description text"
+            if fallback_kw is None:
+                volts = fnum(tags.get("voltage"))
+                amps = fnum(tags.get("amperage"))
+                if volts and amps:
+                    fallback_kw = round(volts * amps / 1000, 1)
+                    fallback_basis = "OSM voltage/amperage"
+        max_kw = max(tagged_kw) if tagged_kw else fallback_kw
+        max_kw_basis = "OSM socket output tag" if tagged_kw else fallback_basis
+        # The station-wide tariff needs a unit the source stated: a bare reading, or a
+        # maximum that skips a rejected socket, cannot prove every connector is <=22 kW.
+        movem_kw = None if output_rejected else (max(unit_stated_kw) if unit_stated_kw else fallback_kw)
+        movem_price = red_movem_price(tags, movem_kw)
         if is_red_movem:
             if movem_price is None:
                 continue

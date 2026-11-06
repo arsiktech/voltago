@@ -41,6 +41,8 @@ except ImportError:
     from source_policy import load_source_policy_exclusions, value_is_excluded
     from source_transport import policy_urlopen
 
+from station_truth import parse_osm_socket_output  # noqa: E402  (ingest_sources puts the root on sys.path)
+
 
 OCM_URL = "https://raw.githubusercontent.com/openchargemap/ocm-data/master/poi.json.gz"
 OCM_EXPORT_REVISION = "8e3bedca48ca94807d96b2f5e7ee02cffe63ae54"
@@ -620,8 +622,7 @@ def normalize_osm(element: dict, artifact: FetchArtifact, country_code: str | No
             continue
         count = finite_number(value)
         raw_power = str(tags.get(f"{key}:output") or "")
-        match = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(kW|W)?\s*", raw_power, re.I)
-        power = float(match[1].replace(",", ".")) / (1000 if match[2] and match[2].lower() == "w" else 1) if match else None
+        power = parse_osm_socket_output(raw_power, label)["power_kw"]
         connectors.append({"connector_id": key, "label": label, "type": label, "status": "UNKNOWN",
                            "count": int(count) if count and count > 0 else None, "power_kw": power,
                            "source_url": source_url, "raw": {"count": value, "output": raw_power}})

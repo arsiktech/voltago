@@ -349,6 +349,32 @@ class AgentMcpHttpTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in fast["chargers"]], ["cheap-ccs"])
         self.assertEqual(fast["excluded"]["power_unknown"], 2)
 
+    def test_min_power_filter_rejects_osm_watt_rows_from_snapshot_and_new_ingestion(self) -> None:
+        def osm_lead(station_id: str, lat: float, type2_kw: float, schuko_kw: float) -> Dict[str, Any]:
+            # type2_kw/schuko_kw are what a row stores: 7400 in an old snapshot, 7.4 after ingestion.
+            lead = lead_row(station_id, lat=lat, lon=-0.37, price=None, labels=["Type 2", "Schuko"])
+            lead["connectors"] = [
+                {"label": "Type 2", "power_kw": type2_kw, "count": 1, "connector_id": "socket:type2",
+                 "raw": {"osm_key": "socket:type2", "output": "7400"}},
+                {"label": "Schuko", "power_kw": schuko_kw, "count": 1, "connector_id": "socket:schuko",
+                 "raw": {"osm_key": "socket:schuko", "output": "2300"}},
+            ]
+            return server._normalize_lead(lead, "OpenStreetMap public tags")
+
+        self.leads = [osm_lead("old-snapshot", 39.471, 7400.0, 2300.0), osm_lead("new-ingestion", 39.472, 7.4, 2.3)]
+        unfiltered = self.find(radius_km=5)
+        for row in unfiltered["chargers"]:
+            self.assertEqual(row["hardware"]["max_power_kw"], 7.4)
+
+        for minimum in (400, 22, 7.5):
+            with self.subTest(minimum=minimum):
+                result = self.find(min_power_kw=minimum, radius_km=5)
+                self.assertEqual(result["chargers"], [])
+                self.assertEqual(result["total_matches"], 0)
+                self.assertEqual(result["excluded"]["under_power"], 2)
+
+        self.assertEqual(len(self.find(min_power_kw=7, radius_km=5)["chargers"]), 2)
+
     def test_old_live_status_is_flagged(self) -> None:
         old = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat().replace("+00:00", "Z")
         self.upstream = [live_row("old-feed", lat=39.471, lon=-0.37, last_seen=old)]
