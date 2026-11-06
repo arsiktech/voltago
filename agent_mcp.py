@@ -79,6 +79,7 @@ DEFAULT_RADIUS_KM = 5.0
 MAX_RADIUS_KM = 25.0
 DEFAULT_LIMIT = 10
 MAX_LIMIT = 30
+MAX_CONNECTOR_UNCONFIRMED = 5
 LOOKUP_RADIUS_KM = 1.0
 STATUS_CACHE_SECONDS = 120.0
 # server.decision_for treats live status older than this as needing a refresh.
@@ -158,7 +159,7 @@ TOOLS: List[Dict[str, Any]] = [
                 "connector": {
                     "type": "string",
                     "enum": list(CONNECTOR_TYPES),
-                    "description": "Only chargers whose source lists this connector type.",
+                    "description": "Only chargers whose source lists this connector type. Nearby chargers with no published type are returned apart, in `connector_unconfirmed`.",
                 },
                 "min_power_kw": {"type": "number", "minimum": 0, "maximum": 400, "description": "Minimum published power."},
                 "available_now": {
@@ -557,6 +558,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
                 "connector_unknown": 0, "connector_mismatch": 0, "power_unknown": 0,
                 "under_power": 0, "not_route_ready": 0}
     kept = []
+    connector_unconfirmed = []
     for row in rows:
         distance = backend.safe_float(row.get("distance_km"))
         if distance is None or distance > radius:
@@ -573,28 +575,35 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
             if price > max_price:
                 excluded["over_price"] += 1
                 continue
+        unknown_connector = False
         if want_connector:
             keys = _row_connector_keys(row)
             if not keys:
                 excluded["connector_unknown"] += 1
-                continue
-            if want_connector not in keys:
+                unknown_connector = True
+            elif want_connector not in keys:
                 excluded["connector_mismatch"] += 1
                 continue
+        # A row is counted once, under the first filter that removed it.
         if min_power is not None and min_power > 0:
             power = _row_power_kw(row, backend)
             if power is None:
-                excluded["power_unknown"] += 1
+                if not unknown_connector:
+                    excluded["power_unknown"] += 1
                 continue
             if power < min_power:
-                excluded["under_power"] += 1
+                if not unknown_connector:
+                    excluded["under_power"] += 1
                 continue
         if available_now and not backend.route_ready_now(row):
-            excluded["not_route_ready"] += 1
+            if not unknown_connector:
+                excluded["not_route_ready"] += 1
             continue
-        kept.append(row)
+        (connector_unconfirmed if unknown_connector else kept).append(row)
     kept.sort(key=backend.nearby_sort_key)
     views = [charger_view(row, backend) for row in kept[:limit]]
+    connector_unconfirmed.sort(key=backend.nearby_sort_key)
+    unconfirmed_views = [charger_view(row, backend) for row in connector_unconfirmed[:MAX_CONNECTOR_UNCONFIRMED]]
 
     meta = payload.get("meta") or {}
     coverage = meta.get("coverage") or {}
@@ -621,6 +630,7 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
         "candidate_records": meta.get("candidate_records"),
         "chargers": views,
         "excluded": {k: v for k, v in excluded.items() if v},
+        "connector_unconfirmed": unconfirmed_views,
         "live": {
             "supported": coverage.get("supported", True),
             "fresh_live_data": bool(cache.get("fresh_live_authority")),
@@ -642,6 +652,10 @@ def find_chargers(args: Mapping[str, Any], backend: Any, *, coarse_place: Option
         lines.append("Searched around the user's approximate city from the AI app, not their exact position. "
                      "Ask for a place or address for nearer results.")
     lines += [_summary_line(i, view) for i, view in enumerate(views, 1)]
+    if unconfirmed_views:
+        lines.append(f"Not counted above: {len(connector_unconfirmed)} nearby with no published connector type. "
+                     f"They may or may not have {connector}; confirm the plug before driving.")
+        lines += [_summary_line(i, view) for i, view in enumerate(unconfirmed_views, 1)]
     if payload.get("warning"):
         lines.append(f"Warning: {payload['warning']}")
     lines.append(result["caveat"])

@@ -9,6 +9,7 @@ import SwiftUI
 struct StationCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let station: Station
+    var plugUnconfirmed: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -26,6 +27,11 @@ struct StationCard: View {
 
             StationPriceEvidence(station: station)
             StationBadges(station: station)
+            if plugUnconfirmed {
+                MiniBadge(text: String(localized: "Plug unconfirmed"),
+                          systemImage: "questionmark.circle",
+                          tint: Theme.check)
+            }
             StationParkingAccessFacts(station: station)
             AvailabilityLine(station: station, showFreshness: true)
         }

@@ -308,6 +308,40 @@ final class PrimaryStationFilteringTests: XCTestCase {
         XCTAssertEqual(state.filteredRows.map(\.id), ["ccs", "chademo", "type2"])
     }
 
+    func testPlugFilterKeepsUnknownConnectorChargersAfterConfirmedMatches() throws {
+        // Reported 5 Nov 2026: the nearer Lidl publishes no connector type.
+        let nearerUnknown = try TestDecode.station("""
+        {"id":"lidl-puerto","name":"Lidl Puerto de la Cruz","lat":28.39831,"lon":-16.54171,"lead":true,
+         "is_free":true,"price_min":0,"decision":{"level":"verify"},"connectors":[]}
+        """)
+        let confirmed = try TestDecode.station("""
+        {"id":"lidl-santa-ursula","name":"Lidl Santa Úrsula","lat":28.42734,"lon":-16.48916,"lead":true,
+         "is_free":true,"price_min":0,"decision":{"level":"verify"},
+         "connectors":[{"type":"Type 2","power_kw":3.6}]}
+        """)
+        let otherPlug = try TestDecode.station("""
+        {"id":"ccs-only","name":"CCS only","lat":28.41,"lon":-16.54,"lead":true,
+         "is_free":true,"price_min":0,"decision":{"level":"verify"},
+         "connectors":[{"type":"CCS2","power_kw":50}]}
+        """)
+        let state = AppState()
+        state.leads = [nearerUnknown, otherPlug, confirmed]
+        state.freeOnly = true
+
+        XCTAssertFalse(state.isPlugUnconfirmed(nearerUnknown), "No plug filter means nothing to confirm")
+
+        state.connectorTypes = ["Type 2"]
+        XCTAssertEqual(state.filteredRows.map(\.id), ["lidl-santa-ursula", "lidl-puerto"])
+        XCTAssertTrue(state.isPlugUnconfirmed(nearerUnknown))
+        XCTAssertFalse(state.isPlugUnconfirmed(confirmed))
+        XCTAssertTrue(nearerUnknown.connectors?.isEmpty ?? true, "The type stays unknown, never inferred")
+
+        state.visibleRegion = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 28.41, longitude: -16.52),
+            span: MKCoordinateSpan(latitudeDelta: 0.5, longitudeDelta: 0.5))
+        XCTAssertEqual(state.listRows.map(\.id), ["lidl-santa-ursula", "lidl-puerto"])
+    }
+
     func testSavedOnlyFilterHidesUnsavedChargersWithoutInventingRows() throws {
         let saved = try TestDecode.station("""
         {"id":"saved","name":"Saved","lat":39.47,"lon":-0.37,"lead":false,

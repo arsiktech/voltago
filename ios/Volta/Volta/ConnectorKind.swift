@@ -20,3 +20,11 @@ enum ConnectorKind {
         canonical(label) == canonical(selection)
     }
 }
+
+extension Station {
+    /// Every connector type a source names for this charger. Empty means the type is unknown.
+    var publishedConnectorLabels: [String] {
+        ((connectorLabels ?? []) + (connectors ?? []).flatMap { [$0.type, $0.label].compactMap { $0 } })
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+}
