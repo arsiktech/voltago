@@ -3,8 +3,12 @@ import { useQuery } from '@tanstack/react-query'
 import { getJSON, useGeocode } from '../lib/api'
 import type { GeocodeResult } from '../types'
 import {
+  DEFAULT_RADIUS_KM,
+  RADIUS_OPTIONS_KM,
   STATE_LABEL,
-  bboxAround,
+  areaText,
+  clockText,
+  searchArea,
   type CellState,
   type MatrixCell,
   type MatrixColumn,
@@ -13,7 +17,17 @@ import {
 } from '../lib/sourceMatrix'
 import './SourceMatrix.css'
 
+function Clock({ label, value }: { label: string; value: string | null | undefined }) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{clockText(value)}</dd>
+    </div>
+  )
+}
+
 function CellDetail({ column, location, cell }: { column: MatrixColumn; location: MatrixLocation; cell: MatrixCell }) {
+  const fetch = column.last_fetch
   return (
     <section className="matrix-detail" aria-live="polite">
       <h2>
@@ -21,6 +35,18 @@ function CellDetail({ column, location, cell }: { column: MatrixColumn; location
       </h2>
       <p className={`matrix-chip matrix-${cell.state}`}>{STATE_LABEL[cell.state]}</p>
       {cell.reason && <p>{cell.reason}</p>}
+      <dl>
+        <Clock label="Source last fetched" value={fetch?.at} />
+        {fetch && fetch.parts > 1 && <Clock label={`Oldest of ${fetch.parts} files`} value={fetch.oldest_part_at} />}
+        {fetch && fetch.failed_parts > 0 && (
+          <div>
+            <dt>Failed fetches</dt>
+            <dd>
+              {fetch.failed_parts} of {fetch.parts} files, using an older cached copy
+            </dd>
+          </div>
+        )}
+      </dl>
       {cell.candidate && (
         <p>
           This source lists “{cell.candidate.name}” {cell.candidate.distance_m} m away, but it did not pass the identity
@@ -29,24 +55,29 @@ function CellDetail({ column, location, cell }: { column: MatrixColumn; location
       )}
       {cell.entries?.map((entry, index) => (
         <dl key={index}>
-          {Object.entries(entry).map(([key, value]) => (
-            <div key={key}>
-              <dt>{key.replaceAll('_', ' ')}</dt>
-              <dd>
-                {typeof value === 'string' && /^https:\/\//.test(value) ? (
-                  <a href={value} target="_blank" rel="noopener noreferrer">
-                    {value}
-                  </a>
-                ) : (
-                  String(value)
-                )}
-              </dd>
-            </div>
-          ))}
+          <Clock label="Listing fetched" value={entry.clocks?.fetched_at} />
+          <Clock label="Published by source" value={entry.clocks?.published_at} />
+          <Clock label="Updated at source" value={entry.clocks?.source_last_updated} />
+          {Object.entries(entry)
+            .filter(([key]) => key !== 'clocks')
+            .map(([key, value]) => (
+              <div key={key}>
+                <dt>{key.replaceAll('_', ' ')}</dt>
+                <dd>
+                  {typeof value === 'string' && /^https:\/\//.test(value) ? (
+                    <a href={value} target="_blank" rel="noopener noreferrer">
+                      {value}
+                    </a>
+                  ) : (
+                    String(value)
+                  )}
+                </dd>
+              </div>
+            ))}
         </dl>
       ))}
       {cell.state === 'not_listed' && (
-        <p>This source covers this area and its latest snapshot is current, and it does not list this location.</p>
+        <p>This source covers this area, and its latest snapshot does not list this location.</p>
       )}
     </section>
   )
@@ -67,6 +98,7 @@ export function MatrixTable({ data }: { data: MatrixResponse }) {
                 <th scope="col" key={col.id} title={col.degraded ?? undefined}>
                   {col.label}
                   {col.degraded ? ' (stale)' : ''}
+                  <span className="matrix-fetch">fetched {col.last_fetch ? col.last_fetch.at.slice(0, 10) : 'unknown'}</span>
                 </th>
               ))}
             </tr>
@@ -106,8 +138,14 @@ export function MatrixTable({ data }: { data: MatrixResponse }) {
 export default function SourceMatrix() {
   const [query, setQuery] = useState('')
   const [place, setPlace] = useState<GeocodeResult | null>(null)
+  const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
   const geocode = useGeocode(place ? '' : query)
-  const bbox = place ? bboxAround(place) : null
+  const area = place ? searchArea(place, radiusKm) : null
+  const bbox = area?.bbox ?? null
+  const choosePlace = (result: GeocodeResult) => {
+    setRadiusKm(DEFAULT_RADIUS_KM)
+    setPlace(result)
+  }
   const matrix = useQuery({
     queryKey: ['location-sources', bbox],
     queryFn: ({ signal }) => getJSON<MatrixResponse>(`/api/location-sources?bbox=${bbox}`, 20000, signal),
@@ -127,7 +165,7 @@ export default function SourceMatrix() {
         onSubmit={(event) => {
           event.preventDefault()
           const first = geocode.data?.results?.[0]
-          if (first) setPlace(first)
+          if (first) choosePlace(first)
         }}
       >
         <label htmlFor="matrix-query">Address or place</label>
@@ -145,7 +183,7 @@ export default function SourceMatrix() {
           <ul className="matrix-suggestions">
             {geocode.data!.results.slice(0, 5).map((result) => (
               <li key={`${result.lat},${result.lon}`}>
-                <button type="button" onClick={() => setPlace(result)}>
+                <button type="button" onClick={() => choosePlace(result)}>
                   {result.label}
                 </button>
               </li>
@@ -154,6 +192,18 @@ export default function SourceMatrix() {
         )}
         {!place && geocode.isSuccess && geocode.data.results.length === 0 && (
           <p role="status">No place found. Try a town or a shorter address.</p>
+        )}
+        {area && !area.fromPlace && (
+          <>
+            <label htmlFor="matrix-radius">Search radius</label>
+            <select id="matrix-radius" value={radiusKm} onChange={(event) => setRadiusKm(Number(event.target.value))}>
+              {RADIUS_OPTIONS_KM.map((km) => (
+                <option key={km} value={km}>
+                  {km} km
+                </option>
+              ))}
+            </select>
+          </>
         )}
       </form>
       <ul className="matrix-legend" aria-label="Cell states">
@@ -165,11 +215,14 @@ export default function SourceMatrix() {
       </ul>
       {matrix.isPending && bbox && <p>Loading sources…</p>}
       {matrix.isError && <p role="alert">The coverage table could not be loaded. Try again.</p>}
-      {matrix.data && matrix.data.locations.length === 0 && <p>No charging locations are known within about 700 m.</p>}
-      {matrix.data && matrix.data.locations.length > 0 && (
+      {area && matrix.data && matrix.data.locations.length === 0 && (
+        <p>No charging locations are known in {areaText(area)}.</p>
+      )}
+      {area && matrix.data && matrix.data.locations.length > 0 && (
         <>
           <p className="matrix-meta">
-            {matrix.data.locations.length} locations nearest first
+            {matrix.data.locations.length} locations nearest first in {areaText(area)}
+            {area.capped ? ', the largest area one search covers' : ''}
             {matrix.data.truncated ? ' (more exist; search closer to narrow)' : ''}. Data built{' '}
             {matrix.data.generated_at?.slice(0, 16).replace('T', ' ') ?? 'at an unknown time'} UTC.
           </p>

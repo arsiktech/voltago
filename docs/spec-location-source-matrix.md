@@ -86,3 +86,26 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
   latest fetch fell back to an older cached copy.
 - Not yet included: the runtime live feeds (MapaREVE live, Endolla and Spirii status,
   Gaia), and the MCP tool.
+
+## Search area and clocks (2026-11-06)
+
+- `/matrix` uses the geocoder's extent for a place, centred on the place and capped to the
+  API limit. A result with no extent, or one under about 1.4 km across such as a house,
+  stays at ±0.7 km and shows a radius control (0.7, 2, 5 or 10 km).
+- Each listing carries `clocks`: `fetched_at`, `published_at` and `source_last_updated`. A
+  clock the listing does not retain is `null`, and the page shows "Unknown". The record-level
+  `source_fetched_at` is the oldest across merged sources, so a cell never uses it.
+- Each column carries `last_fetch` from the build's `fetch_evidence`: the newest and oldest
+  file times, the file count, and the files served from a cached copy after a failed fetch.
+  It is `null` when the build has no evidence for that source.
+
+Listing clocks retained in the production build of 2026-11-04 (15,403 records):
+
+| Clock | Retained for |
+| --- | --- |
+| `fetched_at` | All listings: DGT, Madrid, Endolla, Feníe, Red MOVEM, ACCIONA, Moraleja, Repsol, Chargemap, Electromaps. Part: Canarias (255 of 270), OpenStreetMap (118 of 1,983, only cached-copy rows). None: OpenChargeMap, MapaREVE, Catalonia, Navarra, Castilla y León, Etecnic, Zunder, València, Zaragoza, Lidl. |
+| `published_at` | No stored listing. Only the runtime live feeds, which the matrix does not include, publish it. |
+| `source_last_updated` | All OpenChargeMap listings. Part: Zaragoza (5 of 37). Electromaps (12 of 12) through its price `source_updated_at`. None elsewhere. |
+
+That build holds no fetch evidence for Repsol, Chargemap or Electromaps, so their `last_fetch`
+is unknown. Filling the gaps is ingestion work. Nothing here estimates a missing clock.

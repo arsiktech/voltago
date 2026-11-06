@@ -26,7 +26,8 @@
   margin-bottom: 14px;
 }
 
-.matrix-search input {
+.matrix-search input,
+.matrix-search select {
   font: inherit;
   padding: 10px 12px;
   border: 1px solid var(--border-strong);
@@ -107,8 +108,15 @@
   white-space: nowrap;
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  height: 150px;
+  height: 210px;
   text-align: left;
+}
+
+.matrix-fetch {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
 }
 
 .matrix-table thead th:first-child,
