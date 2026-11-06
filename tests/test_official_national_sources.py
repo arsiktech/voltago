@@ -129,6 +129,8 @@ class BarcelonaEndollaTests(unittest.TestCase):
         self.assertEqual(row["connectors"][0]["status"], "UNKNOWN")
         self.assertEqual(row["connectors"][0]["raw"]["observed_status"], "AVAILABLE")
         self.assertTrue(row["connectors"][0]["raw"]["observed_status_fresh"])
+        self.assertEqual(row["sources"][0]["source_fetched_at"], "2026-07-15T08:01:00Z")
+        self.assertEqual(row["sources"][0]["source_last_updated"], row["raw"]["last_seen"])
         self.assertEqual(row["connectors"][0]["label"], "Type 2")
         self.assertEqual(row["pricing"][0]["valid_from"], "00:00")
         self.assertEqual(row["pricing"][0]["valid_until"], "08:00")

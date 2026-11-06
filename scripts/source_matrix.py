@@ -81,6 +81,8 @@ CACHE_COLUMNS = {
     "red_movem": "movem", "acciona": "acciona", "moraleja": "moraleja", "electromaps": "electromaps",
     "chargemap": "chargemap",
 }
+# Fetched only for a dataset's publication time. Their fetches say nothing about the listing rows.
+CLOCK_ONLY_FILES = ("catalonia_icaen_metadata", "castilla_leon_metadata")
 SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_cache_fallback")
 PRICE_FIELDS = ("source", "label", "price_per_kwh", "currency", "source_url")
 
@@ -151,12 +153,27 @@ def _listed_columns(record: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
 
 def _cache_column(cache_name: Any) -> Optional[str]:
     name = str(cache_name or "").lower()
+    if name.startswith(CLOCK_ONLY_FILES):
+        return None
     return next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
 
 
 def _cached_copy_reason(fetched_at: Any) -> str:
     stamp = clock(fetched_at)
     return f"Latest fetch failed; cached copy from {stamp[:10] if stamp else 'an unknown date'}."
+
+
+def _price_fetch_clocks(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Usable per-source clocks from the price collection report, by price column."""
+    report = (intel.get("price_evidence_collection") or {}).get("fetch_clocks") or {}
+    price_columns = {c["id"] for c in COLUMNS if c["coverage"] == "price"}
+    usable = {}
+    for column, summary in report.items():
+        if column in price_columns and isinstance(summary, dict):
+            newest, oldest = clock(summary.get("at")), clock(summary.get("oldest_part_at"))
+            if newest and oldest and newest.endswith("Z") and oldest.endswith("Z"):
+                usable[column] = {**summary, "at": newest, "oldest_part_at": oldest}
+    return usable
 
 
 def column_fetches(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -179,11 +196,15 @@ def column_fetches(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         name = str(artifact.get("cache_name")).lower()
         if name not in files or files[name][0] <= stamp:
             files[name] = (stamp, bool((artifact.get("cache") or {}).get("fallback")))
-    return {column: {"at": max(stamp for stamp, _ in files.values()),
-                     "oldest_part_at": min(stamp for stamp, _ in files.values()),
-                     "parts": len(files),
-                     "failed_parts": sum(failed for _, failed in files.values())}
-            for column, files in parts.items()}
+    fetches = {column: {"at": max(stamp for stamp, _ in files.values()),
+                        "oldest_part_at": min(stamp for stamp, _ in files.values()),
+                        "parts": len(files),
+                        "failed_parts": sum(failed for _, failed in files.values())}
+               for column, files in parts.items()}
+    # Price sources report their clocks separately; source policy keeps them out of fetch_evidence.
+    for column, summary in _price_fetch_clocks(intel).items():
+        fetches[column] = {key: summary[key] for key in ("at", "oldest_part_at", "parts", "failed_parts")}
+    return fetches
 
 
 def freshness_window_hours(column: Dict[str, Any]) -> int:
@@ -239,6 +260,9 @@ def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -
         column = _cache_column(artifact.get("cache_name"))
         if column and column not in degraded:
             degraded[column] = _cached_copy_reason(artifact.get("fetched_at"))
+    for column, summary in _price_fetch_clocks(intel).items():
+        if summary.get("failed_parts") and column not in degraded:
+            degraded[column] = _cached_copy_reason(summary.get("oldest_failed_at"))
     for record in records:
         for source in record.get("sources") or []:
             column = column_for(source.get("name"))

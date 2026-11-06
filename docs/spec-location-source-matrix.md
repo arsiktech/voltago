@@ -100,16 +100,55 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
   file times, the file count, and the files served from a cached copy after a failed fetch.
   It is `null` when the build has no evidence for that source.
 
-Listing clocks retained in the production build of 2026-11-04 (15,403 records):
+Ingestion keeps these clocks from the next accepted build. The production build of 2026-11-04
+(15,403 records) predates this and still has the gaps. A clock reads `null` when the source does
+not state it. Build time never stands in for a fetch time, and nothing here estimates a clock.
 
-| Clock | Retained for |
-| --- | --- |
-| `fetched_at` | All listings: DGT, Madrid, Endolla, Feníe, Red MOVEM, ACCIONA, Moraleja, Repsol, Chargemap, Electromaps. Part: Canarias (255 of 270), OpenStreetMap (118 of 1,983, only cached-copy rows). None: OpenChargeMap, MapaREVE, Catalonia, Navarra, Castilla y León, Etecnic, Zunder, València, Zaragoza, Lidl. |
-| `published_at` | No stored listing. Only the runtime live feeds, which the matrix does not include, publish it. |
-| `source_last_updated` | All OpenChargeMap listings. Part: Zaragoza (5 of 37). Electromaps (12 of 12) through its price `source_updated_at`. None elsewhere. |
+- `fetched_at`: when Volta Go retrieved the bytes, or when a cached copy was retrieved if the
+  latest fetch failed. A listing built from two files shows the older one.
+- `published_at`: when the source says it published this data. It is stored only for the whole
+  feed or dataset, and it is dropped if it is later than the rows' own fetch.
+- `source_last_updated`: when the source says this listing last changed.
 
-That build holds no fetch evidence for Repsol, Chargemap or Electromaps, so their `last_fetch`
-is unknown. Filling the gaps is ingestion work. Nothing here estimates a missing clock.
+| Source | `fetched_at` | `published_at` | `source_last_updated` |
+| --- | --- | --- | --- |
+| DGT registry | Yes | Feed `publicationTime` | Site `lastUpdated` |
+| OpenStreetMap | Yes | Overpass `timestamp_osm_base`, the database state that answered | Element `timestamp` |
+| OpenChargeMap | Yes | Not offered | Verified, status or confirmed date |
+| MapaREVE | Yes, per page | Not offered | Newest EVSE `last_updated` |
+| Canarias te recarga | Yes | Not offered | Not offered |
+| Catalonia | Yes | Dataset `rowsUpdatedAt` | Not offered |
+| Castilla y León | Yes | Dataset `data_processed` | Not offered |
+| Navarra | Yes | Not stored (see below) | Not stored (see below) |
+| Etecnic, València, Lidl | Yes | Not offered | Not offered |
+| Madrid | Yes | Not stored (see below) | Not offered |
+| Zunder | Yes, the older of map and detail | Not offered | Not offered |
+| Zaragoza | Yes | Not offered | `lastUpdated`, 5 of 37: the source's category file lists only 5 sites |
+| Barcelona Endolla | Yes | Not offered | Newest port `last_updated` |
+| Feníe Energía, ACCIONA, Moraleja Green, Red MOVEM | Yes | Not checked | Not checked |
+| Repsol | Yes | Not offered | Not offered |
+| Chargemap | Yes | Not offered | Not offered |
+| Electromaps | Yes | Not offered | Price `source_updated_at` |
+
+"Not offered" means the responses or the fields the adapter reads showed no such time on
+2026-11-06. "Not checked" means nobody looked at the source's own fields for it.
+
+Values that exist but are not stored:
+
+- Navarra `timeStamp` is the time the server built the response, so it is a second fetch time and
+  not a publication time. Its per-row `BEGINLIFE` date has no published definition.
+- Madrid sends an HTTP `Last-Modified` header, and Catalonia sends `X-SODA2-Truth-Last-Modified`.
+  Ingestion does not keep response headers.
+- Zunder's page states `article:modified_time`, which dates the web page and not its markers.
+
+The Catalonia and Castilla y León metadata files supply only `published_at`. They do not count
+toward the column's `last_fetch`, and a failed metadata fetch does not mark the column as failed.
+
+Repsol, Chargemap and Electromaps report `last_fetch` through
+`price_evidence_collection.fetch_clocks`, not `fetch_evidence`. Source policy removes any
+`fetch_evidence` artifact that names an excluded family, so these clocks hold no URL or host. A
+request that the refresh budget withheld is not counted as a failed fetch; the older copy's date
+still shows.
 
 ## Freshness windows (2026-11-06)
 
