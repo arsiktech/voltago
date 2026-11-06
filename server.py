@@ -58,6 +58,7 @@ from station_truth import (
     normalize_connector_label,
     normalize_public_source_url,
     primary_source_for,
+    repair_osm_connector_power,
     station_source_for,
     source_candidates,
 )
@@ -3618,6 +3619,7 @@ def fallback_source_for_lead(lead: Dict[str, Any], default_source: str) -> Dict[
 
 
 def _normalize_lead(lead: Dict[str, Any], default_source: str) -> Dict[str, Any]:
+    repair_osm_connector_power(lead)
     lat = lead.get("lat")
     lon = lead.get("lon")
     lead.setdefault("source", default_source)

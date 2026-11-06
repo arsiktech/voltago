@@ -12,6 +12,139 @@ import re
 import urllib.parse
 from typing import Any, Dict, List, Optional
 
+# OSM `socket:*:output` documents kW, yet mappers also publish bare watts ("7400"),
+# amps ("32") and volts ("230"). Each family lists:
+#   ceiling: the most any value may claim. Schuko is OSM's 240 V x 16 A. Everything else
+#            is IEC 62196-1's 1500 V x 800 A DC envelope; Type 2 is not proof of AC because
+#            legacy Tesla DC uses that interface.
+#   bare_kw: bare numbers read as kW. The floor drops socket counts ("1", "2").
+#   bare_w:  the kW result allowed when a bare number can only be watts.
+# docs/osm-socket-power.md records the worldwide tag counts behind these ranges.
+#   ac:      16, 32 and 63 are the standard AC currents, so a bare one is not a power.
+_DC_POWER = {"ceiling": 1200.0, "bare_kw": (5.0, 1200.0), "bare_w": (5.0, 1200.0), "ac": False}
+_AC_POWER = {"ceiling": 1200.0, "bare_kw": (1.38, 43.7), "bare_w": (1.38, 43.7), "ac": True}
+OSM_SOCKET_POWER_FAMILIES: Dict[str, Dict[str, Any]] = {
+    "Schuko": {"ceiling": 3.84, "bare_kw": (1.38, 3.84), "bare_w": (1.38, 3.84), "ac": True},
+    "Type 2": {"ceiling": 1200.0, "bare_kw": (2.3, 150.0), "bare_w": (2.3, 43.7), "ac": True},
+    "Type 1": _AC_POWER,
+    "GB/T AC": _AC_POWER,
+    "CCS2": _DC_POWER,
+    "CCS1": _DC_POWER,
+    "CHAdeMO": _DC_POWER,
+    "Tesla": _DC_POWER,
+    "NACS": _DC_POWER,
+    "GB/T DC": _DC_POWER,
+}
+OSM_SOCKET_LABELS = {
+    "socket:type2_combo": "CCS2", "socket:type1_combo": "CCS1",
+    "socket:type2": "Type 2", "socket:type2_cable": "Type 2",
+    "socket:type1": "Type 1", "socket:type1_cable": "Type 1",
+    "socket:chademo": "CHAdeMO", "socket:schuko": "Schuko",
+    "socket:tesla_supercharger": "Tesla", "socket:tesla_destination": "Tesla",
+    "socket:nacs": "NACS", "socket:gbt_dc": "GB/T DC", "socket:gbt_ac": "GB/T AC",
+}
+_AC_CURRENT_RATINGS = {16.0, 32.0, 63.0}
+_UNKNOWN_FAMILY_CEILING_KW = 1200.0
+_OSM_OUTPUT_RE = re.compile(r"\s*(\d+(?:[.,]\d+)?)\s*(kw|w)?\s*", re.I)
+_OSM_OUTPUT_GROUPED_RE = re.compile(r"\d{1,3},\d{3}")
+_OSM_OUTPUT_KW_TOKEN_RE = re.compile(r"(?<![\d.,])(\d+(?:[.,]\d+)?)\s*kw(?!h)", re.I)
+
+
+def _output_result(raw: Any, power_kw: Optional[float], basis: str) -> Dict[str, Any]:
+    if power_kw is None:
+        return {"power_kw": None, "status": "unknown", "basis": basis, "raw_value": raw}
+    return {"power_kw": round(power_kw, 3), "status": "known", "basis": basis, "raw_value": raw}
+
+
+def parse_osm_socket_output(value: Any, label: Optional[str]) -> Dict[str, Any]:
+    """Read one OSM socket output as kW, or return unknown with the reason as `basis`.
+
+    A bare number is watts only when it cannot be kW on this connector and the watt
+    reading lands inside the connector's real range. Everything else stays unknown.
+    """
+    family = OSM_SOCKET_POWER_FAMILIES.get(label or "")
+    ceiling = family["ceiling"] if family else _UNKNOWN_FAMILY_CEILING_KW
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return _output_result(value, None, "missing")
+    match = _OSM_OUTPUT_RE.fullmatch(text)
+    if not match:
+        token = _OSM_OUTPUT_KW_TOKEN_RE.search(text)
+        if not token or _OSM_OUTPUT_GROUPED_RE.fullmatch(token.group(1)):
+            return _output_result(value, None, "unparsed_text")
+        power = float(token.group(1).replace(",", "."))
+        if power <= 0 or power > ceiling:
+            return _output_result(value, None, "implausible_for_connector")
+        return _output_result(value, power, "first_kw_in_text")
+    if _OSM_OUTPUT_GROUPED_RE.fullmatch(match.group(1)):
+        return _output_result(value, None, "ambiguous_decimal_separator")
+    number = float(match.group(1).replace(",", "."))
+    if number <= 0:
+        return _output_result(value, None, "non_positive")
+    unit = (match.group(2) or "").lower()
+    if unit:
+        power = number if unit == "kw" else number / 1000
+        if power > ceiling:
+            return _output_result(value, None, "implausible_for_connector")
+        return _output_result(value, power, f"explicit_{unit}")
+    if not family:
+        return _output_result(value, None, "bare_without_connector_family")
+    kw_low, kw_high = family["bare_kw"]
+    if number <= kw_high:
+        if family["ac"] and number in _AC_CURRENT_RATINGS:
+            return _output_result(value, None, "ambiguous_current_rating")
+        if number < kw_low:
+            return _output_result(value, None, "ambiguous_low_value")
+        return _output_result(value, number, "bare_kw")
+    watt_low, watt_high = family["bare_w"]
+    if watt_low <= number / 1000 <= watt_high:
+        return _output_result(value, number / 1000, "bare_w")
+    return _output_result(value, None, "implausible_for_connector")
+
+
+def repair_osm_connector_power(item: Dict[str, Any]) -> bool:
+    """Re-read OSM connector power from its retained tag, without rewriting the snapshot.
+
+    Snapshots built before this parser hold 7400 kW for `output=7400`, so served rows are
+    repaired on read. A connector whose power came from a station-level fallback
+    (`raw.power_basis`) is left alone, and so is a station maximum from another source.
+    """
+    connectors = item.get("connectors")
+    if not isinstance(connectors, list):
+        return False
+    replaced: List[float] = []
+    changed = False
+    for connector in connectors:
+        raw = connector.get("raw") if isinstance(connector, dict) else None
+        if not isinstance(raw, dict) or raw.get("output") in (None, "") or raw.get("power_basis"):
+            continue
+        key = str(raw.get("osm_key") or connector.get("connector_id") or "")
+        if not key.startswith("socket:"):
+            continue
+        parsed = parse_osm_socket_output(raw["output"], OSM_SOCKET_LABELS.get(key) or connector.get("label"))
+        previous = connector.get("power_kw")
+        if parsed["power_kw"] == previous:
+            continue
+        if isinstance(previous, (int, float)) and not isinstance(previous, bool):
+            replaced.append(float(previous))
+        connector["power_kw"] = parsed["power_kw"]
+        if "fast" in connector:
+            connector["fast"] = bool(parsed["power_kw"] and parsed["power_kw"] >= 43)
+        changed = True
+    if not changed:
+        return False
+    powers = [c["power_kw"] for c in connectors if isinstance(c, dict) and isinstance(c.get("power_kw"), (int, float))
+              and not isinstance(c.get("power_kw"), bool) and c["power_kw"] > 0]
+    station_max = item.get("max_power_kw")
+    if station_max is None or station_max in replaced:
+        item["max_power_kw"] = max(powers) if powers else None
+    item["fast"] = bool(item["max_power_kw"] and item["max_power_kw"] >= 43)
+    claim = item.get("hardware_claim")
+    if isinstance(claim, dict):
+        claim["max_power_kw"] = item["max_power_kw"]
+        claim["connector_power_kw"] = sorted(set(powers))
+    return True
+
 
 def normalize_connector_label(token: Any) -> Optional[str]:
     """Normalize a connector token without inventing Tesla compatibility."""
