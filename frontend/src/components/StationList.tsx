@@ -16,6 +16,9 @@ export function StationList({
   scrollRef,
   scrollMargin = 0,
   scrollPaddingStart = 0,
+  signedIn = false,
+  savedIds,
+  onSave,
 }: {
   rows: Station[]
   selectedId: string | null
@@ -25,6 +28,9 @@ export function StationList({
   scrollMargin?: number
   /** Height of the sticky results heading, so a revealed card is never hidden under it. */
   scrollPaddingStart?: number
+  signedIn?: boolean
+  savedIds?: ReadonlySet<string>
+  onSave?: (station: Station) => void
 }) {
   const reduceMotion = useReducedMotion()
   const virtualizer = useVirtualizer({
@@ -67,6 +73,9 @@ export function StationList({
                 selected={st.id === selectedId}
                 onSelect={onSelect}
                 animateIn={vi.index < 8}
+                signedIn={signedIn}
+                saved={savedIds?.has(st.id) ?? false}
+                onSave={onSave}
               />
             </div>
           </div>

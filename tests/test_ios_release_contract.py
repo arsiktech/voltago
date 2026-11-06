@@ -312,7 +312,10 @@ class IOSReleaseContractTests(unittest.TestCase):
         self.assertIn('NavigationLink("Privacy", value: LegalDocument.privacy)', paywall)
         for source in (settings, paywall):
             self.assertNotIn("Pending release configuration", source)
-        self.assertIn("mailto:arsik2121@icloud.com", settings)
+        support = (ROOT / "frontend" / "src" / "lib" / "supportContact.ts").read_text(encoding="utf-8")
+        email = re.search(r"SUPPORT_EMAIL = '([^']+)'", support)
+        self.assertIsNotNone(email)
+        self.assertIn(f"mailto:{email.group(1)}", settings)
 
     def test_recursive_release_bundle_scan_omits_debug_and_stale_privacy_copy(self):
         raw_path = os.environ.get("VOLTA_RELEASE_APP_PATH")

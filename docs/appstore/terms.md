@@ -7,7 +7,7 @@
 **Effective date:** `[EFFECTIVE DATE]`<br>
 **Provider:** `[FULL LEGAL NAME]`<br>
 **Address:** `[LEGAL OR BUSINESS ADDRESS]`<br>
-**Contact:** `[SUPPORT EMAIL AND URL]`<br>
+**Contact:** `support@voltago.app`<br>
 **Governing law / mandatory consumer-rights wording:** `[OWNER AND COUNSEL TO COMPLETE]`
 
 ## 1. What Volta provides
@@ -98,7 +98,7 @@ Nothing in these terms limits rights that cannot lawfully be limited.
 Volta's handling of location, search, network, map, source, image, and StoreKit data is
 described in the Privacy Notice at `https://[OWNER-DOMAIN]/privacy`. **There is no Volta
 account to delete; privacy/data-rights requests remain available.** Use
-`[PRIVACY CONTACT]` for those requests.
+`support@voltago.app` for those requests.
 
 ## 9. Apple terms
 
@@ -110,5 +110,5 @@ web terms must not conflict with the selected App Store agreement.
 
 `[FULL LEGAL NAME]`<br>
 `[POSTAL ADDRESS]`<br>
-`[SUPPORT EMAIL]`<br>
+`support@voltago.app`<br>
 `[SUPPORT URL]`

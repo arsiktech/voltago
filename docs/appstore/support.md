@@ -4,12 +4,12 @@
 > any bracketed field remains.** Apple requires the Support URL to provide actual contact
 > information. See [platform-version information](https://developer.apple.com/help/app-store-connect/reference/app-information/platform-version-information).
 
-**Support email:** `[SUPPORT EMAIL]`<br>
+**Support email:** `support@voltago.app`<br>
 **Telephone, if required:** `[SUPPORT TELEPHONE]`<br>
 **Operator:** `[FULL LEGAL NAME]`<br>
 **Address:** `[LEGAL OR BUSINESS ADDRESS]`<br>
 **Typical response time:** `[HONEST SUPPORT WINDOW]`<br>
-**Privacy requests:** `[PRIVACY EMAIL OR CONTACT FORM]`
+**Privacy requests:** `support@voltago.app`
 
 ## Before contacting support
 
@@ -50,13 +50,13 @@ search for a city or place instead.
 
 Check your connection and retry. A release build needs the operator's configured public
 HTTPS service. If the problem persists, send the time, app build, and broad area to
-`[SUPPORT EMAIL]`; do not send credentials or an exact residential location.
+`support@voltago.app`; do not send credentials or an exact residential location.
 
 ### A charger price, parking rule, photo, or status is wrong
 
 Provider apps, operator pages, posted parking rules, and onsite signs are authoritative.
 Send the station name, linked source, what Volta showed, and what the authoritative source
-showed to `[DATA CORRECTION EMAIL OR FORM]`. Do not include faces, number plates, or other
+showed to `support@voltago.app`. Do not include faces, number plates, or other
 personal information in a photo.
 
 ### Restore or manage Volta Plus
@@ -71,13 +71,13 @@ Account → Subscriptions. Apple handles payment and refunds. For billing help, 
 **There is no Volta account to delete; privacy/data-rights requests remain available.**
 Removing the app removes its local preferences subject to normal user-controlled backups.
 To request access to or deletion of server-side information that may be associated with
-your network requests, contact `[PRIVACY EMAIL OR FORM]`. Privacy Notice:
+your network requests, contact `support@voltago.app`. Privacy Notice:
 `https://[OWNER-DOMAIN]/privacy`.
 
 ## Accessibility
 
 Report VoiceOver, Dynamic Type, contrast, motion, focus, or touch-target problems to
-`[ACCESSIBILITY CONTACT]`. Include the app build, iOS version, accessibility settings,
+`support@voltago.app`. Include the app build, iOS version, accessibility settings,
 and the exact screen/control where the problem occurs.
 
 ## Safety
