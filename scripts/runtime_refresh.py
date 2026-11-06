@@ -21,7 +21,10 @@ import uuid
 
 import auto_refresh as shared
 from json_recordset import load_json_recordset
+from source_policy import load_source_policy_exclusions
 from station_identity import preserve_record_ids
+from station_retention import apply_retention, identity_baseline
+from station_retirements import load_retirements
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = {
@@ -294,12 +297,19 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
                 os.replace(output, candidate)
             else:
                 run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--out", str(candidate)], timeout)
+                baseline_payload = json.loads(baseline["free_intelligence.json"].read_text())
                 payload, identity_report = preserve_record_ids(
-                    json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
+                    identity_baseline(baseline_payload), json.loads(candidate.read_text()))
                 receipt["identity_reconciliation"] = identity_report
-                if identity_report["changed"]:
+                policy_path = root / "data/source_policy_exclusions.json"
+                payload, retention_report = apply_retention(
+                    baseline_payload, payload,
+                    retirements=load_retirements(root / "data/station_id_retirements.json"),
+                    policy=load_source_policy_exclusions(policy_path) if policy_path.exists() else None)
+                receipt["station_retention"] = retention_report
+                if identity_report["changed"] or retention_report["changed"]:
                     shared.atomic_json(candidate, payload)
-                del payload
+                del payload, baseline_payload
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha
             payload = imported_meta if imported_meta is not None else dataset_summary(candidate)

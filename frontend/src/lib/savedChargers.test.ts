@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { readSaved, readSignedIn, toggleSaved, writeSaved, writeSignedIn, type SavedCharger } from './savedChargers'
+import { readSaved, readSignedIn, savedAbsenceText, toggleSaved, writeSaved, writeSignedIn, type SavedCharger } from './savedChargers'
 
 function memory(): Storage {
   const data = new Map<string, string>()
@@ -50,5 +50,20 @@ describe('saved chargers', () => {
     expect(rows).toHaveLength(200)
     expect(rows[0]?.id).toBe('id-204')
     expect(rows.some((row) => row.id === 'id-0')).toBe(false)
+  })
+})
+
+describe('savedAbsenceText', () => {
+  it('does not guess why a charger without a listing record is absent', () => {
+    expect(savedAbsenceText(undefined)).toBe('Not in this search')
+  })
+
+  it('names the source and the last listed date, and claims no current status', () => {
+    expect(savedAbsenceText({ source: 'Etecnic public charger map', last_listed_at: '2026-11-04T12:37:55Z' }))
+      .toBe('Etecnic public charger map no longer lists this charger. Last listed 2026-11-04. Current status unknown.')
+  })
+
+  it('leaves out a date it cannot read', () => {
+    expect(savedAbsenceText({ last_listed_at: 'soon' })).toBe('Its source no longer lists this charger. Current status unknown.')
   })
 })

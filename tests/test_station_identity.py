@@ -74,8 +74,19 @@ class StableStationIdTests(unittest.TestCase):
 
     def test_many_missing_ids_cannot_claim_one_candidate(self):
         new=station('new'); new['sources'].append({'url':'https://www.openstreetmap.org/node/456'})
-        _,report=self.reconcile([station('old1'),station('old2','https://www.openstreetmap.org/node/456')],[new])
+        payload,report=self.reconcile([station('old1'),station('old2','https://www.openstreetmap.org/node/456')],[new])
         self.assertEqual(report['preserved_ids'],0)
+        self.assertEqual(payload['records'][0]['id'],'new')
+        # Each old ID has its own upstream identifier on the merged row, so each stays an alias.
+        self.assertEqual(sorted(payload['records'][0]['merged_ids']),['old1','old2'])
+        self.assertEqual(report['unresolved_missing_ids'],[])
+
+    def test_aliases_of_stations_merged_into_a_new_row_survive(self):
+        new=station('new'); new['sources'].append({'url':'https://www.openstreetmap.org/node/456'})
+        old1=station('old1',merged_ids=['older'])
+        payload,report=self.reconcile([old1,station('old2','https://www.openstreetmap.org/node/456')],[new])
+        self.assertIn('older',payload['records'][0]['merged_ids'])
+        self.assertEqual(report['unresolved_missing_ids'],[])
 
     def test_duplicate_ids_rejected(self):
         with self.assertRaises(ValueError): self.reconcile([station('old'),station('old')],[station('new')])

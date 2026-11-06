@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
+import station_retention
 from source_policy import load_source_policy_exclusions, partition_records
 from station_identity import identity_keys
+from station_retention import RETAINED_KEY
 from station_retirements import RetirementError, load_retirements
 from json_recordset import load_json_recordset
 
@@ -68,13 +70,18 @@ def compact_gate_record(row: dict) -> GateRecord:
     )
 
 
-def load_partitioned(path: Path, policy: dict) -> tuple[dict, list, list]:
-    """Stream policy evaluation and retain only compact, exact gate evidence."""
+def load_partitioned(path: Path, policy: dict, capture: dict | None = None) -> tuple[dict, list, list]:
+    """Stream policy evaluation and retain only compact, exact gate evidence.
+
+    `capture` maps wanted IDs to None and receives their full rows, for exact comparison.
+    """
     excluded = []
 
     def clean(row: dict) -> GateRecord | None:
         allowed, blocked = partition_records([row], policy)
         excluded.extend({"id": record_id(item)} for item in blocked)
+        if allowed and capture is not None and record_id(row) in capture:
+            capture[record_id(row)] = row
         return compact_gate_record(allowed[0]) if allowed else None
 
     payload = load_json_recordset(path, record_transform=clean)
@@ -318,8 +325,10 @@ def main() -> int:
         retirements = {}
         failures.append(f"station retirement list rejected: {exc}")
     policy = load_source_policy_exclusions(args.policy_exclusions)
-    baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy)
     rebuilt_payload, rebuilt_rows, rebuilt_excluded = load_partitioned(args.rebuilt, policy)
+    claimed = rebuilt_payload.get(RETAINED_KEY) if isinstance(rebuilt_payload.get(RETAINED_KEY), list) else []
+    captured = {str(row.get("id") or ""): None for row in claimed}
+    baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy, captured)
 
     if rebuilt_excluded:
         failures.append(
@@ -353,7 +362,17 @@ def main() -> int:
     if unpromoted_timestamps:
         failures.append(f"Rows have raw source timestamps but missing top-level last_seen: {unpromoted_timestamps[:10]}")
 
-    delta = id_delta(baseline_rows, rebuilt_rows, retirements)
+    # Retained rows answer for their IDs here and nowhere else: every count and floor above and
+    # the canary use `records`, so a source cannot hide its losses behind rows it no longer lists.
+    retention = station_retention.validate(
+        baseline_payload, {key: value for key, value in captured.items() if value is not None},
+        source_names(baseline_rows), rebuilt_payload, {record_id(row) for row in rebuilt_rows}, policy)
+    failures.extend(retention["failures"])
+    prior_retained = partition_records(baseline_payload.get(RETAINED_KEY) or [], policy)[0]
+    delta = id_delta(
+        baseline_rows + [compact_gate_record(row) for row in prior_retained],
+        rebuilt_rows + [compact_gate_record(row) for row in claimed],
+        {**retention["retired"], **retirements})
     max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
@@ -409,6 +428,7 @@ def main() -> int:
         },
         "delta": delta,
         "retirements": {"path": str(args.retirements), "entries": len(retirements)},
+        "station_retention": {key: value for key, value in retention.items() if key not in {"failures", "retired"}},
         "corroboration_only_source_losses": corroboration_only_losses,
         "failures": failures,
     }

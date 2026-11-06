@@ -73,6 +73,21 @@ export function writeSaved(storage: Storage, rows: SavedCharger[]): void {
   }
 }
 
+export type ChargerListing = {
+  source?: string | null
+  last_listed_at?: string | null
+  retired_at?: string | null
+}
+
+/** Why a saved charger is absent. Without a listing record it may simply be elsewhere. */
+export function savedAbsenceText(listing: ChargerListing | undefined): string {
+  if (!listing) return 'Not in this search'
+  const source = cleanText(listing.source, 120) || 'Its source'
+  const date = cleanText(listing.last_listed_at, 40).slice(0, 10)
+  const last = /^\d{4}-\d{2}-\d{2}$/.test(date) ? ` Last listed ${date}.` : ''
+  return `${source} no longer lists this charger.${last} Current status unknown.`
+}
+
 export function toggleSaved(rows: SavedCharger[], station: SavedCharger): SavedCharger[] {
   const id = cleanText(station.id, 200)
   if (!id) return rows

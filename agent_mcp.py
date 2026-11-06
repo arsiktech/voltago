@@ -668,6 +668,16 @@ _ID_INDEX_LOCK = threading.Lock()
 
 def _stored_row(charger_id: str, backend: Any) -> Optional[Dict[str, Any]]:
     """Find an intelligence/seed row by id or merged id, returning a private copy."""
+    row = _listed_row(charger_id, backend)
+    if row is None:
+        row = backend.retained_station(charger_id)
+        if row is not None:
+            backend.attach_community_rows([row])
+            backend._refresh_time_derived_fields([row])
+    return row
+
+
+def _listed_row(charger_id: str, backend: Any) -> Optional[Dict[str, Any]]:
     raw = backend.load_intelligence_meta()
     intel = raw.get("records") or []
     seeds = backend.load_seed_leads()
@@ -731,7 +741,9 @@ def get_charger(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
         lat, lon = backend.safe_float(stored.get("lat")), backend.safe_float(stored.get("lon"))
     live_row = None
     live_note = None
-    if lat is not None and lon is not None:
+    # A nearby live row must not stand in for a charger its source stopped listing.
+    no_longer_listed = (stored or {}).get("no_longer_listed")
+    if lat is not None and lon is not None and not no_longer_listed:
         status, payload = backend.live_response({
             "lat": [f"{lat:.6f}"],
             "lon": [f"{lon:.6f}"],
@@ -752,6 +764,8 @@ def get_charger(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
         raise ToolInputError(f"No charger with id {charger_id!r} was found.{hint}")
     view = charger_view(row, backend, detail=True)
     view["as_of"] = backend.now_iso()
+    if no_longer_listed:
+        view["no_longer_listed"] = dict(no_longer_listed)
     if stored is not None and live_row is not None and live_row is not stored:
         view["stored_record_id"] = stored.get("id")
     if live_note:

@@ -212,6 +212,43 @@ class RuntimeRefreshTests(unittest.TestCase):
         current = json.loads((self.state / "current/free_intelligence.json").read_text())
         self.assertIn("osm_old", current["records"][0]["merged_ids"])
 
+    def test_station_that_left_its_source_is_retained_and_the_refresh_publishes(self):
+        kept = {"id": "kept", "source": "Etecnic public charger map", "lat": 39.0, "lon": -0.5, "sources": [{"url": "https://etecnic.net/a"}]}
+        gone = {**kept, "id": "gone", "lat": 40.0}
+        (self.root / "data/free_intelligence.json").write_text(
+            json.dumps({"generated_at": "2026-11-04T12:00:00Z", "records": [kept, gone]}))
+        seen_by_delta = []
+
+        def stage(root, run, name, argv, timeout):
+            candidate = run / "free_intelligence.json"
+            baseline = self.root / "data/free_intelligence.json"
+            if name == "build":
+                candidate.write_text(json.dumps({"records": [kept], "generated_at": "2026-11-04T18:00:00Z"}))
+                payload = {}
+            elif name == "delta":
+                seen_by_delta.append(json.loads(candidate.read_text())["retained_records"][0]["id"])
+                payload = {"ok": True, "delta": {"missing_ids": 0}}
+            else:
+                sha = shared.sha256_file(candidate)
+                payload = {"ok": True, "candidate_reused": True, "candidate_sha256": sha,
+                           "candidate_sha256_after": sha, "baseline_sha256": shared.sha256_file(baseline)}
+            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
+
+        def reports(**kwargs):
+            kwargs["free_report"].write_text('{}')
+            kwargs["valencia_report"].write_text('{}')
+            return {"fixture": True}
+
+        with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+             mock.patch.object(refresh, "run_stage", side_effect=stage), \
+             mock.patch.object(refresh.shared, "generate_reports", side_effect=reports):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 0)
+        self.assertEqual(seen_by_delta, ["gone"])
+        self.assertEqual(json.loads((self.state / "last.json").read_text())["station_retention"]["new"], ["gone"])
+        current = json.loads((self.state / "current/free_intelligence.json").read_text())
+        self.assertEqual([row["id"] for row in current["records"]], ["kept"])
+        self.assertEqual(current["retained_records"][0]["no_longer_listed"]["last_listed_at"], "2026-11-04T12:00:00Z")
+
     def test_bundle_hash_mismatch_cannot_publish(self):
         refresh.publish_bundle(self.state, self.run)
         with self.assertRaisesRegex(RuntimeError, "changed"):

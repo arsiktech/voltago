@@ -247,6 +247,19 @@ def stale_columns(intel: Dict[str, Any], now: datetime) -> Dict[str, str]:
     return stale
 
 
+def unproven_columns(intel: Dict[str, Any]) -> set:
+    """Columns whose build failed or fell back to a cached copy, so absence proves nothing."""
+    found = set()
+    for error in intel.get("errors") or []:
+        column = ADAPTER_COLUMNS.get(error.get("source")) if isinstance(error, dict) else None
+        if column:
+            found.add(column)
+    for artifact in (intel.get("fetch_evidence") or {}).get("artifacts") or []:
+        if isinstance(artifact, dict) and (artifact.get("cache") or {}).get("fallback"):
+            found.add(_cache_column(artifact.get("cache_name")))
+    return found - {None}
+
+
 def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -> Dict[str, str]:
     """Columns whose latest snapshot cannot prove absence, with the reason."""
     degraded: Dict[str, str] = {}
