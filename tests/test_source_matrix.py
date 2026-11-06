@@ -87,6 +87,55 @@ class SourceMatrixTests(unittest.TestCase):
                                                    "cache": {"fallback": True}}]}}
         self.assertEqual(cells(intel, "a")["ocm"]["state"], "unknown")
 
+    def test_listing_clocks_come_only_from_that_listing(self) -> None:
+        record = row("a", "DGT National Access Point charging registry", "OpenStreetMap public tags")
+        record["source_fetched_at"] = "2026-11-04T00:00:00Z"  # Oldest across sources: not attributable to a cell.
+        record["sources"][0].update(source_fetched_at="2026-11-03T12:39:31.040277Z", source_published_at="not a date",
+                                    source_last_updated="2024-08-08T14:21:38")
+        result = cells({"records": [record]}, "a")
+        self.assertEqual(result["dgt"]["entries"][0]["clocks"], {
+            "fetched_at": "2026-11-03T12:39:31Z", "published_at": None, "source_last_updated": "2024-08-08T14:21:38"})
+        self.assertEqual(result["osm"]["entries"][0]["clocks"], {
+            "fetched_at": None, "published_at": None, "source_last_updated": None})
+
+    def test_price_clocks_keep_their_own_meaning(self) -> None:
+        record = row("a", "DGT National Access Point charging registry", price_sources=("Electromaps",))
+        record["price_evidence"][0].update(fetched_at="2026-10-20T10:20:00.5Z", source_updated_at="2025-05-27T14:21:58+0000")
+        self.assertEqual(cells({"records": [record]}, "a")["electromaps"]["entries"][0]["clocks"], {
+            "fetched_at": "2026-10-20T10:20:00Z", "published_at": None, "source_last_updated": "2025-05-27T14:21:58Z"})
+
+    def test_clock_never_turns_a_bad_value_into_a_time(self) -> None:
+        for value in (None, "", " ", "yesterday", "03/11/2026", 0, 1793973099, True, "0001-01-01T00:00:00+14:00", "1970-01-01T00:00:00Z"):
+            with self.subTest(value=value):
+                self.assertIsNone(sm.clock(value))
+        self.assertEqual(sm.clock("2026-11-03"), "2026-11-03")
+        self.assertEqual(sm.clock("2026-11-03T13:00:00+01:00"), "2026-11-03T12:00:00Z")
+
+    def test_column_last_fetch_reports_newest_oldest_and_failed_files(self) -> None:
+        intel = {"records": [row("a", "DGT National Access Point charging registry")], "fetch_evidence": {"artifacts": [
+            {"cache_name": "dgt_nap_electrolineras.xml", "fetched_at": "2026-11-03T12:39:31.5Z", "cache": {"hit": True}},
+            {"cache_name": "osm_es_area_chargers_00.json", "fetched_at": "2026-11-04T00:35:00Z", "cache": {}},
+            {"cache_name": "osm_es_area_chargers_01.json", "fetched_at": "2026-11-02T18:39:00Z", "cache": {"fallback": True}},
+            {"cache_name": "barcelona_endolla_status.json", "fetched_at": "2026-11-04T12:36:00Z", "cache": {}},
+            {"cache_name": "madrid_public_chargers.csv", "fetched_at": "unknown", "cache": {}},
+            {"cache_name": "panoramax_picture_1.json", "fetched_at": "2026-11-04T12:36:00Z", "cache": {}},
+        ]}}
+        columns = {c["id"]: c for c in sm.build_matrix(intel, BBOX)["columns"]}
+        self.assertEqual(columns["dgt"]["last_fetch"], {"at": "2026-11-03T12:39:31Z", "oldest_part_at": "2026-11-03T12:39:31Z", "parts": 1, "failed_parts": 0})
+        self.assertEqual(columns["osm"]["last_fetch"], {"at": "2026-11-04T00:35:00Z", "oldest_part_at": "2026-11-02T18:39:00Z", "parts": 2, "failed_parts": 1})
+        self.assertEqual(columns["endolla"]["last_fetch"]["at"], "2026-11-04T12:36:00Z")
+        self.assertIsNone(columns["madrid"]["last_fetch"])
+        self.assertIsNone(columns["lidl"]["last_fetch"])
+
+    def test_columns_are_unknown_without_fetch_evidence(self) -> None:
+        matrix = sm.build_matrix({"records": [], "generated_at": "2026-11-04T12:37:55Z"}, BBOX)
+        self.assertTrue(all(column["last_fetch"] is None for column in matrix["columns"]))
+
+    def test_a_cached_copy_with_no_date_does_not_print_a_blank_date(self) -> None:
+        intel = {"records": [row("a", "OpenStreetMap public tags", fallback=True)]}
+        intel["records"][0]["sources"][0].pop("source_fetched_at")
+        self.assertEqual(sm.degraded_columns(intel, intel["records"])["osm"], "Latest fetch failed; cached copy from an unknown date.")
+
     def test_locations_outside_the_area_are_excluded_and_the_limit_is_reported(self) -> None:
         intel = {"records": [row(str(i), "DGT National Access Point charging registry", north_m=i) for i in range(5)]
                  + [row("outside", "DGT National Access Point charging registry", north_m=50_000)]}

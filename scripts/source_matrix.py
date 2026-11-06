@@ -16,6 +16,7 @@ Standard library only.
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 UNCERTAIN_KM = 0.08
@@ -66,12 +67,13 @@ ADAPTER_COLUMNS = {
 CACHE_COLUMNS = {
     "dgt_nap": "dgt", "osm_": "osm", "openchargemap": "ocm", "ocm": "ocm", "mapareve_public": "mapareve",
     "canarias": "canarias", "madrid": "madrid", "valencia": "valencia", "zaragoza": "zaragoza",
-    "endolla": "endolla", "fenie": "fenie", "lidl": "lidl", "etecnic": "etecnic", "zunder": "zunder",
-    "catalonia_icaen": "catalonia", "navarra_idena": "navarra", "castilla_leon": "castilla_leon",
+    "endolla": "endolla", "barcelona_endolla": "endolla", "fenie": "fenie", "lidl": "lidl", "etecnic": "etecnic",
+    "zunder": "zunder", "catalonia_icaen": "catalonia", "navarra_idena": "navarra", "castilla_leon": "castilla_leon",
+    "red_movem": "movem", "acciona": "acciona", "moraleja": "moraleja", "electromaps": "electromaps",
+    "chargemap": "chargemap",
 }
-SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_fetched_at",
-                 "source_published_at", "source_last_updated", "source_cache_fallback")
-PRICE_FIELDS = ("source", "label", "price_per_kwh", "currency", "source_url", "fetched_at", "source_updated_at")
+SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_cache_fallback")
+PRICE_FIELDS = ("source", "label", "price_per_kwh", "currency", "source_url")
 
 
 def column_for(name: Optional[str]) -> Optional[str]:
@@ -93,17 +95,86 @@ def _distance_km(a: Dict[str, Any], b: Dict[str, Any]) -> float:
     return math.hypot(dx, dy)
 
 
+def clock(value: Any) -> Optional[str]:
+    """Canonical timestamp text, or None when absent or unreadable. Never substitutes a time.
+
+    Aware values become UTC with a Z. A value with no zone stays without one, and a bare date
+    stays a date, because the source did not say more.
+    """
+    text = value.strip() if isinstance(value, str) else ""
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        if parsed.year < 2000:
+            return None
+        if len(text) == 10:
+            return text
+        if parsed.tzinfo is None:
+            return parsed.strftime("%Y-%m-%dT%H:%M:%S")
+        return parsed.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (ValueError, OverflowError):
+        return None
+
+
 def _listed_columns(record: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
     found: Dict[str, List[Dict[str, Any]]] = {}
     for source in record.get("sources") or []:
         column = column_for(source.get("name"))
         if column and next(c for c in COLUMNS if c["id"] == column)["coverage"] != "price":
-            found.setdefault(column, []).append({k: source[k] for k in SOURCE_FIELDS if source.get(k) not in (None, "")})
+            found.setdefault(column, []).append({
+                **{k: source[k] for k in SOURCE_FIELDS if source.get(k) not in (None, "")},
+                "clocks": {"fetched_at": clock(source.get("source_fetched_at")),
+                           "published_at": clock(source.get("source_published_at")),
+                           "source_last_updated": clock(source.get("source_last_updated"))},
+            })
     for price in record.get("price_evidence") or []:
         column = column_for(price.get("source"))
         if column:
-            found.setdefault(column, []).append({k: price[k] for k in PRICE_FIELDS if price.get(k) not in (None, "")})
+            found.setdefault(column, []).append({
+                **{k: price[k] for k in PRICE_FIELDS if price.get(k) not in (None, "")},
+                "clocks": {"fetched_at": clock(price.get("fetched_at")),
+                           "published_at": None,
+                           "source_last_updated": clock(price.get("source_updated_at"))},
+            })
     return found
+
+
+def _cache_column(cache_name: Any) -> Optional[str]:
+    name = str(cache_name or "").lower()
+    return next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
+
+
+def _cached_copy_reason(fetched_at: Any) -> str:
+    stamp = clock(fetched_at)
+    return f"Latest fetch failed; cached copy from {stamp[:10] if stamp else 'an unknown date'}."
+
+
+def column_fetches(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Each column's last successful fetch, from the build's fetch evidence.
+
+    An artifact's fetched_at is when its bytes were last retrieved, including for a cached copy
+    used after a failed fetch. A column with no usable evidence is absent here, so it reads as
+    unknown. A column with several files also reports its oldest file and its failed fetches,
+    so one fresh file cannot make the whole source look fresh.
+    """
+    parts: Dict[str, Dict[str, Tuple[str, bool]]] = {}
+    for artifact in (intel.get("fetch_evidence") or {}).get("artifacts") or []:
+        if not isinstance(artifact, dict):
+            continue
+        column = _cache_column(artifact.get("cache_name"))
+        stamp = clock(artifact.get("fetched_at"))
+        if not column or not stamp or not stamp.endswith("Z"):
+            continue
+        files = parts.setdefault(column, {})
+        name = str(artifact.get("cache_name")).lower()
+        if name not in files or files[name][0] <= stamp:
+            files[name] = (stamp, bool((artifact.get("cache") or {}).get("fallback")))
+    return {column: {"at": max(stamp for stamp, _ in files.values()),
+                     "oldest_part_at": min(stamp for stamp, _ in files.values()),
+                     "parts": len(files),
+                     "failed_parts": sum(failed for _, failed in files.values())}
+            for column, files in parts.items()}
 
 
 def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -> Dict[str, str]:
@@ -116,15 +187,14 @@ def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -
     for artifact in (intel.get("fetch_evidence") or {}).get("artifacts") or []:
         if not isinstance(artifact, dict) or not (artifact.get("cache") or {}).get("fallback"):
             continue
-        name = str(artifact.get("cache_name") or "").lower()
-        column = next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
+        column = _cache_column(artifact.get("cache_name"))
         if column and column not in degraded:
-            degraded[column] = f"Latest fetch failed; cached copy from {str(artifact.get('fetched_at') or '')[:10]}."
+            degraded[column] = _cached_copy_reason(artifact.get("fetched_at"))
     for record in records:
         for source in record.get("sources") or []:
             column = column_for(source.get("name"))
             if column and source.get("source_cache_fallback") and column not in degraded:
-                degraded[column] = f"Latest fetch failed; cached copy from {str(source.get('source_fetched_at') or '')[:10]}."
+                degraded[column] = _cached_copy_reason(source.get("source_fetched_at"))
     return degraded
 
 
@@ -139,6 +209,7 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
     truncated = len(inside) > limit
     inside = inside[:limit]
     degraded = degraded_columns(intel, records)
+    fetches = column_fetches(intel)
     listed_near = [(r, _listed_columns(r)) for r in near]
 
     locations = []
@@ -175,7 +246,7 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
     return {
         "generated_at": intel.get("generated_at"),
         "columns": [{"id": c["id"], "label": c["label"], "coverage": c["coverage"],
-                     "degraded": degraded.get(c["id"])} for c in COLUMNS],
+                     "degraded": degraded.get(c["id"]), "last_fetch": fetches.get(c["id"])} for c in COLUMNS],
         "locations": locations,
         "truncated": truncated,
         "note": "Cells show which sources list a location, not availability, price or whether charging is free.",
