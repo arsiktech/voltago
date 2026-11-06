@@ -1365,8 +1365,8 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
         "source": source,
         "source_url": source_url,
         "sources": [{"name": source, "url": source_url, "evidence": evidence[:500],
-                     **({"source_cache_fallback": True, "source_fetched_at": source_artifact.fetched_at}
-                        if source_artifact is not None and source_artifact.fallback else {})}],
+                     **({"source_fetched_at": source_artifact.fetched_at} if source_artifact is not None else {}),
+                     **({"source_cache_fallback": True} if source_artifact is not None and source_artifact.fallback else {})}],
         "source_integration": source_integration_profile(source, reliability, status, raw),
         "reliability": reliability,
         "charge_claim": {
@@ -1383,7 +1383,8 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
             "cost_hint": parking.get("cost_hint"),
             "summary": parking.get("note") or "Parking cost/access claim from public source.",
         },
-        "source_fetched_at": source_artifact.fetched_at if source_artifact else now_iso(),
+        # No artifact means no fetch evidence. The build's own clock must not stand in for one.
+        "source_fetched_at": source_artifact.fetched_at if source_artifact else None,
         "last_seen": raw_last_seen(raw) if isinstance(raw, dict) else None,
         "access": access,
         "parking": parking,
@@ -1745,8 +1746,6 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
                     "value": FENIE_OUT_OF_SERVICE_ESTADO,
                     "summary": "Feníe reports this charger unavailable (out of service on its public map). Don't route here until it is back in service.",
                 }
-            if source_artifact is not None:
-                out[-1]["sources"][0]["source_fetched_at"] = source_artifact.fetched_at
     return out
 
 
@@ -1844,7 +1843,10 @@ out center meta;
             # served from cache.
             body = cached_overpass(query, f"osm_es_area_chargers_{label}.json", ttl_hours=12)
             time.sleep(OVERPASS_TILE_PAUSE_SECONDS)
-            return [(el, body) for el in json.loads(body.decode()).get("elements", [])], []
+            payload = json.loads(body.decode())
+            # Overpass states which OSM database state answered this tile.
+            database_at = (payload.get("osm3s") or {}).get("timestamp_osm_base")
+            return [({**el, "_osm_database_at": database_at}, body) for el in payload.get("elements", [])], []
         except Exception as exc:
             last_error = f"{type(exc).__name__}: {exc}"
             if attempt < 2:
@@ -2108,6 +2110,11 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
         photos = panoramax_photos_from_tags(tags, source_url)
         before_add = len(records)
         add_record(records, source="OpenStreetMap public tags", source_url=source_url, name=name, address=address, city=tags.get("addr:city") or "", lat=lat, lon=lon, price_min=0.0 if is_free else price, free_condition=free_condition, connector_labels=labels, max_power_kw=max_kw, status="VERIFY", reliability="community-free" if is_free else "community-cost" if price is not None else "community-price-unknown", evidence=evidence, parking_kind=parking_kind, parking_note="OSM location/hardware evidence and the separately attributed official tariff still require an onsite/provider check before routing." if movem_price is not None else "OSM community evidence; verify price, access and parking signs before routing.", raw={**tags, "osm_type": osm_type, "osm_id": osm_id, "osm_last_modified": el.get("timestamp"), "red_movem_tariff_match": movem_price is not None}, connectors=connector_rows, photos=photos, port_count=count_int(tags.get("capacity"), default=0), source_artifact=fetch_artifact_or_none(body))
+        if len(records) > before_add:
+            if el.get("timestamp"):
+                records[-1]["sources"][0]["source_last_updated"] = el["timestamp"]
+            if el.get("_osm_database_at"):
+                records[-1]["sources"][0]["source_published_at"] = el["_osm_database_at"]
         if movem_price is not None and movem_review is not None and len(records) > before_add:
             row = records[-1]
             review_checked_at = movem_review["checked_at"]
@@ -2476,6 +2483,7 @@ def parse_barcelona_endolla(
                 "attribution": "Ajuntament de Barcelona / Endolla",
                 "transformation": "Normalized and combined by Volta; weekly port status is retained as non-live provenance only.",
                 "source_fetched_at": location_artifact.fetched_at if location_artifact else row.get("source_fetched_at"),
+                **({"source_last_updated": latest_timestamp} if latest_timestamp else {}),
             },
             {
                 "name": "Barcelona Endolla port-status open data",
@@ -2678,8 +2686,6 @@ def parse_madrid_official_csv(
             out[-1]["sources"][0]["attribution"] = "Ayuntamiento de Madrid"
             out[-1]["sources"][0]["transformation"] = "Coordinates converted by Volta from ETRS89 / UTM zone 30N to WGS84; unmatched price-unknown rows are not admitted."
             out[-1]["sources"][0]["catalog_url"] = MADRID_CHARGERS_CATALOG_URL
-            if source_artifact is not None:
-                out[-1]["sources"][0]["source_fetched_at"] = source_artifact.fetched_at
     return out
 
 
@@ -2882,7 +2888,7 @@ def parse_moraleja_green(
     }
     row["hardware_claim"] = hardware_claim_for(row)
     row["access_claim"] = access_claim_for(row)
-    row["source_fetched_at"] = oldest_contributing_source_timestamp([row]) or "2026-07-15T00:00:00Z"
+    row["source_fetched_at"] = oldest_contributing_source_timestamp([row]) or row.get("source_fetched_at")
 
 
 def source_moraleja_green(records: List[Dict[str, Any]]) -> None:
@@ -3456,6 +3462,19 @@ def source_chargemap_mappy(records: List[Dict[str, Any]]) -> None:
 
 RELIABILITY_RANK = {"official-cheap": 100, "official-free": 100, "official-free-policy": 95, "official-charger-location-price-unknown": 70, "directory-map-free": 68, "community-free": 65, "directory-map-cheap": 63, "community-cost": 60, "directory-page": 55, "community-access-limited": 45, "photo-only": 5}
 PARKING_KIND_RANK = {"paid_or_metered": 100, "time_limited_or_validated": 88, "free_parking": 72, "retail_parking": 55, "facility_or_customer_parking": 54, "street_or_municipal": 52, "unknown": 0}
+
+
+def source_with_duplicate_clock(kept: Dict[str, Any], duplicate: Dict[str, Any]) -> Dict[str, Any]:
+    """Merging two rows of one listing must not let the fresher clock hide the older copy."""
+    oldest = oldest_contributing_source_timestamp([
+        {"source_fetched_at": kept.get("source_fetched_at")},
+        {"source_fetched_at": duplicate.get("source_fetched_at")},
+    ])
+    fallback = duplicate.get("source_cache_fallback") and not kept.get("source_cache_fallback")
+    if oldest == kept.get("source_fetched_at") and not fallback:
+        return kept
+    return {**kept, **({"source_fetched_at": oldest} if oldest else {}),
+            **({"source_cache_fallback": True} if fallback else {})}
 
 
 def oldest_contributing_source_timestamp(items: Iterable[Dict[str, Any]]) -> Optional[str]:
@@ -4300,14 +4319,16 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
         merge_count += len(items) - 1
         items.sort(key=lambda r: (RELIABILITY_RANK.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, -len(r.get("sources", []))), reverse=True)
         base = dict(items[0])
-        seen_srcs = set()
+        seen_srcs: Dict[Tuple[Any, Any], int] = {}
         srcs: List[Dict[str, Any]] = []
         for it in items:
             for s in it.get("sources", []):
                 key = (s.get("name"), s.get("url"))
                 if key not in seen_srcs:
-                    seen_srcs.add(key)
+                    seen_srcs[key] = len(srcs)
                     srcs.append(s)
+                else:
+                    srcs[seen_srcs[key]] = source_with_duplicate_clock(srcs[seen_srcs[key]], s)
             kw = it.get("max_power_kw")
             if kw is not None and (base.get("max_power_kw") is None or kw > base["max_power_kw"]):
                 base["max_power_kw"] = kw
@@ -4614,9 +4635,14 @@ def parse_dgt_nap_feed(source: Any, *, minimum_sites: int = 5000) -> List[Dict[s
     context = ET.iterparse(source, events=("start", "end"))
     _, root = next(context)
     sites: List[Dict[str, Any]] = []
+    feed_published_at = ""
     for event, elem in context:
+        if event == "end" and _dtx_local(elem.tag) == "publicationTime" and not feed_published_at:
+            # The feed header states when DGT published this table; it precedes every site.
+            feed_published_at = (elem.text or "").strip()
         if event == "end" and _dtx_local(elem.tag) == "energyInfrastructureSite":
             site = _dtx_parse_site(elem)
+            site["feed_published_at"] = feed_published_at
             if site["lat"] is not None and site["lon"] is not None:
                 sites.append(site)
             elem.clear()
@@ -4689,8 +4715,10 @@ def nap_records_from_sites(sites: List[Dict[str, Any]], *, source_artifact: Opti
                 "Normalized by Volta as corroboration-only evidence (operator, connectors, power); "
                 "no missing tariff is inferred to be free."
             )
-            if source_artifact is not None:
-                out[-1]["sources"][0]["source_fetched_at"] = source_artifact.fetched_at
+            if site.get("last_updated"):
+                out[-1]["sources"][0]["source_last_updated"] = site["last_updated"]
+            if site.get("feed_published_at"):
+                out[-1]["sources"][0]["source_published_at"] = site["feed_published_at"]
     return out
 
 
@@ -4706,6 +4734,7 @@ def source_dgt_nap(records: List[Dict[str, Any]]) -> None:
 # dataset lists one row per connector; rows sharing operator and coordinates form one station.
 CATALONIA_ICAEN_URL = "https://analisi.transparenciacatalunya.cat/resource/tb2m-m33b.json?$limit=20000"
 CATALONIA_ICAEN_PAGE = "https://analisi.transparenciacatalunya.cat/d/tb2m-m33b"
+CATALONIA_ICAEN_METADATA_URL = "https://analisi.transparenciacatalunya.cat/api/views/tb2m-m33b.json"
 NAVARRA_IDENA_URL = (
     "https://idena.navarra.es/ogc/wfs?service=WFS&version=2.0.0&request=GetFeature"
     "&typeNames=IDENA:INFRAE_Sym_PuntosRecarga&outputFormat=application/json&srsName=EPSG:4326"
@@ -4715,6 +4744,7 @@ CASTILLA_LEON_URL = (
     "https://analisis.datosabiertos.jcyl.es/api/explore/v2.1/catalog/datasets/"
     "puntos-de-recarga-del-vehiculo-electrico/exports/json"
 )
+CASTILLA_LEON_METADATA_URL = "https://analisis.datosabiertos.jcyl.es/api/explore/v2.1/catalog/datasets/puntos-de-recarga-del-vehiculo-electrico"
 CASTILLA_LEON_PAGE = "https://datosabiertos.jcyl.es/web/jcyl/set/es/energia/puntos-recarga-vehiculo-electrico/1284940776394"
 REGIONAL_OPEN_DATA = {
     "catalonia": {
@@ -4758,6 +4788,7 @@ def regional_open_data_records(
     rows: Iterable[Dict[str, Any]],
     *,
     source_artifact: Optional[FetchArtifact] = None,
+    published_at: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Group normalized connector rows into station records.
 
@@ -4855,16 +4886,18 @@ def regional_open_data_records(
                                 catalog_url=meta["page"],
                                 transformation="Connector rows grouped by operator and coordinates; normalized by Volta "
                                                "as corroboration-only evidence. No missing tariff is inferred to be free.")
+            if published_at:
+                source_entry["source_published_at"] = published_at
     return out
 
 
-def parse_catalonia_icaen(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+def parse_catalonia_icaen(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None, published_at: Optional[str] = None) -> List[Dict[str, Any]]:
     return regional_open_data_records("catalonia", (
         {"lat": row.get("latitud"), "lon": row.get("longitud"), "operator": row.get("promotor_gestor"),
          "address": row.get("adre_a"), "city": row.get("municipi"), "connectors": _split_connectors(row.get("tipus_connexi")),
          "power_kw": row.get("kw"), "row_id": row.get("id"), "access": row.get("acces")}
         for row in rows if isinstance(row, dict)
-    ), source_artifact=source_artifact)
+    ), source_artifact=source_artifact, published_at=published_at)
 
 
 def parse_navarra_idena(payload: Dict[str, Any], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
@@ -4879,18 +4912,47 @@ def parse_navarra_idena(payload: Dict[str, Any], *, source_artifact: Optional[Fe
     return regional_open_data_records("navarra", rows(), source_artifact=source_artifact)
 
 
-def parse_castilla_leon(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
+def parse_castilla_leon(rows: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None, published_at: Optional[str] = None) -> List[Dict[str, Any]]:
     return regional_open_data_records("castilla_leon", (
         {"lat": (row.get("dd") or {}).get("lat"), "lon": (row.get("dd") or {}).get("lon"), "operator": row.get("operador"),
          "address": row.get("direccion"), "city": "", "row_id": row.get("no"),
          "connectors": [label for item in row.get("tipo") or [] for label in _split_connectors(item)]}
         for row in rows if isinstance(row, dict)
-    ), source_artifact=source_artifact)
+    ), source_artifact=source_artifact, published_at=published_at)
+
+
+def dataset_published_at(url: str, cache_name: str, ttl_hours: float, data_artifact: FetchArtifact, read: Callable[[Any], Optional[str]]) -> Optional[str]:
+    """The publication time a dataset's metadata states, or None.
+
+    A missing clock must never cost the rows, so a failed metadata fetch only leaves it unknown.
+    Metadata can be fetched after the rows. A time later than the rows' own fetch describes a
+    version these rows are not, so it is dropped rather than shown against them.
+    """
+    try:
+        published = read(cached_json(url, cache_name, ttl_hours=ttl_hours, timeout=35))
+    except Exception:  # noqa: BLE001 - see docstring
+        return None
+    if not published:
+        return None
+    pair = [{"source_fetched_at": published}, {"source_fetched_at": data_artifact.fetched_at}]
+    return published if oldest_contributing_source_timestamp(pair) == published else None
+
+
+def socrata_rows_updated_at(metadata: Any) -> Optional[str]:
+    seconds = fnum(metadata.get("rowsUpdatedAt")) if isinstance(metadata, dict) else None
+    return epoch_iso(seconds) if seconds else None
+
+
+def opendatasoft_data_processed(metadata: Any) -> Optional[str]:
+    metas = ((metadata.get("metas") or {}).get("default") or {}) if isinstance(metadata, dict) else {}
+    value = metas.get("data_processed")
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def source_catalonia_icaen(records: List[Dict[str, Any]]) -> None:
     artifact = cached_fetch(CATALONIA_ICAEN_URL, "catalonia_icaen_charging_points.json", ttl_hours=24, timeout=90)
-    records.extend(parse_catalonia_icaen(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+    published_at = dataset_published_at(CATALONIA_ICAEN_METADATA_URL, "catalonia_icaen_metadata.json", 24, artifact, socrata_rows_updated_at)
+    records.extend(parse_catalonia_icaen(json.loads(artifact.decode("utf-8")), source_artifact=artifact, published_at=published_at))
 
 
 def source_navarra_idena(records: List[Dict[str, Any]]) -> None:
@@ -4900,7 +4962,8 @@ def source_navarra_idena(records: List[Dict[str, Any]]) -> None:
 
 def source_castilla_leon(records: List[Dict[str, Any]]) -> None:
     artifact = cached_fetch(CASTILLA_LEON_URL, "castilla_leon_charging_points.json", ttl_hours=24 * 7, timeout=90)
-    records.extend(parse_castilla_leon(json.loads(artifact.decode("utf-8")), source_artifact=artifact))
+    published_at = dataset_published_at(CASTILLA_LEON_METADATA_URL, "castilla_leon_metadata.json", 24 * 7, artifact, opendatasoft_data_processed)
+    records.extend(parse_castilla_leon(json.loads(artifact.decode("utf-8")), source_artifact=artifact, published_at=published_at))
 # --- Etecnic public charger map ------------------------------------------------------------
 # RIGHTS: the JSON behind etecnic.es/mapa-de-recarga is public and anonymous, but Etecnic's
 # aviso legal reserves redistribution. The owner approved ingesting it on 2026-10-24 under
@@ -5149,6 +5212,8 @@ def parse_zunder_sites(
             # Record freshness is the older of the map page and the detail it used.
             if detail_fetched < str(out[-1].get("source_fetched_at") or detail_fetched):
                 out[-1]["source_fetched_at"] = detail_fetched
+                # The listing uses the detail too, so its clock must not read fresher than that.
+                out[-1]["sources"][0]["source_fetched_at"] = detail_fetched
             out[-1]["sources"][0]["detail_fetched_at"] = detail_fetched
             if detail.get("_cache_fallback"):
                 out[-1]["sources"][0]["source_cache_fallback"] = True
@@ -5402,6 +5467,8 @@ def parse_canarias_tecarga_geojson(
             port_count=port_count,
             source_artifact=source_artifact,
         )
+        if fnum(props.get("modified")):
+            parsed[-1]["sources"][0]["source_last_updated"] = epoch_iso(float(props["modified"]))
         if connectors and any(c.get("count") is None for c in connectors):
             parsed[-1]["connector_count"] = parsed[-1]["total_evse"] = None
             parsed[-1]["hardware_claim"]["port_count"] = None
@@ -5495,14 +5562,20 @@ def mapareve_city_postal_code(row: Dict[str, Any], lat: float, lon: float) -> st
 def parse_mapareve_public_pages(
     pages: List[Dict[str, Any]],
     *,
-    source_artifact: Optional[FetchArtifact] = None,
+    source_artifacts: Optional[List[FetchArtifact]] = None,
 ) -> List[Dict[str, Any]]:
+    # Each row keeps the artifact of the page that delivered it. Pages are cached separately,
+    # so one page can be a day older than another or be a cached copy after a failed fetch.
     rows: List[Dict[str, Any]] = []
-    for page in pages:
-        rows.extend(page.get("data") or [])
+    row_artifacts: List[Optional[FetchArtifact]] = []
+    for index, page in enumerate(pages):
+        page_rows = page.get("data") or []
+        rows.extend(page_rows)
+        artifact = source_artifacts[index] if source_artifacts and index < len(source_artifacts) else None
+        row_artifacts.extend([artifact] * len(page_rows))
     parsed: List[Dict[str, Any]] = []
     skipped: Dict[str, int] = defaultdict(int)
-    for row in rows:
+    for row, source_artifact in zip(rows, row_artifacts):
         if not isinstance(row, dict):
             continue
         coordinates = row.get("coordinates") or {}
@@ -5602,6 +5675,8 @@ def parse_mapareve_public_pages(
             port_count=len(connectors) or None,
             source_artifact=source_artifact,
         )
+        if parsed and last_updated:
+            parsed[-1]["sources"][0]["source_last_updated"] = last_updated
     if not parsed and rows:
         print(f"mapareve_public: 0 rows from {len(rows)} scanned rows (skipped: {dict(skipped)})")
     return parsed
@@ -5675,7 +5750,7 @@ def source_mapareve_public(records: List[Dict[str, Any]]) -> None:
         raise RuntimeError(
             f"MapaREVE public Tenerife slice shrank to {rows} rows (<{MAPAREVE_PUBLIC_MIN_ROWS}); upstream shape change?"
         )
-    parsed = parse_mapareve_public_pages(pages, source_artifact=artifacts[0] if artifacts else None)
+    parsed = parse_mapareve_public_pages(pages, source_artifacts=artifacts)
     print(f"mapareve_public: scanned {rows} Tenerife rows over {len(pages)} pages, kept {len(parsed)} rows")
     records.extend(parsed)
 

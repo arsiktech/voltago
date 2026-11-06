@@ -476,10 +476,17 @@ def price_evidence_counts(rows):
     return counts
 
 
+class RequestWithheld(RuntimeError):
+    """The refresh budget or deadline stopped the request, so nothing was asked of the source."""
+
+
 class Collector:
     def __init__(self, cache_dir, *, now=None, opener=None, pause=PAUSE_SECONDS, list_budget=LIST_BUDGET, detail_budget=DETAIL_BUDGET):
         self.cache_dir = Path(cache_dir) / 'price_evidence_v1'
-        self.now = time.time() if now is None else now
+        # A fixed `now` makes tests repeatable. In a build, a fetch is stamped when it happens,
+        # not when the collector started.
+        self._clock = time.time if now is None else (lambda: now)
+        self.now = self._clock()
         self.opener = opener or public_price_urlopen
         self.pause = pause
         self.list_budget = min(LIST_BUDGET, max(0, list_budget))
@@ -487,13 +494,32 @@ class Collector:
         self.deadline = time.monotonic() + REFRESH_SECONDS
         self.requests = 0
         self.stats = {s: defaultdict(int) for s in ('repsol', 'electromaps', 'chargemap')}
+        self.fetches = {s: {} for s in self.stats}
+
+    def fetched_now(self):
+        return now_iso(self._clock())
+
+    def fetch_clocks(self):
+        """Per-source file clocks, without URLs: build provenance must not name these hosts.
+
+        Source policy removes any fetch_evidence artifact that names an excluded family, so these
+        clocks travel in the collection report, which holds the same names under `sources`.
+        """
+        out = {}
+        for source, files in self.fetches.items():
+            if files:
+                stamps = [stamp_text for stamp_text, _ in files.values()]
+                failed = [stamp_text for stamp_text, is_failed in files.values() if is_failed]
+                out[source] = dict(at=max(stamps), oldest_part_at=min(stamps), parts=len(files),
+                                   failed_parts=len(failed), oldest_failed_at=min(failed) if failed else None)
+        return out
 
     def request(self, url, source, phase):
         stat = self.stats[source]
         bound = 1 if source == 'repsol' else self.list_budget if phase == 'list' else self.detail_budget
         if stat[phase + '_requests'] >= bound or self.requests >= TOTAL_BUDGET or time.monotonic() >= self.deadline:
             stat['budget_withheld'] += 1
-            raise RuntimeError('price evidence request budget exhausted')
+            raise RequestWithheld('price evidence request budget exhausted')
         if self.requests and self.pause:
             time.sleep(min(self.pause, max(0, self.deadline-time.monotonic())))
         stat[phase + '_requests'] += 1
@@ -517,19 +543,22 @@ class Collector:
         ttl = LIST_TTL if phase == 'list' else DETAIL_TTL
         if old and 0 <= self.now - stamp(old['fetched_at']).timestamp() < ttl:
             self.stats[source][phase + '_cache_hits'] += 1
+            self.fetches[source][key] = (old['fetched_at'], False)
             return old['data'], old['fetched_at'], False
         try:
             data = project(self.request(url, source, phase))
-            fetched_at = now_iso(self.now)
+            fetched_at = self.fetched_now()
+            self.fetches[source][key] = (fetched_at, False)
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix('.tmp')
             tmp.write_text(json.dumps(dict(schema=1, url=url, fetched_at=fetched_at, data=data), ensure_ascii=False), encoding='utf-8')
             tmp.replace(path)
             return data, fetched_at, False
-        except Exception:
+        except Exception as exc:
             self.stats[source]['errors'] += 1
             if old:
                 self.stats[source]['stale_fallbacks'] += 1
+                self.fetches[source][key] = (old['fetched_at'], not isinstance(exc, RequestWithheld))
                 return old['data'], old['fetched_at'], True
             return None, None, False
 
@@ -551,7 +580,10 @@ class Collector:
             if row.get('source') == REGISTRY and raw.get('nap_site_id') and norm(raw.get('operator')).replace(' ', '') == 'repsolsolucionesenergeticassa' and in_spain(row):
                 registry_ids.add(str(row['id']))
         try:
-            guide = parse_repsol_tariff(self.request(REPSOL_URL, 'repsol', 'detail'), now_iso(self.now))
+            document = self.request(REPSOL_URL, 'repsol', 'detail')
+            fetched_at = self.fetched_now()
+            self.fetches['repsol']['tariff_page'] = (fetched_at, False)
+            guide = parse_repsol_tariff(document, fetched_at)
         except Exception:
             self.stats['repsol']['errors'] += 1
             guide = None
@@ -569,6 +601,7 @@ class Collector:
         return dict(scope='Spain; bounded existing-station annotations only',
                     counts=price_evidence_counts(rows), requests=self.requests,
                     sources={s: dict(v) for s, v in self.stats.items()},
+                    fetch_clocks=self.fetch_clocks(),
                     budgets=dict(list_per_source=self.list_budget, detail_per_source=self.detail_budget,
                                  total_requests=TOTAL_BUDGET, request_start_deadline_seconds=REFRESH_SECONDS,
                                  detail_ttl_seconds=DETAIL_TTL, list_ttl_seconds=LIST_TTL, pause_seconds=self.pause))
@@ -644,7 +677,7 @@ class Collector:
                     self.stats[source]['withheld'] += 1
                     continue
                 url = CM_PRICE + key + '?locale=es-es&noBootstrap=true&noFooter=true'
-                claim, fetched_at, stale = self.cached(source + '_detail_' + key, url, source, 'detail', lambda body: parse_chargemap_price(body, now_iso(self.now), key))
+                claim, fetched_at, stale = self.cached(source + '_detail_' + key, url, source, 'detail', lambda body: parse_chargemap_price(body, self.fetched_now(), key))
             if row is None or not claim:
                 self.stats[source]['withheld'] += 1
                 continue
