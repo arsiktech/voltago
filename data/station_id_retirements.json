@@ -85,6 +85,121 @@
       "reason": "Etecnic withdrew \"LIVOLTEK VOLKSWAGEN SAN PEDRO ALCANTARA\" from its public charger feed. Every refresh since 2026-10-31 was rejected because this baseline ID had no match. No other source carries the station, so it has no successor.",
       "evidence": "On 2026-11-01 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,932 chargers) had no charger with this name and none within about 200 m of its coordinates. Six consecutive refresh candidates (2026-10-31 00:34 to 2026-11-01 06:33 UTC) lacked it, with no Etecnic fetch errors. Ten of the eleven withdrawn sites are car dealerships in the Malaga area.",
       "approved_by": "repository owner, 2026-11-01"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-activacharge-ecotap-edrsr-3_36.496_-4.9941",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"ActivaCharge - ECOTAP EdRSR 3\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-alas-reus-alpitronic-edrr-1_41.14506_1.10844",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"ALAS REUS - ALPITRONIC EdRR 1\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-alas-vilaseca-alpitronic-edrr-1_41.11858_1.15561",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"ALAS VILASECA - ALPITRONIC EdRR 1\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-amare-beach-hotel-sancti-petri_36.34369_-6.16239",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"AMARE BEACH HOTEL SANCTI PETRI\" from its public charger feed. Every refresh since 2026-11-06 06:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 2 consecutive refresh candidates (2026-11-06 06:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-audi-san-pedro-etotem_36.49532_-4.99146",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"AUDI SAN PEDRO ETOTEM\" from its public charger feed. Every refresh since 2026-11-05 12:35 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 5 consecutive refresh candidates (2026-11-05 12:35 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-av-rociana-bonares_37.32247_-6.677",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"AV. ROCIANA - BONARES\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-ayto-lucena-del-puerto-toma-izq-y-toma-der_37.30422_-6.72604",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"AYTO. LUCENA DEL PUERTO- TOMA IZQ. Y TOMA DER.\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-bmw-el-ejido-1_36.77767_-2.79067",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"BMW El Ejido 1\" from its public charger feed. Every refresh since 2026-11-05 12:35 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 5 consecutive refresh candidates (2026-11-05 12:35 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-ct-cultura-toma-izq-y-der_37.32216_-6.68429",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"CT CULTURA- TOMA IZQ. Y DER\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-gadis-navatejera_42.62517_-5.56311",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"GADIS NAVATEJERA\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-gadis-ponferrada-1_42.56973_-6.64695",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"GADIS PONFERRADA 1\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-gadis-ponferrada-2_42.56967_-6.64676",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"GADIS PONFERRADA 2\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-gadis-s-a-rabanedo_42.60065_-5.59779",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic withdrew \"GADIS S.A. RABANEDO\" from its public charger feed. Every refresh since 2026-11-04 18:34 UTC lacks this baseline ID. No other source carries the station, so it has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 14:01 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within about 200 m of its coordinates. 8 consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked it, with no collector errors. The production community database holds no references to this ID. Links saved on devices were not checked.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.54674_2.72921",
+      "successor_id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.5464_2.72921",
+      "retired_on": "2026-11-06",
+      "reason": "Station ID of a Palma airport OSM charger group whose nodes moved upstream, so its coordinate-derived ID changed. Every refresh since 2026-11-04 18:34 UTC was rejected because this ID had no match.",
+      "evidence": "OpenStreetMap history shows nodes 14155665881, 14155665882 and 14155665883 moved about 35 m at 2026-11-04T17:16:34Z. The 2026-11-06 12:34 UTC refresh candidate merges those nodes into the successor row, which cites them as sources. Eight consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked this ID. The identity rule does not preserve an old ID when two baseline stations match one new row. The production community database holds no references to this ID. Links saved on devices were not checked, and lookups do not read successor_id, so a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.5467_2.72914",
+      "successor_id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.5464_2.72921",
+      "retired_on": "2026-11-06",
+      "reason": "Station ID of a Palma airport OSM charger group whose nodes moved upstream, so its coordinate-derived ID changed. Every refresh since 2026-11-04 18:34 UTC was rejected because this ID had no match.",
+      "evidence": "OpenStreetMap history shows nodes 14155665881, 14155665882 and 14155665883 moved about 35 m at 2026-11-04T17:16:34Z. The 2026-11-06 12:34 UTC refresh candidate merges those nodes into the successor row, which cites them as sources. Eight consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked this ID. The identity rule does not preserve an old ID when two baseline stations match one new row. The production community database holds no references to this ID. Links saved on devices were not checked, and lookups do not read successor_id, so a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.54673_2.72918",
+      "successor_id": "intel_openstreetmap-public-tags_osm-free-charging-station_39.5464_2.72921",
+      "retired_on": "2026-11-06",
+      "reason": "Merged-ID alias of a Palma airport OSM charger group whose nodes moved upstream, so its coordinate-derived ID changed. Every refresh since 2026-11-04 18:34 UTC was rejected because this ID had no match.",
+      "evidence": "OpenStreetMap history shows nodes 14155665881, 14155665882 and 14155665883 moved about 35 m at 2026-11-04T17:16:34Z. The 2026-11-06 12:34 UTC refresh candidate merges those nodes into the successor row, which cites them as sources. Eight consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked this ID. The identity rule does not preserve an old ID when two baseline stations match one new row. The production community database holds no references to this ID. Links saved on devices were not checked, and lookups do not read successor_id, so a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
     }
   ]
 }
