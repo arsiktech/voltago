@@ -16,6 +16,8 @@ Standard library only.
 from __future__ import annotations
 
 import math
+import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -28,6 +30,10 @@ MAX_LOCATIONS = 150
 REFRESH_HOURS = 6
 WINDOW_MARGIN_HOURS = 1
 FUTURE_TOLERANCE = timedelta(minutes=5)
+
+# A failed tile blocks "Not listed" only near its own area. A merged location can sit slightly
+# away from the listing that a failed tile would have returned, so the area is widened.
+FAILED_AREA_MARGIN_KM = 1.0
 
 SPAIN = (27.4, -18.4, 43.9, 4.5)
 CANARIES = (27.4, -18.4, 29.5, -13.3)
@@ -74,7 +80,7 @@ ADAPTER_COLUMNS = {
 }
 # Cache file name prefixes in the build's fetch_evidence, by column.
 CACHE_COLUMNS = {
-    "dgt_nap": "dgt", "osm_": "osm", "openchargemap": "ocm", "ocm": "ocm", "mapareve_public": "mapareve",
+    "dgt_nap": "dgt", "osm_": "osm", "ocm": "ocm", "mapareve_public": "mapareve",
     "canarias": "canarias", "madrid": "madrid", "valencia": "valencia", "zaragoza": "zaragoza",
     "endolla": "endolla", "barcelona_endolla": "endolla", "fenie": "fenie", "lidl": "lidl", "etecnic": "etecnic",
     "zunder": "zunder", "catalonia_icaen": "catalonia", "navarra_idena": "navarra", "castilla_leon": "castilla_leon",
@@ -83,6 +89,7 @@ CACHE_COLUMNS = {
 }
 # Fetched only for a dataset's publication time. Their fetches say nothing about the listing rows.
 CLOCK_ONLY_FILES = ("catalonia_icaen_metadata", "castilla_leon_metadata")
+OVERPASS_AREA = re.compile(r"\(area\.spain\)\((-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\)")
 SOURCE_FIELDS = ("name", "url", "evidence", "attribution", "license", "license_url", "source_cache_fallback")
 PRICE_FIELDS = ("source", "label", "price_per_kwh", "currency", "source_url")
 
@@ -155,12 +162,52 @@ def _cache_column(cache_name: Any) -> Optional[str]:
     name = str(cache_name or "").lower()
     if name.startswith(CLOCK_ONLY_FILES):
         return None
-    return next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
+    cid = next((cid for prefix, cid in CACHE_COLUMNS.items() if name.startswith(prefix)), None)
+    # A complete column is judged only on the files that decide what it lists.
+    listing_files = next((c.get("listing_files") for c in COLUMNS if c["id"] == cid), None)
+    return None if listing_files and not name.startswith(listing_files) else cid
 
 
 def _cached_copy_reason(fetched_at: Any) -> str:
     stamp = clock(fetched_at)
     return f"Latest fetch failed; cached copy from {stamp[:10] if stamp else 'an unknown date'}."
+
+
+def _overpass_area(url: Any) -> Optional[Tuple[float, float, float, float]]:
+    """The one area an Overpass query asked for, or None if the URL does not state exactly one."""
+    areas = set(OVERPASS_AREA.findall(urllib.parse.unquote_plus(str(url or ""))))
+    if len(areas) != 1:
+        return None
+    south, west, north, east = (float(value) for value in areas.pop())
+    return (south, west, north, east) if south < north and west < east else None
+
+
+def failed_areas(intel: Dict[str, Any]) -> Dict[str, List[Dict[str, Any]]]:
+    """OpenStreetMap listing tiles served from a cached copy whose area and time are both known.
+
+    Only these failures stay local. Any other failed file blocks its whole column, because
+    nothing then shows which locations it could affect.
+    """
+    areas: Dict[str, List[Dict[str, Any]]] = {}
+    for artifact in (intel.get("fetch_evidence") or {}).get("artifacts") or []:
+        if not isinstance(artifact, dict) or not (artifact.get("cache") or {}).get("fallback"):
+            continue
+        if _cache_column(artifact.get("cache_name")) != "osm":
+            continue
+        area, stamp = _overpass_area(artifact.get("url")), clock(artifact.get("fetched_at"))
+        if area and stamp and stamp.endswith("Z"):
+            areas.setdefault("osm", []).append({"file": str(artifact["cache_name"]).lower(), "area": area, "fetched_at": stamp})
+    return areas
+
+
+def _failed_area_at(areas: Iterable[Dict[str, Any]], lat: float, lon: float, margin_km: float = 0) -> Optional[Dict[str, Any]]:
+    lat_margin = margin_km / 111.32
+    lon_margin = margin_km / (111.32 * max(math.cos(math.radians(lat)), 0.01))
+    for failed in areas:
+        south, west, north, east = failed["area"]
+        if _inside(lat, lon, (south - lat_margin, west - lon_margin, north + lat_margin, east + lon_margin)):
+            return failed
+    return None
 
 
 def _price_fetch_clocks(intel: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -220,15 +267,21 @@ def stale_columns(intel: Dict[str, Any], now: datetime) -> Dict[str, str]:
     """
     stale: Dict[str, str] = {}
     artifacts = [a for a in (intel.get("fetch_evidence") or {}).get("artifacts") or [] if isinstance(a, dict)]
+    # A failed tile with a known area is judged where it applies, not across its whole column.
+    local = {failed["file"] for areas in failed_areas(intel).values() for failed in areas}
     for column in COLUMNS:
         if column["coverage"] != "complete":
             continue
         prefix = column.get("listing_files")
         files = [a for a in artifacts if prefix and str(a.get("cache_name") or "").lower().startswith(prefix)]
-        stamps = [clock(a.get("fetched_at")) for a in files]
         if not files:
             stale[column["id"]] = "No fetch evidence for this source's listing, so absence is not proven."
-        elif not all(stamp and stamp.endswith("Z") for stamp in stamps):
+            continue
+        files = [a for a in files if str(a.get("cache_name")).lower() not in local]
+        stamps = [clock(a.get("fetched_at")) for a in files]
+        if not files:
+            continue
+        if not all(stamp and stamp.endswith("Z") for stamp in stamps):
             stale[column["id"]] = "A listing file has no usable fetch time, so absence is not proven."
         else:
             # A build can carry several records of one file; only its newest fetch counts.
@@ -263,6 +316,8 @@ def unproven_columns(intel: Dict[str, Any]) -> set:
 def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -> Dict[str, str]:
     """Columns whose latest snapshot cannot prove absence, with the reason."""
     degraded: Dict[str, str] = {}
+    areas = failed_areas(intel)
+    local = {failed["file"] for column_areas in areas.values() for failed in column_areas}
     for error in intel.get("errors") or []:
         column = ADAPTER_COLUMNS.get(error.get("source")) if isinstance(error, dict) else None
         if column:
@@ -271,6 +326,8 @@ def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -
         if not isinstance(artifact, dict) or not (artifact.get("cache") or {}).get("fallback"):
             continue
         column = _cache_column(artifact.get("cache_name"))
+        if str(artifact.get("cache_name")).lower() in local:
+            continue
         if column and column not in degraded:
             degraded[column] = _cached_copy_reason(artifact.get("fetched_at"))
     for column, summary in _price_fetch_clocks(intel).items():
@@ -280,7 +337,8 @@ def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -
         for source in record.get("sources") or []:
             column = column_for(source.get("name"))
             if column and source.get("source_cache_fallback") and column not in degraded:
-                degraded[column] = _cached_copy_reason(source.get("source_fetched_at"))
+                if not _failed_area_at(areas.get(column, ()), record["lat"], record["lon"]):
+                    degraded[column] = _cached_copy_reason(source.get("source_fetched_at"))
     return degraded
 
 
@@ -299,6 +357,7 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
     # A failed fetch is the more specific reason, so it wins over age.
     degraded = {**stale_columns(intel, now or datetime.now(timezone.utc)), **degraded_columns(intel, records)}
     fetches = column_fetches(intel)
+    areas = failed_areas(intel)
     listed_near = [(r, _listed_columns(r)) for r in near]
 
     locations = []
@@ -318,11 +377,14 @@ def build_matrix(intel: Dict[str, Any], bbox: Dict[str, float], *, limit: int = 
                 cells[cid] = {"state": "uncertain", "candidate": {
                     "id": neighbour.get("id"), "name": neighbour.get("name"),
                     "distance_m": round(_distance_km(record, neighbour) * 1000)}}
-            elif column["coverage"] == "complete" and _inside(record["lat"], record["lon"], column["scope"]) and cid not in degraded:
+                continue
+            failed = _failed_area_at(areas.get(cid, ()), record["lat"], record["lon"], FAILED_AREA_MARGIN_KM)
+            if column["coverage"] == "complete" and _inside(record["lat"], record["lon"], column["scope"]) and cid not in degraded and not failed:
                 cells[cid] = {"state": "not_listed"}
             else:
                 reason = ("Outside this source's area." if not _inside(record["lat"], record["lon"], column["scope"])
                           else degraded[cid] if cid in degraded
+                          else f"Latest fetch of this area failed; cached copy from {failed['fetched_at'][:10]}." if failed
                           else "This source annotates prices only; it cannot show a location is missing." if column["coverage"] == "price"
                           else "This source lists only its own network, so absence proves nothing.")
                 cells[cid] = {"state": "unknown", "reason": reason}

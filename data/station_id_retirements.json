@@ -200,6 +200,34 @@
       "reason": "Merged-ID alias of a Palma airport OSM charger group whose nodes moved upstream, so its coordinate-derived ID changed. Every refresh since 2026-11-04 18:34 UTC was rejected because this ID had no match.",
       "evidence": "OpenStreetMap history shows nodes 14155665881, 14155665882 and 14155665883 moved about 35 m at 2026-11-04T17:16:34Z. The 2026-11-06 12:34 UTC refresh candidate merges those nodes into the successor row, which cites them as sources. Eight consecutive refresh candidates (2026-11-04 18:34 to 2026-11-06 12:34 UTC) lacked this ID. The identity rule does not preserve an old ID when two baseline stations match one new row. The production community database holds no references to this ID. Links saved on devices were not checked, and lookups do not read successor_id, so a saved link to this ID stops resolving.",
       "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-puente-la-reina-pdr-11-gasolinera-avia-r_42.67056_-1.81556",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic no longer lists \"Puente la Reina PdR 11 Gasolinera Avia\" in its public charger feed, so this baseline ID has no match and blocks every refresh. It has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 23:04 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within 400 m; the nearest, GARESBIDE at 406 m, is not established as the same site. MapaREVE's live feed still lists a charger at these coordinates (last seen 2026-11-05 14:03 UTC), so only Etecnic's row is retired. Dry-run candidate 20261106T223313Z-206bc1fe (2026-11-06 22:33 UTC) lacked it, with no other gate failure; the 18:38 UTC build still had it. This is one candidate and one feed check, so the absence may be temporary. Community references and links saved on devices were not checked; a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vilalta-corporacion-s-a-ingeteam-edrr-1_42.78822_-1.6804",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic no longer lists \"Vilalta Corporacion S.A. INGETEAM EdRR 1\" in its public charger feed, so this baseline ID has no match and blocks every refresh. It has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 23:04 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within 500 m. Dry-run candidate 20261106T223313Z-206bc1fe (2026-11-06 22:33 UTC) lacked it, with no other gate failure; the 18:38 UTC build still had it. This is one candidate and one feed check, so the absence may be temporary. Community references and links saved on devices were not checked; a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vilalta-el-serrallo-ingeteam-edrr-3_41.11161_1.24293",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic no longer lists \"Vilalta - El Serrallo - INGETEAM EdRR 3\" in its public charger feed, so this baseline ID has no match and blocks every refresh. It has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 23:04 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name and none within 290 m; the nearest, a differently named Tarragona charger at 296 m, is not established as the same site. Dry-run candidate 20261106T223313Z-206bc1fe (2026-11-06 22:33 UTC) lacked it, with no other gate failure; the 18:38 UTC build still had it. This is one candidate and one feed check, so the absence may be temporary. Community references and links saved on devices were not checked; a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-vilalta-greenergy-wallbox-edrsr-1_42.81627_-1.64808",
+      "retired_on": "2026-11-06",
+      "reason": "Etecnic no longer lists \"Vilalta Greenergy Wallbox EdRSR 1\" in its public charger feed, so this baseline ID has no match and blocks every refresh. It has no successor. Physical status is unknown.",
+      "evidence": "On 2026-11-06 at 23:04 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name at these coordinates and none within 470 m; other Vilalta Greenergy chargers are listed near 41.9, 3.2. MapaREVE's live feed still lists VILALTA GREENERGY APARCAMIENTO at these coordinates (last seen 2026-11-03 08:41 UTC), so only Etecnic's row is retired. Dry-run candidate 20261106T223313Z-206bc1fe (2026-11-06 22:33 UTC) lacked it, with no other gate failure; the 18:38 UTC build still had it. This is one candidate and one feed check, so the absence may be temporary. Community references and links saved on devices were not checked; a saved link to this ID stops resolving.",
+      "approved_by": "repository owner, 2026-11-06"
     }
   ]
 }

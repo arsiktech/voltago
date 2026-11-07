@@ -82,9 +82,14 @@ is the main lever for a useful matrix. Report this ratio as the matrix health me
   returns the columns, the 150 locations nearest the centre, and each cell's state with
   its source entries, reason or nearby candidate. Built by `scripts/source_matrix.py`.
 - `/matrix` is the web page: address search, the matrix, and a detail panel per cell.
-- A column is marked stale, and cannot show "Not listed", when its adapter failed, its
-  latest fetch fell back to an older cached copy, or its listing is outside its freshness
-  window (see below).
+- A column is marked stale, and cannot show "Not listed", when its adapter failed, a listing
+  file fell back to an older cached copy, or its listing is outside its freshness window (see
+  below). Two limits apply:
+  - Other files of a source do not count. A failed Canarias detail page enriches less but
+    says nothing about what the source lists.
+  - A failed OpenStreetMap tile affects only its own area plus 1 km. Those cells read Unknown
+    and the rest of the column keeps "Not listed". The column's last fetch still reports the
+    failed file. A failed tile whose area or time cannot be read blocks the whole column.
 - Not yet included: the runtime live feeds (MapaREVE live, Endolla and Spirii status,
   Gaia), and the MCP tool.
 
@@ -173,8 +178,9 @@ candidate build shows this: its DGT file followed a 30 h cycle. The margin cover
 Only these five columns can show grey. Network and price columns are always Unknown or
 Restricted when absent, so they have no window.
 
-- **Several files: the oldest decides.** Evidence does not say which file covers which point,
-  so one fresh tile cannot vouch for an old tile that may cover the location.
+- **Several files: the oldest decides.** A healthy file does not say which point it covers,
+  so one fresh tile cannot vouch for an old tile that may cover the location. A failed
+  OpenStreetMap tile with a known area is judged only in that area.
 - **Only listing files count.** Canarias detail pages enrich a row but do not decide what the
   source lists, so their age does not affect the window.
 - **Missing or unusable evidence is Unknown.** This covers a listing with no evidence, any
