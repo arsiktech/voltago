@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -99,7 +100,7 @@ class SourceMatrixTests(unittest.TestCase):
 
     def test_fetch_evidence_fallback_degrades_its_column(self) -> None:
         intel = {"records": [row("a", "DGT National Access Point charging registry")],
-                 "fetch_evidence": {"artifacts": [{"cache_name": "openchargemap_es.json", "fetched_at": "2026-10-19T00:00:00Z",
+                 "fetch_evidence": {"artifacts": [{"cache_name": "ocm_poi.json.gz", "fetched_at": "2026-10-19T00:00:00Z",
                                                    "cache": {"fallback": True}}]}}
         self.assertEqual(cells(intel, "a")["ocm"]["state"], "unknown")
 
@@ -288,6 +289,104 @@ class FreshnessWindowTests(unittest.TestCase):
         columns = {c["id"]: c for c in sm.build_matrix({"records": self.RECORDS}, BBOX, now=NOW)["columns"]}
         self.assertIsNone(columns["fenie"]["degraded"])
         self.assertIsNone(columns["repsol"]["degraded"])
+
+
+def overpass_url(box: str) -> str:
+    query = (f'[out:json];area["ISO3166-1"="ES"][admin_level=2]->.spain;(node["amenity"="charging_station"](area.spain)({box});'
+             f'way["amenity"="charging_station"](area.spain)({box}););out center meta;')
+    return "https://overpass-api.de/api/interpreter?" + urllib.parse.urlencode({"data": query})
+
+
+class FailedFileScopeTests(unittest.TestCase):
+    """A failure blocks "Not listed" only where it could hide a listing."""
+    MELILLA = "35.2600,-2.9800,35.3300,-2.9000"
+    AROUND_LLEIDA = "41.5000,0.5000,41.7000,0.7000"
+
+    def intel(self, *extra: dict, records=None) -> dict:
+        return {"records": records or [row("a", "DGT National Access Point charging registry")],
+                "fetch_evidence": {"artifacts": [*fresh_evidence()["artifacts"], *extra]}}
+
+    def failed_tile(self, box, *, hours: float = 2, name: str = "osm_es_area_chargers_23.json") -> dict:
+        return {**fetched(hours, name, fallback=True), "url": overpass_url(box) if box else None}
+
+    def osm(self, intel: dict) -> tuple:
+        matrix = sm.build_matrix(intel, BBOX, now=NOW)
+        column = next(c for c in matrix["columns"] if c["id"] == "osm")
+        return matrix["locations"][0]["cells"]["osm"], column
+
+    def test_a_failed_tile_elsewhere_leaves_not_listed_and_is_still_reported(self) -> None:
+        cell, column = self.osm(self.intel(self.failed_tile(self.MELILLA)))
+        self.assertEqual(cell["state"], "not_listed")
+        self.assertIsNone(column["degraded"])
+        self.assertEqual(column["last_fetch"]["failed_parts"], 1)
+
+    def test_a_failed_tile_over_the_place_keeps_it_unknown(self) -> None:
+        cell, column = self.osm(self.intel(self.failed_tile(self.AROUND_LLEIDA)))
+        self.assertEqual(cell["state"], "unknown")
+        self.assertIn("this area", cell["reason"])
+        self.assertIsNone(column["degraded"])
+
+    def test_the_margin_covers_a_listing_just_across_the_tile_edge(self) -> None:
+        for box, state in (("41.6150,0.5000,41.7000,0.7000", "unknown"), ("41.6500,0.5000,41.7000,0.7000", "not_listed")):
+            with self.subTest(box=box):
+                self.assertEqual(self.osm(self.intel(self.failed_tile(box)))[0]["state"], state)
+
+    def test_a_failed_tile_with_no_readable_area_blocks_the_whole_column(self) -> None:
+        for box in (None, "not,a,box,here", "35.33,-2.98,35.26,-2.90"):
+            with self.subTest(box=box):
+                artifact = self.failed_tile("0,0,1,1")
+                artifact["url"] = overpass_url(box) if box else None
+                cell, column = self.osm(self.intel(artifact))
+                self.assertEqual(cell["state"], "unknown")
+                self.assertIn("cached copy", column["degraded"])
+
+    def test_a_failed_tile_with_no_usable_time_blocks_the_whole_column(self) -> None:
+        artifact = {**self.failed_tile(self.MELILLA), "fetched_at": "unknown"}
+        self.assertIsNotNone(self.osm(self.intel(artifact))[1]["degraded"])
+
+    def test_an_adapter_error_still_blocks_the_whole_column(self) -> None:
+        intel = {**self.intel(self.failed_tile(self.MELILLA)), "errors": [{"source": "source_osm", "error": "x"}]}
+        self.assertIn("failed", self.osm(intel)[1]["degraded"])
+
+    def test_a_cached_row_inside_the_failed_tile_does_not_widen_the_failure(self) -> None:
+        records = [row("a", "DGT National Access Point charging registry"),
+                   row("b", "OpenStreetMap public tags", north_m=5000, fallback=True)]
+        records[1]["lat"], records[1]["lon"] = 35.29, -2.94
+        cell, column = self.osm(self.intel(self.failed_tile(self.MELILLA), records=records))
+        self.assertEqual(cell["state"], "not_listed")
+        self.assertIsNone(column["degraded"])
+
+    def test_a_cached_row_outside_every_failed_tile_blocks_the_whole_column(self) -> None:
+        records = [row("a", "DGT National Access Point charging registry"),
+                   row("b", "OpenStreetMap public tags", north_m=5000, fallback=True)]
+        self.assertIsNotNone(self.osm(self.intel(self.failed_tile(self.MELILLA), records=records))[1]["degraded"])
+
+    def test_an_old_failed_tile_stays_local_while_a_fresh_failure_does_not_hide_other_old_tiles(self) -> None:
+        self.assertEqual(self.osm(self.intel(self.failed_tile(self.MELILLA, hours=100)))[0]["state"], "not_listed")
+        old_healthy = fetched(100, "osm_es_area_chargers_02.json")
+        cell, column = self.osm(self.intel(self.failed_tile(self.MELILLA), old_healthy))
+        self.assertEqual(cell["state"], "unknown")
+        self.assertIn("freshness window", column["degraded"])
+
+    def test_every_listing_tile_failing_keeps_cells_local_with_no_false_missing_evidence(self) -> None:
+        intel = self.intel(self.failed_tile(self.MELILLA))
+        intel["fetch_evidence"]["artifacts"] = [a for a in intel["fetch_evidence"]["artifacts"]
+                                                if not a["cache_name"].startswith("osm_es_area_chargers_0")]
+        self.assertEqual(self.osm(intel)[0]["state"], "not_listed")
+
+    def test_failed_canarias_detail_pages_do_not_touch_the_column(self) -> None:
+        detail = {**fetched(30, "canarias_details/abc.html", fallback=True), "error": "TimeoutError"}
+        intel = self.intel(detail)
+        columns = {c["id"]: c for c in sm.build_matrix(intel, BBOX, now=NOW)["columns"]}
+        self.assertIsNone(columns["canarias"]["degraded"])
+        self.assertEqual(columns["canarias"]["last_fetch"]["parts"], 1)
+        self.assertEqual(columns["canarias"]["last_fetch"]["failed_parts"], 0)
+        self.assertNotIn("canarias", sm.degraded_columns(intel, intel["records"]))
+
+    def test_a_failed_canarias_listing_still_blocks_the_column(self) -> None:
+        listing = fetched(30, "canarias_tecarga_map4.geojson.json", fallback=True)
+        intel = {**self.intel(), "fetch_evidence": {"artifacts": [listing]}}
+        self.assertIn("cached copy", sm.degraded_columns(intel, intel["records"])["canarias"])
 
 
 class LocationSourcesEndpointTests(unittest.TestCase):
