@@ -3889,7 +3889,8 @@ def intelligence_response(params: Dict[str, List[str]]) -> Dict[str, Any]:
                 selected.append(row)
             matched += 1
     records = [_normalize_lead(deepcopy(row), "free/cheap intelligence DB") for row in selected]
-    result = {key: value for key, value in raw.items() if key != "records"}
+    # Rows a source no longer lists are found by ID only, with their old claims removed.
+    result = {key: value for key, value in raw.items() if key not in {"records", "retained_records", "auto_retired"}}
     result["records"] = _refresh_time_derived_fields(attach_community_rows(records))
     result["pagination"] = {"offset": offset, "limit": limit, "returned": len(records), "matched": matched,
                             "next_offset": offset + len(records) if offset + len(records) < matched else None}
@@ -3979,6 +3980,13 @@ def attach_community_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
+RETAINED_PRICE_FIELDS = (
+    "price_min", "price_max", "price_native_min", "price_native_max", "price_native_unit", "current_price_min",
+    "price_label", "price", "tariff", "pricing", "price_window_status", "price_evidence", "charge_claim",
+    "claim_conflict", "free_condition", "insight",
+)
+
+
 def retained_rows() -> List[Dict[str, Any]]:
     """Stations their source stopped listing: found by ID only, never on the map or in search."""
     rows = load_intelligence_meta().get("retained_records")
@@ -3990,8 +3998,12 @@ def retained_station(identifier: str) -> Optional[Dict[str, Any]]:
     for row in retained_rows():
         if identifier == str(row.get("id")) or identifier in (row.get("merged_ids") or []):
             station = _normalize_lead(deepcopy(row), "free/cheap intelligence DB")
-            station.update(status="VERIFY", available=0, is_free=False, is_cheap=False,
-                           current_price_min=None, live_status=False)
+            station.update(status="VERIFY", available=0, is_free=False, is_cheap=False, live_status=False)
+            # Nothing the row said about price may read as current, or be quoted without a date.
+            for field in RETAINED_PRICE_FIELDS:
+                station.pop(field, None)
+            station["sources"] = [{key: value for key, value in source.items() if key != "evidence"}
+                                  for source in station.get("sources") or [] if isinstance(source, dict)]
             return station
     return None
 
@@ -4004,8 +4016,9 @@ def charger_listing_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[st
     wanted = set(ids)
     found: Dict[str, Dict[str, Any]] = {}
     for entry in load_intelligence_meta().get("auto_retired") or []:
-        if entry.get("id") in wanted:
-            found[entry["id"]] = {key: entry.get(key) for key in ("source", "last_listed_at", "retired_at")}
+        for identifier in [entry.get("id"), *(entry.get("aliases") or [])]:
+            if identifier in wanted:
+                found[identifier] = {key: entry.get(key) for key in ("source", "last_listed_at", "retired_at")}
     for row in retained_rows():
         for identifier in [row.get("id"), *(row.get("merged_ids") or [])]:
             if identifier in wanted:

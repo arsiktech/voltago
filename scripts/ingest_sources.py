@@ -1844,6 +1844,11 @@ out center meta;
             body = cached_overpass(query, f"osm_es_area_chargers_{label}.json", ttl_hours=12)
             time.sleep(OVERPASS_TILE_PAUSE_SECONDS)
             payload = json.loads(body.decode())
+            # HTTP 200 with a remark means Overpass gave up partway, so the elements are partial.
+            # Drop the cached copy, or the retries would read the same partial answer.
+            if payload.get("remark"):
+                (CACHE / f"osm_es_area_chargers_{label}.json").unlink(missing_ok=True)
+                raise ValueError(f"Overpass remark: {str(payload['remark'])[:200]}")
             # Overpass states which OSM database state answered this tile.
             database_at = (payload.get("osm3s") or {}).get("timestamp_osm_base")
             return [({**el, "_osm_database_at": database_at}, body) for el in payload.get("elements", [])], []

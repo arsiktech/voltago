@@ -40,6 +40,8 @@ class GateRecord:
     identities: frozenset
     merged_ids: tuple
     missing_fields: tuple
+    lat: Any
+    lon: Any
     missing_source: bool
     weak_consum: bool
     bad_actionable: bool
@@ -64,7 +66,7 @@ def compact_gate_record(row: dict) -> GateRecord:
         sys.intern(str(row.get("reliability") or "Unknown")),
         sys.intern(str((row.get("parking") or {}).get("kind") or "unknown")),
         frozenset(identity_keys(row)), tuple(row.get("merged_ids") or []),
-        tuple(missing[0][1]) if missing else (), bool(missing_source_links([row])),
+        tuple(missing[0][1]) if missing else (), row.get("lat"), row.get("lon"), bool(missing_source_links([row])),
         bool(weak_consum_source_rows([row])), bool(bad_actionable_name_rows([row])),
         bool(unpromoted_source_timestamp_rows([row])),
     )
@@ -193,7 +195,8 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
 
     A merge counts only when exactly one rebuilt pin lists the id in `merged_ids` AND
     shares a stable source identifier with the old row (the same OCM/OSM/registry id).
-    A listed id alone is a claim, not proof, so anything else stays missing.
+    A listed id alone is a claim, not proof, so anything else stays missing. The exception is a
+    source with no stable identifiers, where `station_retention.keyless_renames` is the proof.
     """
     baseline_by_id = {record_id(row): row for row in baseline_rows if record_id(row)}
     claims: Dict[str, List[Dict[str, Any]]] = {}
@@ -201,12 +204,16 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
         for old_id in row.get("merged_ids") or []:
             claims.setdefault(str(old_id), []).append(row)
     proven: Dict[str, str] = {}
+    missing = list(missing)
+    # A source with no stable identifier: the rename rule replaces the shared-identifier proof.
+    renames = station_retention.keyless_renames(
+        [baseline_by_id[old_id] for old_id in missing if old_id in baseline_by_id], rebuilt_rows, set(baseline_by_id))
     for old_id in missing:
         rows = claims.get(old_id) or []
         old = baseline_by_id.get(old_id)
         old_keys = old.identities if isinstance(old, GateRecord) else identity_keys(old) if old is not None else set()
         new_keys = (rows[0].identities if isinstance(rows[0], GateRecord) else identity_keys(rows[0])) if len(rows) == 1 else set()
-        if len(rows) == 1 and old is not None and old_keys & new_keys:
+        if len(rows) == 1 and old is not None and (old_keys & new_keys or renames.get(old_id) == record_id(rows[0])):
             proven[old_id] = record_id(rows[0])
     return proven
 
@@ -366,7 +373,7 @@ def main() -> int:
     # the canary use `records`, so a source cannot hide its losses behind rows it no longer lists.
     retention = station_retention.validate(
         baseline_payload, {key: value for key, value in captured.items() if value is not None},
-        source_names(baseline_rows), rebuilt_payload, {record_id(row) for row in rebuilt_rows}, policy)
+        source_names(baseline_rows), rebuilt_payload, rebuilt_rows, policy)
     failures.extend(retention["failures"])
     prior_retained = partition_records(baseline_payload.get(RETAINED_KEY) or [], policy)[0]
     delta = id_delta(

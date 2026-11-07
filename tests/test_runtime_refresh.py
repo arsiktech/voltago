@@ -223,7 +223,8 @@ class RuntimeRefreshTests(unittest.TestCase):
             candidate = run / "free_intelligence.json"
             baseline = self.root / "data/free_intelligence.json"
             if name == "build":
-                candidate.write_text(json.dumps({"records": [kept], "generated_at": "2026-11-04T18:00:00Z"}))
+                candidate.write_text(json.dumps({"records": [kept], "generated_at": "2026-11-04T18:00:00Z", "fetch_evidence": {
+                    "artifacts": [{"cache_name": "etecnic_public_chargers.json", "fetched_at": "2026-11-04T18:00:00Z"}]}}))
                 payload = {}
             elif name == "delta":
                 seen_by_delta.append(json.loads(candidate.read_text())["retained_records"][0]["id"])
