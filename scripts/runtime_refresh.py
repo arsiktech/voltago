@@ -244,6 +244,19 @@ def run_stage(root: Path, run: Path, stage: str, argv: list[str], timeout: float
     return result
 
 
+def gate_failures(run: Path, stage: str) -> list[str]:
+    """Why a gate rejected the candidate, from its retained output, for the receipt and the alert."""
+    try:
+        result = shared.parse_last_json_object((run / f"{stage}.stdout.log").read_text())
+    except (OSError, ValueError, RuntimeError):
+        return []
+    failures = [str(item) for item in result.get("failures") or []][:5]
+    missing = (result.get("delta") or {}).get("missing_ids")
+    if not failures and missing:
+        failures = [f"{missing} baseline IDs are missing, for example {(result['delta'].get('missing_sample') or ['unknown'])[0]}"]
+    return failures
+
+
 def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
             strategy: str = "auto", candidate_path: Path | None = None,
             sources: str = "ocm", ocm_revision: str | None = None) -> int:
@@ -377,6 +390,8 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
             exit_code = 0
         except Exception as exc:
             receipt["error"] = f"{type(exc).__name__}: {exc}"
+            if receipt["stage"] in {"delta", "canary"}:
+                receipt["gate_failures"] = gate_failures(run, receipt["stage"])
             message = f"Volta data refresh failed at {receipt['stage']}; previous data retained unless promoted=true. Run {run_id}."
             receipt["notification_handler"] = "systemd ExecStopPost hook; no per-attempt direct notification"
             print(message, file=sys.stderr)

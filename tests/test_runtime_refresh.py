@@ -440,6 +440,189 @@ class RuntimeAlertTests(unittest.TestCase):
                 self.assertEqual(send.call_count, 1)
 
 
+class RuntimeAlertContentTests(unittest.TestCase):
+    OK = subprocess.CompletedProcess([], 0, '{"success":true,"message_id":123}', '')
+    CAP = "Etecnic public charger map: 20 stations left in one build, above the cap 17"
+
+    def setUp(self):
+        import runtime_refresh_alert
+        self.alerts = runtime_refresh_alert
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.state = Path(temp.name)
+        self.clock = 1_000_000.0
+        patcher = mock.patch.object(self.alerts.time, "time", lambda: self.clock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.run_index = 0
+
+    def run_hook(self, send, *, service_result=None, **receipt):
+        self.run_index += 1
+        receipt.setdefault("run_id", str(self.run_index))
+        (self.state / "last.json").write_text(json.dumps(receipt))
+        with mock.patch.object(self.alerts.subprocess, "run", side_effect=send) as sender:
+            code = self.alerts.check(self.state, "telegram:fixture", "/fixture/hermes", service_result=service_result)
+        self.clock += 6 * 3600
+        return code, [call.args[0][-1] for call in sender.call_args_list]
+
+    def sent(self, *_args, **_kwargs):
+        return self.OK
+
+    def failure(self, **extra):
+        return {"ok": False, "stage": "delta", "error": "RuntimeError: delta exited 1; see retained run logs", **extra}
+
+    def test_alert_repeats_daily_while_failures_continue_and_stops_on_success(self):
+        sends = [bool(self.run_hook(self.sent, **self.failure())[1]) for _ in range(12)]
+        # Runs are 6 hours apart: alert at the third run, then every fourth run.
+        self.assertEqual([i for i, sent in enumerate(sends) if sent], [2, 6, 10])
+        self.assertEqual(self.run_hook(self.sent, ok=True)[1], [])
+        sends = [bool(self.run_hook(self.sent, **self.failure())[1]) for _ in range(3)]
+        self.assertEqual(sends, [False, False, True])
+
+    def test_ambiguous_delivery_is_not_retried_before_the_daily_repeat(self):
+        timeout = subprocess.TimeoutExpired("fixture", 45)
+        outcomes = [self.run_hook(lambda *_a, **_k: (_ for _ in ()).throw(timeout), **self.failure()) for _ in range(7)]
+        self.assertEqual([len(sent) for _, sent in outcomes], [0, 0, 1, 0, 0, 0, 1])
+        self.assertEqual(outcomes[2][0], 1)
+
+    def test_alert_names_stage_and_gate_reason(self):
+        for _ in range(2):
+            self.run_hook(self.sent, **self.failure(gate_failures=[self.CAP]))
+        _, sent = self.run_hook(self.sent, **self.failure(gate_failures=[self.CAP]))
+        self.assertIn("failed at delta", sent[0])
+        self.assertIn(self.CAP, sent[0])
+        self.assertIn("does not clear by itself", sent[0])
+        self.assertIn("3 times", sent[0])
+
+    def test_alert_falls_back_to_the_error_and_stays_short(self):
+        for _ in range(2):
+            self.run_hook(self.sent, ok=False, stage="build", error="x" * 2000)
+        _, sent = self.run_hook(self.sent, ok=False, stage="build", error="x" * 2000)
+        self.assertIn("failed at build", sent[0])
+        self.assertLess(len(sent[0]), 600)
+        self.assertNotIn("does not clear", sent[0])
+
+    def test_alert_contains_no_url_secret_or_path(self):
+        error = ("Failed https://user:hunter2@example.com/a?api_key=abc123 token=deadbeef "
+                 "password: swordfish in /srv/app/.config/volta/data-refresh.env")
+        for _ in range(2):
+            self.run_hook(self.sent, ok=False, stage="build", error=error)
+        _, sent = self.run_hook(self.sent, ok=False, stage="build", error=error)
+        for secret in ("hunter2", "example.com", "abc123", "deadbeef", "swordfish", "/srv/app", "data-refresh.env"):
+            self.assertNotIn(secret, sent[0])
+
+    def test_killed_run_does_not_blame_an_older_receipt(self):
+        for _ in range(2):
+            self.run_hook(self.sent, service_result="timeout", ok=True, stage="complete")
+        _, sent = self.run_hook(self.sent, service_result="timeout", ok=True, stage="complete")
+        self.assertIn("the service ended with timeout", sent[0])
+        self.assertIn("last recorded stage complete", sent[0])
+
+    def review(self, *ids):
+        return {"station_retention": {"needs_review": list(ids)}}
+
+    def test_review_alert_sends_once_on_successful_runs_and_again_when_the_list_changes(self):
+        code, sent = self.run_hook(self.sent, ok=True, **self.review("b", "a"))
+        self.assertEqual(code, 0)
+        self.assertEqual(len(sent), 1)
+        self.assertIn("2 retained charger(s) need a reviewed retirement", sent[0])
+        self.assertIn("a, b", sent[0])
+        for _ in range(6):
+            self.assertEqual(self.run_hook(self.sent, ok=True, **self.review("a", "b"))[1], [])
+        self.assertEqual(len(self.run_hook(self.sent, ok=True, **self.review("a", "b", "c"))[1]), 1)
+
+    def test_no_review_alert_when_nothing_needs_review(self):
+        self.assertEqual(self.run_hook(self.sent, ok=True, **self.review())[1], [])
+        self.assertEqual(self.run_hook(self.sent, ok=True)[1], [])
+
+    def test_review_list_that_empties_and_returns_alerts_again(self):
+        self.run_hook(self.sent, ok=True, **self.review("a"))
+        self.assertEqual(self.run_hook(self.sent, ok=True, **self.review())[1], [])
+        self.assertEqual(len(self.run_hook(self.sent, ok=True, **self.review("a"))[1]), 1)
+
+    def test_run_that_never_reached_retention_keeps_the_review_state(self):
+        self.run_hook(self.sent, ok=True, **self.review("a"))
+        self.assertEqual(self.run_hook(self.sent, ok=False, stage="build", error="x")[1], [])
+        self.assertEqual(self.run_hook(self.sent, ok=True, **self.review("a"))[1], [])
+
+    def test_success_keeps_the_review_state(self):
+        self.run_hook(self.sent, ok=True, **self.review("a"))
+        self.run_hook(self.sent, ok=True)
+        state = json.loads((self.state / "alert-state.json").read_text())
+        self.assertEqual(state["review_ids"], ["a"])
+        self.assertEqual(state["streak"], 0)
+
+    def test_review_alert_on_a_failed_run_is_sent_before_the_streak_threshold(self):
+        _, sent = self.run_hook(self.sent, **self.failure(**self.review("a")))
+        self.assertEqual(len(sent), 1)
+        self.assertIn("reviewed retirement", sent[0])
+        self.assertNotIn("times in a row", sent[0])
+
+    def test_failure_and_review_alerts_due_together_use_one_send(self):
+        for _ in range(2):
+            self.run_hook(self.sent, **self.failure())
+        _, sent = self.run_hook(self.sent, **self.failure(**self.review("a")))
+        self.assertEqual(len(sent), 1)
+        self.assertIn("3 times", sent[0])
+        self.assertIn("reviewed retirement", sent[0])
+
+    def test_unconfirmed_review_alert_waits_for_the_daily_pace(self):
+        timeout = subprocess.TimeoutExpired("fixture", 45)
+        counts = [len(self.run_hook(lambda *_a, **_k: (_ for _ in ()).throw(timeout), ok=True, **self.review("a"))[1])
+                  for _ in range(5)]
+        self.assertEqual(counts, [1, 0, 0, 0, 1])
+
+    def test_many_review_ids_are_summarised(self):
+        ids = [f"id{index:02d}" for index in range(8)]
+        _, sent = self.run_hook(self.sent, ok=True, **self.review(*ids))
+        self.assertIn("and 3 more", sent[0])
+        self.assertNotIn("id07", sent[0])
+
+
+class GateFailureReceiptTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.run_dir = Path(temp.name)
+
+    def test_gate_failures_are_read_from_the_retained_output(self):
+        (self.run_dir / "delta.stdout.log").write_text(json.dumps({"failures": [f"f{i}" for i in range(9)]}))
+        self.assertEqual(refresh.gate_failures(self.run_dir, "delta"), ["f0", "f1", "f2", "f3", "f4"])
+
+    def test_missing_ids_without_a_failure_are_named(self):
+        (self.run_dir / "delta.stdout.log").write_text(json.dumps({"failures": [], "delta": {"missing_ids": 2, "missing_sample": ["s1"]}}))
+        self.assertEqual(refresh.gate_failures(self.run_dir, "delta"), ["2 baseline IDs are missing, for example s1"])
+
+    def test_absent_or_broken_output_gives_no_reason(self):
+        self.assertEqual(refresh.gate_failures(self.run_dir, "delta"), [])
+        (self.run_dir / "canary.stdout.log").write_text("not json")
+        self.assertEqual(refresh.gate_failures(self.run_dir, "canary"), [])
+
+    def test_rejected_delta_reaches_the_receipt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp).resolve()
+            root, state = base / "repo", base / "runtime"
+            for name, rel in refresh.BUNDLE.items():
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("{}")
+            (root / "data/free_intelligence.json").write_text(json.dumps({"records": []}))
+
+            def stage(_root, run, name, argv, _timeout):
+                if name == "build":
+                    (run / "free_intelligence.json").write_text(json.dumps({"records": [], "generated_at": "fixture"}))
+                    return subprocess.CompletedProcess(argv, 0, "", "")
+                (run / "delta.stdout.log").write_text(json.dumps({"ok": False, "failures": ["above the cap 17"]}))
+                raise RuntimeError("delta exited 1; see retained run logs")
+
+            with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+                 mock.patch.object(refresh, "run_stage", side_effect=stage):
+                self.assertEqual(refresh.refresh(root, state, 1), 1)
+            receipt = json.loads((state / "last.json").read_text())
+            self.assertEqual(receipt["stage"], "delta")
+            self.assertEqual(receipt["gate_failures"], ["above the cap 17"])
+
+
 class RuntimeIntelligencePathTests(unittest.TestCase):
     def test_bundle_switch_invalidates_same_timestamp_raw_cache(self):
         import server
