@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
 
+import station_retention
 from source_policy import load_source_policy_exclusions, partition_records
 from station_identity import identity_keys
+from station_retention import RETAINED_KEY
 from station_retirements import RetirementError, load_retirements
 from json_recordset import load_json_recordset
 
@@ -38,6 +40,8 @@ class GateRecord:
     identities: frozenset
     merged_ids: tuple
     missing_fields: tuple
+    lat: Any
+    lon: Any
     missing_source: bool
     weak_consum: bool
     bad_actionable: bool
@@ -62,19 +66,24 @@ def compact_gate_record(row: dict) -> GateRecord:
         sys.intern(str(row.get("reliability") or "Unknown")),
         sys.intern(str((row.get("parking") or {}).get("kind") or "unknown")),
         frozenset(identity_keys(row)), tuple(row.get("merged_ids") or []),
-        tuple(missing[0][1]) if missing else (), bool(missing_source_links([row])),
+        tuple(missing[0][1]) if missing else (), row.get("lat"), row.get("lon"), bool(missing_source_links([row])),
         bool(weak_consum_source_rows([row])), bool(bad_actionable_name_rows([row])),
         bool(unpromoted_source_timestamp_rows([row])),
     )
 
 
-def load_partitioned(path: Path, policy: dict) -> tuple[dict, list, list]:
-    """Stream policy evaluation and retain only compact, exact gate evidence."""
+def load_partitioned(path: Path, policy: dict, capture: dict | None = None) -> tuple[dict, list, list]:
+    """Stream policy evaluation and retain only compact, exact gate evidence.
+
+    `capture` maps wanted IDs to None and receives their full rows, for exact comparison.
+    """
     excluded = []
 
     def clean(row: dict) -> GateRecord | None:
         allowed, blocked = partition_records([row], policy)
         excluded.extend({"id": record_id(item)} for item in blocked)
+        if allowed and capture is not None and record_id(row) in capture:
+            capture[record_id(row)] = row
         return compact_gate_record(allowed[0]) if allowed else None
 
     payload = load_json_recordset(path, record_transform=clean)
@@ -186,7 +195,8 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
 
     A merge counts only when exactly one rebuilt pin lists the id in `merged_ids` AND
     shares a stable source identifier with the old row (the same OCM/OSM/registry id).
-    A listed id alone is a claim, not proof, so anything else stays missing.
+    A listed id alone is a claim, not proof, so anything else stays missing. The exception is a
+    source with no stable identifiers, where `station_retention.keyless_renames` is the proof.
     """
     baseline_by_id = {record_id(row): row for row in baseline_rows if record_id(row)}
     claims: Dict[str, List[Dict[str, Any]]] = {}
@@ -194,12 +204,16 @@ def merged_into(baseline_rows: List[Dict[str, Any]], rebuilt_rows: List[Dict[str
         for old_id in row.get("merged_ids") or []:
             claims.setdefault(str(old_id), []).append(row)
     proven: Dict[str, str] = {}
+    missing = list(missing)
+    # A source with no stable identifier: the rename rule replaces the shared-identifier proof.
+    renames = station_retention.keyless_renames(
+        [baseline_by_id[old_id] for old_id in missing if old_id in baseline_by_id], rebuilt_rows, set(baseline_by_id))
     for old_id in missing:
         rows = claims.get(old_id) or []
         old = baseline_by_id.get(old_id)
         old_keys = old.identities if isinstance(old, GateRecord) else identity_keys(old) if old is not None else set()
         new_keys = (rows[0].identities if isinstance(rows[0], GateRecord) else identity_keys(rows[0])) if len(rows) == 1 else set()
-        if len(rows) == 1 and old is not None and old_keys & new_keys:
+        if len(rows) == 1 and old is not None and (old_keys & new_keys or renames.get(old_id) == record_id(rows[0])):
             proven[old_id] = record_id(rows[0])
     return proven
 
@@ -318,8 +332,10 @@ def main() -> int:
         retirements = {}
         failures.append(f"station retirement list rejected: {exc}")
     policy = load_source_policy_exclusions(args.policy_exclusions)
-    baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy)
     rebuilt_payload, rebuilt_rows, rebuilt_excluded = load_partitioned(args.rebuilt, policy)
+    claimed = rebuilt_payload.get(RETAINED_KEY) if isinstance(rebuilt_payload.get(RETAINED_KEY), list) else []
+    captured = {str(row.get("id") or ""): None for row in claimed}
+    baseline_payload, baseline_rows, baseline_excluded = load_partitioned(args.baseline, policy, captured)
 
     if rebuilt_excluded:
         failures.append(
@@ -353,7 +369,17 @@ def main() -> int:
     if unpromoted_timestamps:
         failures.append(f"Rows have raw source timestamps but missing top-level last_seen: {unpromoted_timestamps[:10]}")
 
-    delta = id_delta(baseline_rows, rebuilt_rows, retirements)
+    # Retained rows answer for their IDs here and nowhere else: every count and floor above and
+    # the canary use `records`, so a source cannot hide its losses behind rows it no longer lists.
+    retention = station_retention.validate(
+        baseline_payload, {key: value for key, value in captured.items() if value is not None},
+        source_names(baseline_rows), rebuilt_payload, rebuilt_rows, policy)
+    failures.extend(retention["failures"])
+    prior_retained = partition_records(baseline_payload.get(RETAINED_KEY) or [], policy)[0]
+    delta = id_delta(
+        baseline_rows + [compact_gate_record(row) for row in prior_retained],
+        rebuilt_rows + [compact_gate_record(row) for row in claimed],
+        {**retention["retired"], **retirements})
     max_missing = int(max(1, delta["baseline_ids"] * args.max_missing_id_ratio))
     if delta["missing_ids"] > max_missing:
         failures.append(f"rebuilt missing {delta['missing_ids']} baseline ids, above allowed {max_missing}")
@@ -409,6 +435,7 @@ def main() -> int:
         },
         "delta": delta,
         "retirements": {"path": str(args.retirements), "entries": len(retirements)},
+        "station_retention": {key: value for key, value in retention.items() if key not in {"failures", "retired"}},
         "corroboration_only_source_losses": corroboration_only_losses,
         "failures": failures,
     }

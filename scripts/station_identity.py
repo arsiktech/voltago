@@ -118,6 +118,9 @@ def preserve_record_ids(baseline: dict, candidate: dict) -> tuple[dict, dict]:
     changes = []
     for previous_id, i, evidence in proposals:
         if uses[i] != 1:
+            # Several baseline stations merged into one new row. None can take over its ID, but
+            # each has its own unique upstream identifier on that row, so each stays an alias.
+            absorbed.append((previous_id, i, evidence))
             continue
         generated_id = rows[i]["id"]
         rows[i]["id"] = previous_id

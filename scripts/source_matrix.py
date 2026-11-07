@@ -34,6 +34,8 @@ FUTURE_TOLERANCE = timedelta(minutes=5)
 # A failed tile blocks "Not listed" only near its own area. A merged location can sit slightly
 # away from the listing that a failed tile would have returned, so the area is widened.
 FAILED_AREA_MARGIN_KM = 1.0
+# Per-station detail files of network sources. A failed one loses detail, not the listing.
+DETAIL_ONLY_FILES = re.compile(r"zunder_location_\d+\.json")
 
 SPAIN = (27.4, -18.4, 43.9, 4.5)
 CANARIES = (27.4, -18.4, 29.5, -13.3)
@@ -298,6 +300,58 @@ def stale_columns(intel: Dict[str, Any], now: datetime) -> Dict[str, str]:
                 which = f"Oldest of {len(newest)} listing files" if len(newest) > 1 else "Listing"
                 stale[column["id"]] = f"{which} fetched {oldest}, outside this source's {window} h freshness window."
     return stale
+
+
+def _listing_artifact(artifact: Any) -> bool:
+    """Whether a fetched file decides which stations a source lists. Detail pages only add facts."""
+    if not isinstance(artifact, dict):
+        return False
+    column = _cache_column(artifact.get("cache_name"))
+    if column is None:
+        return False
+    name = str(artifact.get("cache_name")).lower()
+    prefix = next(c.get("listing_files") for c in COLUMNS if c["id"] == column)
+    return name.startswith(prefix) if prefix else not DETAIL_ONLY_FILES.fullmatch(name)
+
+
+def absence_proof(intel: Dict[str, Any], now: datetime) -> Dict[str, Any]:
+    """What this build can and cannot prove about a station a source no longer lists.
+
+    `columns` failed as a whole, `evidence` have a listing fetch, and `areas` failed in one place.
+    """
+    local = {failed["file"] for areas in failed_areas(intel).values() for failed in areas}
+    columns, evidence = set(stale_columns(intel, now)), set()
+    for error in intel.get("errors") or []:
+        column = ADAPTER_COLUMNS.get(error.get("source")) if isinstance(error, dict) else None
+        if column:
+            columns.add(column)
+    for artifact in (intel.get("fetch_evidence") or {}).get("artifacts") or []:
+        if not _listing_artifact(artifact):
+            continue
+        column = _cache_column(artifact.get("cache_name"))
+        evidence.add(column)
+        if (artifact.get("cache") or {}).get("fallback") and str(artifact.get("cache_name")).lower() not in local:
+            columns.add(column)
+    return {"columns": columns, "evidence": evidence, "areas": failed_areas(intel)}
+
+
+def absence_unproven(proof: Dict[str, Any], row: Any) -> bool:
+    """Whether a missing row's absence proves nothing, checked for every source it carried.
+
+    Fails closed: a source with no listing fetch, or a row with no usable position, proves nothing.
+    """
+    primary = column_for(row.get("source"))
+    if primary is None:
+        return True
+    names = [source.get("name") for source in row.get("sources") or [] if isinstance(source, dict)]
+    columns = {primary, *(column for column in map(column_for, names) if column)}
+    columns = {c for c in columns if next(col for col in COLUMNS if col["id"] == c)["coverage"] != "price"}
+    if columns & proof["columns"] or columns - proof["evidence"]:
+        return True
+    lat, lon = row.get("lat"), row.get("lon")
+    if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+        return True
+    return any(_failed_area_at(proof["areas"].get(c, ()), lat, lon, FAILED_AREA_MARGIN_KM) for c in columns)
 
 
 def degraded_columns(intel: Dict[str, Any], records: Iterable[Dict[str, Any]]) -> Dict[str, str]:

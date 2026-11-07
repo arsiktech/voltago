@@ -1,5 +1,6 @@
 import { keepPreviousData, queryOptions, useQuery } from '@tanstack/react-query'
 import type { Bbox, ChargersResponse, Coords, Filters, GeocodeResult, Station } from '../types'
+import type { ChargerListing } from './savedChargers'
 
 const PUBLIC_TRANSPORT_ERROR =
   'Live data is temporarily unavailable. Check your connection and try again.'
@@ -143,6 +144,25 @@ export function stationDetailsQueryOptions(id: string, snapshot: string) {
     },
     staleTime: 0,
     // A stale snapshot needs a new overview, not repeated requests for the old token.
+    retry: false,
+  })
+}
+
+const CHARGER_LISTING_BATCH = 25
+
+/** Listing records for saved chargers absent from the results, keyed by charger ID. */
+export function chargerListingQueryOptions(ids: string[]) {
+  return queryOptions({
+    queryKey: ['charger-listing', ids],
+    queryFn: async ({ signal }) => {
+      const batches: string[][] = []
+      for (let at = 0; at < ids.length; at += CHARGER_LISTING_BATCH) batches.push(ids.slice(at, at + CHARGER_LISTING_BATCH))
+      const pages = await Promise.all(batches.map((batch) => getJSON<{ chargers: Record<string, ChargerListing> }>(
+        `/api/charger-listing?${new URLSearchParams({ ids: batch.join(',') })}`, 15000, signal)))
+      return Object.assign({}, ...pages.map((page) => page.chargers)) as Record<string, ChargerListing>
+    },
+    enabled: ids.length > 0,
+    staleTime: 10 * 60 * 1000,
     retry: false,
   })
 }

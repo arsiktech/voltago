@@ -7,6 +7,9 @@ and a station can be withdrawn. Such a case is recorded here, in Git, with its r
 evidence and approval. The gate honors an entry only when the evidence it can check
 still holds; see `qa_ingestion_delta.id_delta`.
 
+Stations that simply leave a source no longer need an entry: `station_retention` keeps
+them and retires them after a grace period. An entry here retires one sooner.
+
 The file is strict. Any malformed content raises RetirementError, and the caller must
 treat that as a gate failure rather than ignoring the list.
 """

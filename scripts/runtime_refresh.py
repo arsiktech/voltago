@@ -21,7 +21,10 @@ import uuid
 
 import auto_refresh as shared
 from json_recordset import load_json_recordset
+from source_policy import load_source_policy_exclusions
 from station_identity import preserve_record_ids
+from station_retention import apply_retention, identity_baseline
+from station_retirements import load_retirements
 
 ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = {
@@ -241,6 +244,19 @@ def run_stage(root: Path, run: Path, stage: str, argv: list[str], timeout: float
     return result
 
 
+def gate_failures(run: Path, stage: str) -> list[str]:
+    """Why a gate rejected the candidate, from its retained output, for the receipt and the alert."""
+    try:
+        result = shared.parse_last_json_object((run / f"{stage}.stdout.log").read_text())
+    except (OSError, ValueError, RuntimeError):
+        return []
+    failures = [str(item) for item in result.get("failures") or []][:5]
+    missing = (result.get("delta") or {}).get("missing_ids")
+    if not failures and missing:
+        failures = [f"{missing} baseline IDs are missing, for example {(result['delta'].get('missing_sample') or ['unknown'])[0]}"]
+    return failures
+
+
 def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
             strategy: str = "auto", candidate_path: Path | None = None,
             sources: str = "ocm", ocm_revision: str | None = None) -> int:
@@ -294,12 +310,19 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
                 os.replace(output, candidate)
             else:
                 run_stage(root, run, "build", [sys.executable, "scripts/ingest_sources.py", "--out", str(candidate)], timeout)
+                baseline_payload = json.loads(baseline["free_intelligence.json"].read_text())
                 payload, identity_report = preserve_record_ids(
-                    json.loads(baseline["free_intelligence.json"].read_text()), json.loads(candidate.read_text()))
+                    identity_baseline(baseline_payload), json.loads(candidate.read_text()))
                 receipt["identity_reconciliation"] = identity_report
-                if identity_report["changed"]:
+                policy_path = root / "data/source_policy_exclusions.json"
+                payload, retention_report = apply_retention(
+                    baseline_payload, payload,
+                    retirements=load_retirements(root / "data/station_id_retirements.json"),
+                    policy=load_source_policy_exclusions(policy_path) if policy_path.exists() else None)
+                receipt["station_retention"] = retention_report
+                if identity_report["changed"] or retention_report["changed"]:
                     shared.atomic_json(candidate, payload)
-                del payload
+                del payload, baseline_payload
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha
             payload = imported_meta if imported_meta is not None else dataset_summary(candidate)
@@ -367,6 +390,8 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
             exit_code = 0
         except Exception as exc:
             receipt["error"] = f"{type(exc).__name__}: {exc}"
+            if receipt["stage"] in {"delta", "canary"}:
+                receipt["gate_failures"] = gate_failures(run, receipt["stage"])
             message = f"Volta data refresh failed at {receipt['stage']}; previous data retained unless promoted=true. Run {run_id}."
             receipt["notification_handler"] = "systemd ExecStopPost hook; no per-attempt direct notification"
             print(message, file=sys.stderr)

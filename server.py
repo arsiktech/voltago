@@ -227,6 +227,7 @@ _CACHE_LOCKS: Dict[str, threading.Lock] = {
 # primitives bound that: a per-client token-bucket limiter on the two routes that do
 # real work, and a global semaphore bounding concurrent upstream fetch fan-outs.
 RATE_LIMIT_RPM = max(1, int(os.environ.get("VOLTA_RATE_LIMIT_RPM", "60")))
+CHARGER_LISTING_MAX_IDS = 25
 # Geocode is a human-paced action (jump to a city); no env override -- deliberately
 # just a tighter default via the same limiter's per-route rpm argument.
 GEOCODE_RATE_LIMIT_RPM = 10
@@ -964,6 +965,13 @@ def decision_for(item: Dict[str, Any], *, live: bool, vehicle_neutral: bool = Fa
     if isinstance(outage, dict) and outage:
         reason = str(outage.get("summary") or "The source reports this charger unavailable.")
         return {"level": "avoid", "label": "Unavailable", "reason": reason}
+    # Its source stopped listing it, which proves neither that it is gone nor that it works.
+    listing = item.get("no_longer_listed")
+    if isinstance(listing, dict) and listing:
+        last = str(listing.get("last_listed_at") or "")[:10]
+        return {"level": "lead", "label": "No longer listed",
+                "reason": f"{listing.get('source') or 'Its source'} no longer lists this charger"
+                          f"{f'; last listed {last}' if last else ''}. Current status is unknown."}
     access = access_profile(item)
     parking = normalize_parking_profile(item)
     parking_kind = parking.get("kind")
@@ -3881,7 +3889,8 @@ def intelligence_response(params: Dict[str, List[str]]) -> Dict[str, Any]:
                 selected.append(row)
             matched += 1
     records = [_normalize_lead(deepcopy(row), "free/cheap intelligence DB") for row in selected]
-    result = {key: value for key, value in raw.items() if key != "records"}
+    # Rows a source no longer lists are found by ID only, with their old claims removed.
+    result = {key: value for key, value in raw.items() if key not in {"records", "retained_records", "auto_retired"}}
     result["records"] = _refresh_time_derived_fields(attach_community_rows(records))
     result["pagination"] = {"offset": offset, "limit": limit, "returned": len(records), "matched": matched,
                             "next_offset": offset + len(records) if offset + len(records) < matched else None}
@@ -3971,6 +3980,53 @@ def attach_community_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return rows
 
 
+RETAINED_PRICE_FIELDS = (
+    "price_min", "price_max", "price_native_min", "price_native_max", "price_native_unit", "current_price_min",
+    "price_label", "price", "tariff", "pricing", "price_window_status", "price_evidence", "charge_claim",
+    "claim_conflict", "free_condition", "insight",
+)
+
+
+def retained_rows() -> List[Dict[str, Any]]:
+    """Stations their source stopped listing: found by ID only, never on the map or in search."""
+    rows = load_intelligence_meta().get("retained_records")
+    return partition_records(rows, SOURCE_POLICY_EXCLUSIONS)[0] if isinstance(rows, list) else []
+
+
+def retained_station(identifier: str) -> Optional[Dict[str, Any]]:
+    """A private copy of a retained row, with its old claims removed from what is served."""
+    for row in retained_rows():
+        if identifier == str(row.get("id")) or identifier in (row.get("merged_ids") or []):
+            station = _normalize_lead(deepcopy(row), "free/cheap intelligence DB")
+            station.update(status="VERIFY", available=0, is_free=False, is_cheap=False, live_status=False)
+            # Nothing the row said about price may read as current, or be quoted without a date.
+            for field in RETAINED_PRICE_FIELDS:
+                station.pop(field, None)
+            station["sources"] = [{key: value for key, value in source.items() if key != "evidence"}
+                                  for source in station.get("sources") or [] if isinstance(source, dict)]
+            return station
+    return None
+
+
+def charger_listing_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
+    """Why saved chargers are absent: only stations whose source stopped listing them appear."""
+    ids = [value for value in (params.get("ids") or [""])[0].split(",") if value]
+    if not ids or len(ids) > CHARGER_LISTING_MAX_IDS:
+        return 400, {"error": "invalid_ids"}
+    wanted = set(ids)
+    found: Dict[str, Dict[str, Any]] = {}
+    for entry in load_intelligence_meta().get("auto_retired") or []:
+        for identifier in [entry.get("id"), *(entry.get("aliases") or [])]:
+            if identifier in wanted:
+                found[identifier] = {key: entry.get(key) for key in ("source", "last_listed_at", "retired_at")}
+    for row in retained_rows():
+        for identifier in [row.get("id"), *(row.get("merged_ids") or [])]:
+            if identifier in wanted:
+                marker = row.get("no_longer_listed") or {}
+                found[identifier] = {key: marker.get(key) for key in ("source", "last_listed_at")}
+    return 200, {"chargers": found}
+
+
 def known_station_ids() -> set:
     """Ids a check-in/photo may reference: intel + seeds + currently cached live rows
     + accepted community suggestions. 60 s memo; new points go through /station."""
@@ -3984,7 +4040,7 @@ def known_station_ids() -> set:
         if isinstance(records, IndexedRecords):
             ids.update(records.index.ids())
             records = []
-        for row in records + _raw_seed_records():
+        for row in records + _raw_seed_records() + retained_rows():
             if row.get("id"):
                 ids.add(str(row["id"]))
     except Exception as exc:
@@ -6326,6 +6382,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
             status, payload = station_detail_response(params)
+            return self.send_json(status, payload)
+        if path == "/api/charger-listing":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
+            status, payload = charger_listing_response(params)
             return self.send_json(status, payload)
         if path == "/api/free-registry":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):

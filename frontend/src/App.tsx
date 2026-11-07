@@ -1,7 +1,8 @@
 import { Component, Suspense, lazy, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, List, Map as MapIcon } from 'lucide-react'
-import { publicTransportErrorMessage, useChargers } from './lib/api'
+import { useQuery } from '@tanstack/react-query'
+import { chargerListingQueryOptions, publicTransportErrorMessage, useChargers } from './lib/api'
 import { discoveryRows, selectedMapRow } from './lib/discovery'
 import { boxAround, containsCoordinate, isLiveBbox, normalizeBbox, widerBoxAround } from './lib/geo'
 import {
@@ -24,6 +25,7 @@ import {
   browserStorage,
   readSaved,
   readSignedIn,
+  savedAbsenceText,
   toggleSaved,
   writeSaved,
   writeSignedIn,
@@ -544,6 +546,7 @@ export default function App() {
     [saved, stationsById],
   )
   const savedMissing = showSaved && signedIn ? saved.filter((item) => !stationsById.has(item.id)) : []
+  const savedListing = useQuery(chargerListingQueryOptions(savedMissing.map((item) => item.id)))
   // Clear before committing the panel/map; retaining an invalid ID would revive
   // an old selection if a filter or later response makes that station reappear.
   if (selectedId && !selectedRow) setSelectedId(null)
@@ -739,7 +742,7 @@ export default function App() {
                 <li key={item.id} className="card p-4">
                   <p className="text-base font-semibold text-fg">{name}</p>
                   {item.city && <p className="mt-1 text-xs text-muted">{item.city}</p>}
-                  <p className="mt-1 text-xs text-muted">Not in this search</p>
+                  <p className="mt-1 text-xs text-muted">{savedAbsenceText(savedListing.data?.[item.id])}</p>
                   <button
                     type="button"
                     onClick={() => removeSaved(item.id)}
