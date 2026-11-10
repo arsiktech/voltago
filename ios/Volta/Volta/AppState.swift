@@ -102,6 +102,8 @@ final class AppState: NSObject, ObservableObject {
     @Published var selected: Station?
     @Published var favoriteIDs: [String] = FavoritesStore.load().map(\.id)
     @Published var showingSavedOnly = false
+    /// Saved chargers fetched by id because they were outside the current map payload.
+    @Published var savedOutside: [Station] = []
     /// When the list shows chargers saved on this iPhone because the service is unreachable.
     @Published var offlineSavedAt: Date?
 
@@ -348,15 +350,28 @@ final class AppState: NSObject, ObservableObject {
     }
 
     /// The list = what's in the current viewport, best first.
+    /// Saved-only includes chargers fetched by id that sit outside this payload.
     var listRows: [Station] {
-        let bbox = visibleRegion.bbox
-        return filteredRows
-            .filter { bbox.contains($0) }
-            .sorted { first, second in
-                let firstUnconfirmed = isPlugUnconfirmed(first), secondUnconfirmed = isPlugUnconfirmed(second)
-                if firstUnconfirmed != secondUnconfirmed { return secondUnconfirmed }
-                return score(first) > score(second)
+        let rows: [Station]
+        if showingSavedOnly {
+            let saved = Set(favoriteIDs)
+            var byID: [String: Station] = [:]
+            for station in filteredRows where saved.contains(station.id) {
+                byID[station.id] = station
             }
+            for station in savedOutside where saved.contains(station.id) && byID[station.id] == nil {
+                byID[station.id] = station
+            }
+            rows = Array(byID.values)
+        } else {
+            let bbox = visibleRegion.bbox
+            rows = filteredRows.filter { bbox.contains($0) }
+        }
+        return rows.sorted { first, second in
+            let firstUnconfirmed = isPlugUnconfirmed(first), secondUnconfirmed = isPlugUnconfirmed(second)
+            if firstUnconfirmed != secondUnconfirmed { return secondUnconfirmed }
+            return score(first) > score(second)
+        }
     }
 
     /// True only under a plug filter, where the driver asked about a type this charger doesn't publish.
@@ -512,7 +527,7 @@ final class AppState: NSObject, ObservableObject {
             recordFirstMeaningfulContentIfNeeded()
         } catch {
             guard overviewRequestID == requestID, !Task.isCancelled else { return }
-            if mode == .overview, showOfflineSnapshot() {
+            if mode == .overview, await showOfflineSnapshot() {
                 overviewState = .loaded
                 return
             }
@@ -527,13 +542,21 @@ final class AppState: NSObject, ObservableObject {
 
     /// Shows the last area and saved chargers kept on this iPhone, all marked stale, when the
     /// service is unreachable. Returns false when nothing was saved, so the actionable error stays.
-    private func showOfflineSnapshot() -> Bool {
-        let area = OfflineStationCache.loadArea(decoder: VoltaAPI.decoder)
-        let saved = OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder)
-        var rows = area?.stations ?? []
-        let known = Set(rows.map(\.id))
-        rows += (saved?.stations ?? []).filter { favoriteIDs.contains($0.id) && !known.contains($0.id) }
-        guard !rows.isEmpty, let savedAt = [area?.savedAt, saved?.savedAt].compactMap({ $0 }).min() else { return false }
+    private func showOfflineSnapshot() async -> Bool {
+        let ids = favoriteIDs
+        let loaded = await Task.detached(priority: .userInitiated) { () -> (stations: [Station], savedAt: Date?) in
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let area = OfflineStationCache.loadArea(decoder: decoder)
+            let saved = OfflineStationCache.loadSaved(decoder: decoder)
+            var rows = area?.stations ?? []
+            let known = Set(rows.map(\.id))
+            rows += (saved?.stations ?? []).filter { ids.contains($0.id) && !known.contains($0.id) }
+            let savedAt = [area?.savedAt, saved?.savedAt].compactMap { $0 }.min()
+            return (rows, savedAt)
+        }.value
+        guard !loaded.stations.isEmpty, let savedAt = loaded.savedAt else { return false }
+        let rows = loaded.stations
         leads = rows
         stations = []
         resultsTruncated = false
@@ -816,6 +839,22 @@ final class AppState: NSObject, ObservableObject {
         }
         FavoritesStore.save(records)
         favoriteIDs = records.map(\.id)
+        savedOutside.removeAll { !favoriteIDs.contains($0.id) }
+    }
+
+    /// Fills saved chargers that the current overview or live payload does not contain.
+    func refreshSavedChargers() async {
+        let known = Set((leads + stations + savedOutside).map(\.id))
+        let missing = favoriteIDs.filter { !known.contains($0) }
+        guard !missing.isEmpty, isServiceConfigured else { return }
+        guard let extra = try? await api.savedChargers(ids: missing) else { return }
+        let ids = Set(favoriteIDs)
+        var merged: [Station] = []
+        var seen = Set<String>()
+        for station in savedOutside + extra where ids.contains(station.id) && seen.insert(station.id).inserted {
+            merged.append(station)
+        }
+        savedOutside = merged
     }
 
     var savedStationsInView: [Station] {

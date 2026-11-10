@@ -55,12 +55,8 @@ struct PaywallView: View {
                 Text("Volta Go")
                     .font(.system(.title, design: .rounded, weight: .bold))
             }
-            Text("Choose chargers with evidence, not guesswork.")
+            Text("Volta Plus")
                 .font(.title2.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-            Text("One subscription unlocks the cleaned national database and the complete decision experience. Charger safety labels and warnings always stay honest.")
-                .font(.body)
-                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)

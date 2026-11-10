@@ -33,7 +33,17 @@ struct VoltaAPI {
         guard let http = resp as? HTTPURLResponse, (200 ..< 300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }
-        return (try Self.decoder.decode(T.self, from: data), data)
+        let value = try await Self.decodeOffMain(T.self, from: data)
+        return (value, data)
+    }
+
+    /// JSON decode stays off the main actor. Callers on the main actor only assign the result.
+    private static func decodeOffMain<T: Decodable>(_ type: T.Type, from data: Data) async throws -> T {
+        try await Task.detached(priority: .userInitiated) {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            return try decoder.decode(T.self, from: data)
+        }.value
     }
 
     /// Stored evidence for the visible area; never downloads an unbounded global catalog.
@@ -47,6 +57,7 @@ struct VoltaAPI {
             .init(name: "overview", value: "true"),
             .init(name: "include_leads", value: "true"),
             .init(name: "compact", value: "true"),
+            .init(name: "summary", value: "true"),
             .init(name: "max_price", value: String(maxPrice)),
             .init(name: "bbox", value: bbox.queryValue),
         ]
@@ -70,6 +81,23 @@ struct VoltaAPI {
         }
         if availableOnly { q.append(.init(name: "available", value: "true")) }
         return try await get("api/chargers", q)
+    }
+
+    /// Saved chargers that are not in the current map payload. Batches of 25, catalogue only.
+    func savedChargers(ids: [String]) async throws -> [Station] {
+        var found: [Station] = []
+        var index = ids.startIndex
+        while index < ids.endIndex {
+            let end = ids.index(index, offsetBy: 25, limitedBy: ids.endIndex) ?? ids.endIndex
+            let batch = ids[index..<end]
+            index = end
+            let response: ChargersResponse = try await get(
+                "api/saved-chargers",
+                [.init(name: "ids", value: batch.joined(separator: ","))]
+            )
+            found.append(contentsOf: response.stations)
+        }
+        return found
     }
 
     func geocode(_ query: String) async throws -> [GeocodeResult] {

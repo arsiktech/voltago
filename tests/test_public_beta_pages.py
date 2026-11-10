@@ -62,7 +62,7 @@ class PublicBetaPageSourceTests(unittest.TestCase):
         self.assertIn("search", pages["privacy"].lower())
         self.assertIn("ip address", pages["privacy"].lower())
         self.assertIn("retention", pages["privacy"].lower())
-        self.assertIn("testflight", pages["terms"].lower())
+        self.assertNotIn("testflight beta", pages["terms"].lower())
         self.assertIn("do not use", pages["terms"].lower())
         self.assertIn("build number", pages["support"].lower())
         self.assertIn("smartcar", pages["privacy"].lower())
@@ -74,7 +74,7 @@ class PublicBetaPageSourceTests(unittest.TestCase):
         email, _, domain = support_email()
         self.assertTrue(domain.endswith("voltago.app"), email)
         swift = (ROOT / "ios" / "Volta" / "Volta" / "SettingsView.swift").read_text(encoding="utf-8")
-        self.assertIn(f"mailto:{email}?subject=Volta%20Go%20Support", swift)
+        self.assertIn("https://voltago.app/support", swift)
         self.assertNotIn("icloud.com", swift)
         for relative in (
             "docs/appstore/metadata.md",

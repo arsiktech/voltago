@@ -26,11 +26,13 @@ must also complete a jurisdiction-appropriate name/mark review before publicatio
 
 ## Shared URL fields — owner-gated
 
-- Privacy Policy URL: `https://[OWNER-DOMAIN]/privacy`
-- Support URL: `https://[OWNER-DOMAIN]/support`
+- Privacy Policy URL: `https://voltago.app/privacy`
+- Support URL: `https://voltago.app/support`
 - Support email: `support@voltago.app`
-- Terms URL used inside the app/paywall: `https://[OWNER-DOMAIN]/terms`
-- Marketing URL, optional: `https://[OWNER-DOMAIN]/volta`
+- Terms URL used inside the app/paywall: `https://voltago.app/terms`
+- Marketing URL: `https://voltago.app`
+
+Still owner-only before App Store paste: the final store name (the binary says Volta Go; the candidates below are not chosen), What’s New, screenshots, native-speaker sign-off, privacy answers saved in App Store Connect, export, age rating, DSA trader status, copyright line, and primary category.
 
 Do not paste these placeholders into App Store Connect. The privacy and support URLs
 must be public, stable HTTPS pages; the support page must contain real contact

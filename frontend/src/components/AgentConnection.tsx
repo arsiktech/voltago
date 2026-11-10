@@ -24,7 +24,6 @@ export function AgentConnection() {
       type="button"
       onClick={copyPrompt}
       disabled={copyStatus === 'copying'}
-      aria-describedby={id + '-hint'}
       title="Copy setup instructions to paste into ChatGPT, Claude, Grok or another AI agent."
       className="agent-connect inline-flex min-h-11 items-center gap-2 rounded-lg py-1 text-left text-xs text-fg-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand disabled:opacity-70"
     >
@@ -35,7 +34,6 @@ export function AgentConnection() {
         <span className="block font-semibold underline decoration-border-strong underline-offset-4">
           {copyStatus === 'copied' ? 'Prompt copied' : copyStatus === 'copying' ? 'Copying prompt…' : 'Copy AI prompt'}
         </span>
-        <span id={id + '-hint'} className="mt-0.5 block text-[11px] leading-snug text-muted">Paste into your AI chat</span>
       </span>
     </button>
     <span role="status" className="sr-only">

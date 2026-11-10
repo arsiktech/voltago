@@ -27,15 +27,12 @@ struct VehicleSummaryCard: View {
             .accessibilityHidden(true)
         VStack(alignment: .leading, spacing: 3) {
             Text("Your EV").font(.caption).foregroundStyle(.secondary)
-            Text(garage.selected?.name ?? String(localized: "A little more connected."))
+            Text(garage.selected?.name ?? String(localized: "Your EV"))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
             if let vehicle = garage.selected {
                 VehicleStatusLabel(vehicle: vehicle, now: now)
-            } else {
-                Text("Your battery. Your next stop.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         Spacer(minLength: 0)
@@ -193,17 +190,12 @@ struct VehicleGarageView: View {
 
     private var emptyGarage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Your battery. Your next stop.")
-                .font(.largeTitle.weight(.semibold)).foregroundStyle(Theme.ink)
-                .fixedSize(horizontal: false, vertical: true)
+            Text("Your EV")
+                .font(.title2.weight(.semibold)).foregroundStyle(Theme.ink)
             Image("VehicleIllustration").resizable().scaledToFit()
                 .accessibilityLabel("Vehicle illustration")
-            Text("Bring your car into the picture.")
-                .font(.headline).foregroundStyle(Theme.ink)
-            Text("See your battery, remaining range and energy before you choose where to charge.")
-                .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20).voltaCard(radius: 24)
+        .padding(20).voltaCard(radius: 18)
     }
 
     private var connectionCard: some View {

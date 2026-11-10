@@ -64,7 +64,7 @@ struct DiscoveryMapControls: View {
         }
         .voltaGlassGroup(spacing: 10)
         .animation(reduceMotion ? VoltaMotion.state : VoltaMotion.spatial, value: showsSearchArea)
-        .animation(VoltaMotion.state, value: state.liveState)
+        .animation(reduceMotion ? nil : VoltaMotion.state, value: state.liveState)
     }
 
     private var showsSearchArea: Bool {

@@ -173,7 +173,7 @@ struct SheetView: View {
                 .transition(.opacity)
             }
         }
-        .animation(VoltaMotion.state, value: searching)
+        .animation(reduceMotion ? nil : VoltaMotion.state, value: searching)
     }
 
     // MARK: - Place search
@@ -393,6 +393,9 @@ struct SheetView: View {
         }
         .tint(Theme.action)
         .frame(minHeight: 44)
+        .onChange(of: state.showingSavedOnly) { _, isOn in
+            if isOn { Task { await state.refreshSavedChargers() } }
+        }
         .accessibilityHint("Limits the list to chargers you saved on this iPhone. Missing saved chargers stay unknown, not invented.")
         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
         .listRowSeparator(.hidden)
@@ -424,9 +427,15 @@ struct SheetView: View {
                     StationGoogleMapsAction(station: st)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
+                        .accessibilityHidden(true)
                 }
                 .voltaCard(selected: state.focusedStationID == st.id)
-                .accessibilityElement(children: .contain)
+                .accessibilityElement(children: .combine)
+                .accessibilityAction(named: Text(st.googleMapsActionLabel)) {
+                    if let url = st.googleMapsActionURL {
+                        openURL(url)
+                    }
+                }
                 .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
@@ -451,16 +460,8 @@ struct SheetView: View {
                 Text("No chargers in this view")
                     .font(.headline)
                     .foregroundStyle(Theme.ink)
-                Text("Pan the map, search a city, or loosen a filter.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { emptyActions }
-                    VStack(spacing: 10) { emptyActions }
-                }
-                .padding(.top, 4)
+                emptyPrimary
+                    .padding(.top, 4)
             }
         }
         .frame(maxWidth: .infinity)
@@ -471,7 +472,7 @@ struct SheetView: View {
     }
 
     @ViewBuilder
-    private var emptyActions: some View {
+    private var emptyPrimary: some View {
         if state.hasActiveFilters {
             Button {
                 state.clearFilters()
@@ -480,24 +481,26 @@ struct SheetView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(Theme.action)
+        } else if state.locationState == .denied || state.locationState == .restricted || state.locationState == .failed {
+            Button {
+                state.locate()
+            } label: {
+                Label("Near me", systemImage: "location")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.action)
+            .accessibilityLabel(state.locating ? "Finding my location" : "Find my location")
+        } else {
+            Button {
+                searchFocused = true
+            } label: {
+                Label("Search city", systemImage: "magnifyingglass")
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(Theme.action)
         }
-        Button {
-            searchFocused = true
-        } label: {
-            Label("Search city", systemImage: "magnifyingglass")
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .tint(Theme.ink)
-        Button {
-            state.locate()
-        } label: {
-            Label("Near me", systemImage: "location")
-                .frame(maxWidth: .infinity, minHeight: 44)
-        }
-        .buttonStyle(.bordered)
-        .tint(Theme.ink)
-        .accessibilityLabel(state.locating ? "Finding my location" : "Find my location")
     }
 }
 

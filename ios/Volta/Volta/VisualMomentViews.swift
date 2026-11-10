@@ -81,8 +81,13 @@ struct RouteReadyMomentView: View {
     /// true on appear to give each freshly mounted confirmation one real change to observe.
     @State private var appeared = false
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
+        layout {
             Image(systemName: "checkmark.circle.fill")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(Theme.go)
@@ -95,7 +100,8 @@ struct RouteReadyMomentView: View {
                 Text(moment.stationName)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
