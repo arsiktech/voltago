@@ -5840,6 +5840,10 @@ def build_payload() -> Dict[str, Any]:
         ],
         "records": merged,
     }
+    # Sources appended after add_record (Red MOVEM, Moraleja, merges) still
+    # need a line. stamp_row never replaces an attribution that is already set.
+    for row in payload["records"]:
+        stamp_row(row)
     cleaned, policy_report = apply_source_policy_exclusions_to_payload(payload, preserve_raw_records=True)
     print(f"source-policy exclusions: -{policy_report['excluded_records']} records")
     return cleaned
