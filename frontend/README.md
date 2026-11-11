@@ -15,7 +15,7 @@ foreign-currency prices, and worldwide place search does not imply live coverage
 - **TanStack Query** — live data with 60s refresh, `keepPreviousData`, stale handling
 - **MapLibre GL 6** — keyless, theme-aware OpenFreeMap basemap; WebGL2 is required
   for the map. Search and the list stay usable when graphics are unavailable.
-- **Framer Motion** — card/detail transitions; **lucide-react** icons; **Inter** (bundled via `@fontsource`)
+- **Framer Motion** — card/detail transitions; **lucide-react** icons; **Manrope** (bundled via `@fontsource-variable/manrope`)
 
 ## Develop
 
@@ -47,7 +47,7 @@ actionable error at startup if it isn't built (no fallback), so a production run
 
 - `src/App.tsx` — orchestrator: map backdrop + glass panel, filters, search, geolocation, state
 - `src/components/` — `MapView`, `StationCard`, `SourceProvenance`, `DecisionPill`, `FilterRail`,
-  `SearchBar`, `CoverageBanner`, `ConnectorChips`, `Badge`
+  `SearchBar`, `CoverageBanner`, `ConnectorChips`
 - `src/lib/api.ts` — query hooks; `src/lib/format.ts` — formatting + client-side filters; `src/types.ts` — API types
 - `src/lib/discovery.ts` — map inventory and selected-station/list continuity
 - `src/index.css`, `src/lib/motion.ts` — shared light/dark tokens and reduced-motion-aware transitions
@@ -61,8 +61,11 @@ journeys are maintained in [the DOM contract](../docs/spa-dom-contract.md).
 Run `npm run test`, `npm run lint`, and `npm run build` from this directory.
 The `/coverage/` page reads `/api/sources` from the current service and reports loaded
 source/country counts separately from adapter and live-cache status. Its browser check is
-`node frontend/scripts/qa_coverage.cjs http://127.0.0.1:8773` from the repository root
-against a built/served frontend; it uses source fixtures without upstream requests.
+`node frontend/scripts/qa_coverage.cjs [base-url]` from the repository root against a
+built/served frontend; it uses source fixtures without upstream requests. The base URL
+defaults to `http://127.0.0.1:8876`, so pass `http://127.0.0.1:8773` for the usual local
+server. The browser defaults to `/usr/bin/chromium`; set `VOLTA_QA_CHROME` to another
+Chromium or Chrome executable (for example on macOS).
 The Vite build bundles MapLibre's worker as an asset. Custom cluster icons use
 `setMissingStyleImageResolver`; theme reloads recreate layers from the current
 theme. Verify these behaviors from the repository root with

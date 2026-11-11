@@ -14,6 +14,12 @@ from unittest.mock import patch
 
 import agent_mcp
 import server
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 VITHAS = (28.4714743, -16.2591622)
 SANTA_CRUZ = {
@@ -113,6 +119,16 @@ class DestinationGeocoderTests(unittest.TestCase):
             return io.BytesIO(b"[]")
         with patch("server.urllib.request.urlopen", side_effect=upstream):
             self.assertEqual(server.geocode_search("Clínica Inventada, Santa Cruz de Tenerife"), [])
+        # A failed fallback is not an answer: the next search asks again and finds the town.
+        self.responses["Santa Cruz de Tenerife"] = [SANTA_CRUZ]
+        [row] = self.search("Clínica Inventada, Santa Cruz de Tenerife")
+        self.assertEqual(row["match"], "town")
+
+    def test_a_genuine_fallback_miss_is_cached(self):
+        self.responses["Tenerife"] = [TENERIFE_ISLAND]
+        self.assertEqual(self.search("Clínica Inventada, Tenerife"), [])
+        self.assertEqual(self.search("Clínica Inventada, Tenerife"), [])
+        self.assertEqual(self.asked, ["Clínica Inventada, Tenerife", "Tenerife"])
 
     def test_mcp_origin_uses_the_alias_and_reports_it(self):
         lat, lon, label, origin = agent_mcp._resolve_origin({"place": "Hospital Vithas, Santa Cruz de Tenerife"}, server)

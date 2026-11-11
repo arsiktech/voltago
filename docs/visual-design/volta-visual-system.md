@@ -64,7 +64,8 @@ direction, not as permission to rely on unavailable future APIs.
 
 ## Current web review
 
-See [first-principles review](../../qa/first-principles-review-2026-09-05.md) for current
+See the first-principles review, `qa/first-principles-review-2026-09-05.md`
+(written locally, not tracked in this repository), for current
 screenshots, checks, deletions, and explicit native/public-readiness limits.
 
 ## Historical verification (original visual-moment implementation)

@@ -24,10 +24,10 @@ driver, not just whether functions compile.
 - [scripts/qa_*.py](../../../scripts) - Python smoke, artifact, canary, and
   completion checks.
 - [scripts/qa_*.js](../../../scripts) - Playwright/Chrome browser contracts.
-- [qa/regression-suite-latest.json](../../../qa/regression-suite-latest.json) -
-  latest suite evidence.
-- [qa/completion-audit-latest.json](../../../qa/completion-audit-latest.json) -
-  completion audit evidence.
+- `qa/regression-suite-latest.json` - latest suite evidence (generated locally,
+  not tracked).
+- `qa/completion-audit-latest.json` - completion audit evidence (generated
+  locally, not tracked).
 
 ## Public API
 

@@ -259,7 +259,7 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertIn('.accessibilityIdentifier("settingsButton")', search_row)
         self.assertNotIn("onOpenSettings", self.discovery_controls)
         self.assertIn("MapFilterBar()", self.sheet_view)
-        heading = self.sheet_view.split("private var resultsHeading: some View", 1)[1].split("private var statusRows", 1)[0]
+        heading = self.sheet_view.split("private func resultsHeading(count: Int) -> some View", 1)[1].split("private func statusRows", 1)[0]
         self.assertIn('Button("Clear filters") { state.clearFilters() }', heading)
         self.assertIn("if state.hasActiveFilters", heading)
 
@@ -283,9 +283,11 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertIn("private var peekDetent: PresentationDetent { .height(peekHeight) }", self.root_view)
         self.assertIn(".presentationBackground(Theme.canvas)", self.root_view)
         self.assertIn("List {", self.sheet_view)
-        self.assertIn("ForEach(state.listRows) { st in", self.sheet_view)
+        self.assertIn("let rows = state.listRows", self.sheet_view)
+        self.assertIn("ForEach(rows) { st in", self.sheet_view)
         self.assertNotIn("ScrollView(.horizontal", self.sheet_view)
         self.assertNotIn("state.listRows.prefix", self.sheet_view)
+        self.assertNotIn("rows.prefix", self.sheet_view)
         self.assertIn("onSelect(st)", self.sheet_view)
         self.assertIn("selected = station", self.app_state)
         self.assertIn(".navigationDestination(item: $state.selected)", self.sheet_view)

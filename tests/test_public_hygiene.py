@@ -10,7 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 PATTERNS = {
     "home directory path": re.compile(r"/Users/[A-Za-z0-9._-]+/|/home/[a-z][a-z0-9_-]+/"),
-    "Tailscale address": re.compile(r"\b100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b"),
+    # Dots may be regex-escaped (for example in an `rg` pattern), so allow a backslash.
+    "Tailscale address": re.compile(
+        r"\b100\\?\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\?\.[0-9]{1,3}\\?\.[0-9]{1,3}\b"
+    ),
     "Tailscale network name": re.compile(r"[a-z0-9-]+\.ts\.net\b"),
     "private tracker link": re.compile(r"app\.notion\.com/|notion\.so/|linear\.app/"),
     "agent session link": re.compile(r"claude\.ai/code/session_|chatgpt\.com/c/"),
@@ -32,6 +35,13 @@ class PublicHygieneTests(unittest.TestCase):
             }):
                 forbidden.append(rel)
         self.assertEqual(forbidden, [])
+
+    def test_tailscale_pattern_catches_plain_and_regex_escaped_addresses(self) -> None:
+        pattern = PATTERNS["Tailscale address"]
+        self.assertTrue(pattern.search("ssh 100.64.0.1"))
+        self.assertTrue(pattern.search(r"rg '127\.0\.0\.1|100\.64\.0\.1'"))
+        self.assertFalse(pattern.search(r"rg '100\.(6[4-9]|[7-9][0-9])\.[0-9]+\.[0-9]+'"))
+        self.assertFalse(pattern.search("10.0.0.1 and 100.63.0.1"))
 
     def test_tracked_text_files_contain_no_private_details(self) -> None:
         try:

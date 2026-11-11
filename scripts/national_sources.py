@@ -30,6 +30,11 @@ except ImportError:
     from global_sources import FileArtifact, fetch_cached_file, finite_number, iso_timestamp, make_record, valid_coordinates
     from ingest_sources import FetchArtifact
 
+from station_truth import parse_osm_socket_output  # noqa: E402  (ingest_sources puts the root on sys.path)
+
+# IEC 62196-1's 1500 V x 800 A DC envelope, the ceiling docs/osm-socket-power.md uses.
+OSM_POWER_CEILING_KW = 1200.0
+
 
 FRANCE_URL = "https://proxy.transport.data.gouv.fr/resource/consolidation-transport-irve-statique"
 GERMANY_PAGE_URL = "https://www.bundesnetzagentur.de/DE/Fachthemen/ElektrizitaetundGas/E-Mobilitaet/DownloadundKontakt.html"
@@ -81,6 +86,19 @@ def _number(value: Any) -> float | None:
 def _positive(value: Any) -> float | None:
     number = _number(value)
     return number if number is not None and number > 0 else None
+
+
+def _france_power_kw(value: Any, label: str) -> float | None:
+    """IRVE `puissance_nominale` is kW, yet some publishers write watts.
+
+    No connector is rated above 1200 kW, so a larger value is read with the OSM rule in
+    docs/osm-socket-power.md: watts when that is a real rating for this connector,
+    otherwise unknown.
+    """
+    power = _positive(value)
+    if power is None or power <= OSM_POWER_CEILING_KW:
+        return power
+    return parse_osm_socket_output(power, label)["power_kw"]
 
 
 def _true(value: Any) -> bool:
@@ -158,13 +176,13 @@ def parse_france_irve(rows: Iterable[dict], artifact: FetchArtifact) -> Iterator
             upstream_id = "local_" + hashlib.sha256(f"{namespace}:{local_id}".encode()).hexdigest()[:24]
         lat, lon = _france_coordinates(row)
         country = FRANCE_TERRITORIES.get(_text(row.get("code_insee_commune"))[:3], "FR")
-        power = _positive(row.get("puissance_nominale"))
         connectors = []
         for key, label in (("prise_type_2", "Type 2"), ("prise_type_combo_ccs", "CCS2"),
                            ("prise_type_chademo", "CHAdeMO"), ("prise_type_ef", "Type E/F")):
             if _true(row.get(key)):
                 connectors.append({"connector_id": f"{upstream_id}:{key}", "label": label, "type": label,
-                                   "status": "UNKNOWN", "power_kw": power, "count": 1,
+                                   "status": "UNKNOWN", "power_kw": _france_power_kw(row.get("puissance_nominale"), label),
+                                   "count": 1,
                                    "raw": {"upstream_field": key, "power_scope": "charging_point"}})
         # Keep unknown connector information without assigning a connector type.
         raw_keys = ("id_pdc_itinerance", "id_pdc_local", "id_station_itinerance", "id_station_local", "nbre_pdc",

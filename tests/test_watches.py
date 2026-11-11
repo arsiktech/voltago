@@ -11,7 +11,6 @@ from contextlib import closing
 import shutil
 import sys
 import tempfile
-import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -26,6 +25,12 @@ sys.path.insert(0, str(ROOT))
 import agent_mcp  # noqa: E402
 import server  # noqa: E402
 import watches  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 KEY = agent_mcp._connector_key
 TOKEN = "ab" * 32
@@ -232,6 +237,19 @@ class StoreAndWatcherTests(unittest.TestCase):
             self.create(connector_types=["CCS2"])
         self.assertEqual(ctx.exception.code, "no_compatible_connector")
 
+    def test_requested_display_type_matches_and_alerts(self) -> None:
+        # Clients send display names ("CCS2"); connector labels resolve to lowercase keys.
+        self.current = row({"c1": "CHARGING", "c2": "CHARGING"}, labels={"c2": "Type 2"})
+        created = self.create(connector_types=["CCS2"])
+        self.assertEqual(created["connector_types"], ["CCS2"])
+        sender = watches.RecordingSender()
+        self.current = row({"c1": "CHARGING", "c2": "AVAILABLE"}, labels={"c2": "Type 2"})
+        self.assertEqual(self.run_pass(sender, 60)["alerted"], 0)
+        self.current = row({"c1": "AVAILABLE", "c2": "AVAILABLE"}, labels={"c2": "Type 2"})
+        self.assertEqual(self.run_pass(sender, 120)["alerted"], 1)
+        stored = watches.get_watch(created["id"])
+        self.assertEqual((stored["end_reason"], stored["alert"]["connector_id"]), ("alerted", "c1"))
+
     def test_per_device_limit_and_purge(self) -> None:
         self.current = row({"c1": "CHARGING"})
         ids = [self.create()["id"] for _ in range(watches.MAX_ACTIVE_PER_DEVICE)]
@@ -254,12 +272,11 @@ class WatchEndpointTests(unittest.TestCase):
         watches.configure(cls.tmp / "watches.db")
         cls.httpd = server.VoltaHTTPServer(("127.0.0.1", 0), server.Handler)
         cls.port = cls.httpd.server_address[1]
-        threading.Thread(target=cls.httpd.serve_forever, daemon=True).start()
+        cls.stop_server = staticmethod(_support.serve_in_thread(cls.httpd))
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.httpd.shutdown()
-        cls.httpd.server_close()
+        cls.stop_server()
         watches.configure(cls.original)
         shutil.rmtree(cls.tmp, ignore_errors=True)
 

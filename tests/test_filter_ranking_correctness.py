@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 import unittest
 from copy import deepcopy
@@ -35,6 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
 from scripts import source_transport as transport  # noqa: E402
+from tests import _support  # noqa: E402
 
 
 EMPTY_SOURCE = {"stations": [], "raw_count": 0, "cache": {}, "errors": []}
@@ -43,10 +45,8 @@ EMPTY_ELECTROMAPS = {"stations": [], "checked_ids": set(), "promoted_ids": set()
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class _FakeUrlResponse:
@@ -55,8 +55,8 @@ class _FakeUrlResponse:
     def __init__(self, payload: Dict[str, Any]) -> None:
         self._body = json.dumps(payload).encode("utf-8")
 
-    def read(self) -> bytes:
-        return self._body
+    def read(self, size: int = -1) -> bytes:
+        return self._body if size < 0 else self._body[:size]
 
     def __enter__(self) -> "_FakeUrlResponse":
         return self
@@ -423,24 +423,33 @@ class MapareveParallelPagesTests(unittest.TestCase):
     def _page_number(request: Any) -> int:
         return int(request.full_url.split("page=")[1].split("&")[0])
 
-    def test_all_pages_arrive_in_order_and_faster_than_sequential(self) -> None:
-        delay = 0.15
+    def test_all_pages_arrive_in_order_and_overlap(self) -> None:
+        changed = threading.Condition()
+        in_flight = 0
+        peak = 0
 
         def fake_urlopen(request: Any, timeout: float) -> _FakeUrlResponse:
-            time.sleep(delay)
-            return _FakeUrlResponse(self._page(self._page_number(request)))
+            nonlocal in_flight, peak
+            page = self._page_number(request)
+            with changed:
+                in_flight += 1
+                peak = max(peak, in_flight)
+                changed.notify_all()
+                # Page 1 runs alone by design. A later page waits briefly for a sibling
+                # to start, so overlap is observed without depending on the clock.
+                if page > 1:
+                    changed.wait_for(lambda: peak >= 2, timeout=1.0)
+                in_flight -= 1
+            return _FakeUrlResponse(self._page(page))
 
-        started = time.perf_counter()
         with patch("server.public_get_urlopen", side_effect=fake_urlopen):
             payload = server.fetch_mapareve(max_price=5.0)
-        elapsed = time.perf_counter() - started
 
         self.assertNotIn("partial", payload)
         self.assertEqual(payload["pagination"]["fetched_pages"], self.PAGES)
         self.assertNotIn("next_page", payload["pagination"])
         self.assertEqual(payload["raw_count"], self.PAGES)
-        # Sequential would be PAGES * delay (0.9s); page 1 then one or two parallel rounds.
-        self.assertLess(elapsed, (self.PAGES - 1) * delay)
+        self.assertGreaterEqual(peak, 2, "pages after page 1 were fetched one at a time")
 
     def test_failed_middle_page_keeps_only_the_contiguous_prefix(self) -> None:
         def fake_urlopen(request: Any, timeout: float) -> _FakeUrlResponse:

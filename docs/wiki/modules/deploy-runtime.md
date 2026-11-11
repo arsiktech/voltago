@@ -51,7 +51,7 @@ fly deploy
 ## Internal Structure
 
 The Dockerfile builds the SPA with Node, then copies `server.py`, the source-policy
-module and data, and built `frontend/dist` into a Python 3.12 slim runtime. The
+module and data, and built `frontend/dist` into a Python 3.14.8 slim (Debian trixie) runtime. The
 runtime uses no pip dependencies. `.dockerignore` excludes local QA,
 documentation, tests, caches, probes, and node modules.
 

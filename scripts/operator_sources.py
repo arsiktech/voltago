@@ -17,11 +17,13 @@ from typing import Any, Callable, Dict, List, Optional
 
 try:
     from . import global_sources as gs
-    from .ingest_sources import FetchArtifact, connector_ref, in_bbox, SPAIN_BBOX
+    from .ingest_sources import (FetchArtifact, connector_ref, in_bbox, SPAIN_BBOX, ETECNIC_GRANT_ID,
+                                 ZUNDER_ACTIVE_ICON, ZUNDER_GRANT_ID)
     from .spain_geography import point_in_spain
 except ImportError:
     import global_sources as gs
-    from ingest_sources import FetchArtifact, connector_ref, in_bbox, SPAIN_BBOX
+    from ingest_sources import (FetchArtifact, connector_ref, in_bbox, SPAIN_BBOX, ETECNIC_GRANT_ID,
+                                ZUNDER_ACTIVE_ICON, ZUNDER_GRANT_ID)
     from spain_geography import point_in_spain
 from station_truth import normalize_connector_label as connector_label_from_token
 
@@ -247,6 +249,8 @@ ZUNDER_MARKER_RE = re.compile(
 
 ZUNDER_LOCATION_ID_RE = re.compile(r"easycharger/location\.php\?id=(\d+)")
 
+ZUNDER_ICON_RE = re.compile(r"icon:\s*\{\s*url:\s*'([^']+)'")
+
 def parse_zunder_map_page(page: str, *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
     parsed: List[Dict[str, Any]] = []
     skipped: Dict[str, int] = defaultdict(int)
@@ -256,6 +260,10 @@ def parse_zunder_map_page(page: str, *, source_artifact: Optional[FetchArtifact]
         id_match = ZUNDER_LOCATION_ID_RE.search(block)
         if not match or not id_match:
             skipped["unparsed_marker"] += 1
+            continue
+        icon = ZUNDER_ICON_RE.search(block)
+        if not icon or ZUNDER_ACTIVE_ICON not in icon.group(1):
+            skipped["not_active"] += 1  # the legend's "En construcción" sites are not chargers yet
             continue
         lat, lon = fnum(match.group(1)), fnum(match.group(2))
         if not likely_in_spain(lat, lon):
@@ -531,6 +539,18 @@ for _metadata in SOURCES.values():
     _metadata.update(method="Public anonymous GET; directory snapshot", live_status=False,
                      license="Public directory; no open-data licence asserted", record_unit="source_location")
 
+# Collected only under the owner's `granted_reuse` record; removing it stops collection
+# here exactly as it does in ingest_sources.
+REUSE_GRANTS = {"etecnic": ETECNIC_GRANT_ID, "zunder": ZUNDER_GRANT_ID}
+
+
+def reuse_permitted(source_id: str) -> bool:
+    grant = REUSE_GRANTS.get(source_id)
+    if grant is None:
+        return True
+    return grant in {item.get("id") for item in gs.SOURCE_POLICY.get("granted_reuse", [])
+                     if item.get("status") == "permitted"}
+
 
 def add_record(records: list[dict], *, source: str, source_artifact: FetchArtifact | None = None,
                raw: dict | None = None, **fields: Any) -> None:
@@ -607,6 +627,8 @@ def run_source(source_id: str, cache_dir: Path, countries: set[str] | None, offl
               "license": metadata["license"], "record_unit": metadata["record_unit"], "live_status": False}
     if not report["scope"]:
         return dict(report, status="not_applicable")
+    if not reuse_permitted(source_id):
+        return dict(report, status="not_permitted", errors=["reuse_grant_missing"])
     try:
         fetched = gs.fetch_cached_file(metadata["url"], cache_dir, metadata["cache_name"],
                                        ttl_hours=24, max_bytes=64 * 1024 * 1024, offline=offline)

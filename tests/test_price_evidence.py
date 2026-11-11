@@ -9,11 +9,11 @@ import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-from urllib.parse import urlsplit, parse_qs
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'scripts'))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling fixture module below
 import ingest_sources as ing
 from scripts import price_evidence as p
 from scripts.enrich_prices import enrich_payload

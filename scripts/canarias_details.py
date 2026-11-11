@@ -581,8 +581,12 @@ def _parse_tariff(nodes: list[_Node], text: str, source_url: str, fetched_at: st
         fraction = _class_text(table, "elementor-price-table__fractional-part")
         currency = _class_text(table, "elementor-price-table__currency")
         period = _class_text(table, "elementor-price-table__period")
-        amount = _number(integer + ("." + fraction if fraction and fraction.isdigit() else ""))
+        # An unreadable fractional part leaves the price unknown; dropping it would turn 0,35* into 0.
+        unreadable_fraction = bool(fraction) and not fraction.isdigit()
+        amount = None if unreadable_fraction else _number(integer + ("." + fraction if fraction else ""))
         table_text = _text(table)
+        if unreadable_fraction:
+            conditions.append(table_text)
         features = _class_text(table, "elementor-price-table__features-list")
         if features:
             conditions.append(features)

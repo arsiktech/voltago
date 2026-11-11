@@ -851,7 +851,7 @@ struct StationDetailView: View {
     private func communitySummaryText(_ c: CommunitySummary) -> String {
         var parts: [String] = []
         if c.chargedCount > 0 { parts.append(String(localized: "\(c.chargedCount) charged")) }
-        if c.failedCount > 0 { parts.append(String(localized: "\(c.failedCount) couldn't")) }
+        if c.failedCount > 0 { parts.append(String(localized: "\(c.failedCount) couldn’t")) }
         if c.occupiedCount > 0 { parts.append(String(localized: "\(c.occupiedCount) found it busy")) }
         let head = parts.isEmpty ? String(localized: "Driver reports logged") : parts.joined(separator: " · ")
         if c.recentFailure == true {

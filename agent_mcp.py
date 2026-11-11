@@ -42,7 +42,6 @@ MODERN_VERSIONS = ("2026-07-28",)
 LEGACY_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 SUPPORTED_VERSIONS = MODERN_VERSIONS + LEGACY_VERSIONS
 # Streamable HTTP clients older than 2025-06-18 send no version header.
-LEGACY_HEADERLESS_VERSION = "2025-03-26"
 
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities"
@@ -693,23 +692,26 @@ def _listed_row(charger_id: str, backend: Any) -> Optional[Dict[str, Any]]:
             backend.attach_community_rows([row])
             backend._refresh_time_derived_fields([row])
         return row
+    # Only the main dataset is indexed: the seed file can change while `intel`
+    # stays the same object, so seed positions would go stale. Seeds are few; scan them.
     with _ID_INDEX_LOCK:
         if _ID_INDEX["pool"] is not intel:
-            index: Dict[str, Tuple[int, int]] = {}
-            for table, rows in enumerate((intel, seeds)):
-                for position, row in enumerate(rows):
-                    for key in [row.get("id")] + list(row.get("merged_ids") or []):
-                        if key:
-                            index.setdefault(str(key), (table, position))
+            index: Dict[str, int] = {}
+            for position, row in enumerate(intel):
+                for key in [row.get("id")] + list(row.get("merged_ids") or []):
+                    if key:
+                        index.setdefault(str(key), position)
             _ID_INDEX["pool"] = intel
             _ID_INDEX["index"] = index
-        hit = _ID_INDEX["index"].get(charger_id)
-    if hit is None:
-        return None
-    table, position = hit
-    row = deepcopy((intel, seeds)[table][position])
-    if table == 0:
-        row = backend._normalize_lead(row, "free/cheap intelligence DB")
+        position = _ID_INDEX["index"].get(charger_id)
+    if position is not None:
+        row = backend._normalize_lead(deepcopy(intel[position]), "free/cheap intelligence DB")
+    else:
+        row = next((deepcopy(seed) for seed in seeds
+                    if charger_id in [str(key) for key in [seed.get("id")] + list(seed.get("merged_ids") or []) if key]),
+                   None)
+        if row is None:
+            return None
     backend.apply_corroboration(row)
     backend.attach_community_rows([row])
     backend._refresh_time_derived_fields([row])

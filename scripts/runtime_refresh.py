@@ -172,7 +172,11 @@ def initialize(root: Path, state: Path) -> int:
         raise ValueError("runtime state must be outside the Git checkout")
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (state / "refresh.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print("another runtime refresh is active", file=sys.stderr)
+            return 75
         if (state / "current").exists() or (state / "current").is_symlink():
             raise RuntimeError("runtime data already initialized; refusing to rewind it")
         baseline = baseline_paths(root, state)
@@ -378,7 +382,6 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
                 raise RuntimeError("gated candidate changed before promotion")
             receipt["generated_at"] = payload.get("generated_at")
             receipt["records"] = payload["record_count"]
-            receipt["source_adapter_counts"] = payload.get("source_adapter_counts", {})
             receipt["stage"] = "publish"
             if not dry_run:
                 # Data, reports and any derived index switch together. Previous bundles remain intact

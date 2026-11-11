@@ -7,8 +7,12 @@ data engine, and SPA static file server.
 
 - Serve `frontend/dist` — the SPA is the only UI; refuse to start (loud error, non-zero
   exit) if it isn't built.
-- Expose `/api/chargers`, `/api/geocode`, `/api/health`, `/api/intel`,
-  `/api/sources`, and `/api/source-strategy`.
+- Expose the JSON API (`/api/chargers`, `/api/station`, `/api/charger-listing`,
+  `/api/free-registry`, `/api/location-sources`, `/api/geocode`, `/api/health`,
+  `/api/intel`, `/api/sources`, `/api/source-health`, `/api/source-strategy`,
+  `/api/community/*`, `/api/watches/*`, `/api/vehicles/*`), the MCP endpoint `/mcp`,
+  and the crawlable pages `/sitemap.xml`, `/cargadores*` and `/cargador/*`. See
+  [API](../api.md) for the route table.
 - Resolve request viewport and clamp overly broad bbox requests.
 - Cache live/overview/static responses enough to keep driving UX responsive.
 - Merge live stations with source-backed leads without losing provenance.
@@ -16,7 +20,7 @@ data engine, and SPA static file server.
 ## Key Files
 
 - [server.py](../../../server.py) - all backend runtime code.
-- [frontend/dist](../../../frontend/dist) - production SPA output; the server exits at
+- `frontend/dist` - production SPA output; the server exits at
   startup if it's missing (built via `npm --prefix frontend run build`).
 - [data/free_intelligence.json](../../../data/free_intelligence.json) - static
   source-backed leads loaded by the API.
@@ -46,7 +50,8 @@ rows, computes coverage, applies structured source-policy exclusions at every
 fresh/stale/cache boundary, and attaches source-policy metadata. Feníe is reported
 as homepage attribution/link-only and contributes no direct station evidence.
 
-`Handler.do_GET()` keeps route dispatch small and delegates the hot path to
+`Handler._route_get()` (called by `do_GET()`), `_route_post()` and `do_DELETE()`
+keep route dispatch small; GET delegates the hot path to
 `live_response()` or `overview_response_bytes()`. Static asset serving is kept in
 `serve_static()` and uses gzip memoization for large text assets.
 

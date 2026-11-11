@@ -46,7 +46,7 @@ function DeferredEvidence({ st, snapshot }: { st: Station; snapshot: string }) {
   const client = useQueryClient()
   const query = useQuery(stationDetailsQueryOptions(st.id, snapshot))
   const changed = query.error instanceof TransportError && query.error.status === 409
-  const waiting = query.isPending || query.isFetching
+  const waiting = query.isPending || (query.isFetching && query.isError)
   // A failed/paused refresh must not turn cached evidence into a fresh claim.
   if (query.isPaused || query.isError || waiting) {
     return <>

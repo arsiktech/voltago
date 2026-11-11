@@ -33,7 +33,7 @@ function validRate(rate: PriceEvidenceRate): boolean {
 }
 
 /** Structured annotations only. Raw text stays in the payload, never on the card. */
-export function evidenceRateText(item: PriceEvidenceItem): string {
+function evidenceRateText(item: PriceEvidenceItem): string {
   const rates = item.rates
   if (!Array.isArray(rates) || !rates.length || !rates.every(validRate)) return 'See source for prices'
   const allKwh = rates.every(rate => rate.kind === 'energy' && rate.unit === 'kWh')

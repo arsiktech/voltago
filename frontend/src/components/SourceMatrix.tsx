@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { getJSON, useGeocode } from '../lib/api'
+import { useSettledQuery } from '../hooks/useSettledQuery'
 import type { GeocodeResult } from '../types'
 import {
   DEFAULT_RADIUS_KM,
@@ -139,7 +140,7 @@ export default function SourceMatrix() {
   const [query, setQuery] = useState('')
   const [place, setPlace] = useState<GeocodeResult | null>(null)
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
-  const geocode = useGeocode(place ? '' : query)
+  const geocode = useGeocode(useSettledQuery(place ? '' : query).query)
   const area = place ? searchArea(place, radiusKm) : null
   const bbox = area?.bbox ?? null
   const choosePlace = (result: GeocodeResult) => {

@@ -60,7 +60,6 @@ from station_truth import (
     primary_source_for,
     repair_osm_connector_power,
     station_source_for,
-    source_candidates,
 )
 
 import agent_mcp
@@ -141,6 +140,9 @@ MAPAREVE_PRICE_QUERY_MAX = float(os.environ.get("VOLTA_MAPAREVE_PRICE_QUERY_MAX"
 # clean upstream data. 40 keeps the anti-runaway cap well above the real need.
 MAPAREVE_MAX_PAGES = int(os.environ.get("VOLTA_MAPAREVE_MAX_PAGES", "40"))
 MAPAREVE_PER_PAGE = 20
+# A page holds at most 20 OCPI locations; 8 MB leaves a wide margin over any real page
+# while a runaway body fails the page instead of filling memory.
+MAPAREVE_PAGE_MAX_BYTES = 8_000_000
 # Pages fetched at once after page 1 reports total_count. Bounded so one refresh never
 # floods the upstream; the per-process POST budget in source_transport still applies.
 # Two, not four: from 2026-10-21 MapaREVE's bot protection refused the production host.
@@ -395,7 +397,6 @@ GAIA_HEADERS = {
 }
 
 TESLA_OK_STANDARDS = {"IEC_62196_T2", "IEC_62196_T2_COMBO", "TESLA_R"}
-FAST_STANDARDS = {"IEC_62196_T2_COMBO", "CHADEMO", "TESLA_R"}
 TESLA_OK_LABELS = {"Type 2", "CCS2", "Tesla CCS", "Tesla"}
 ACCESS_LIMIT_RE = re.compile(r"private|staff|visitor|customer|notice|required|membership|members", re.I)
 GAIA_ALLOWED_HOSTS = {"partner-next.gaiacharge.com", "partner.gaiacharge.com"}
@@ -593,12 +594,6 @@ def freshness_timestamp(item: Dict[str, Any]) -> Any:
             continue
         candidates.append((parsed, value))
     return min(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
-
-
-def text_key(value: Any) -> str:
-    text = unicodedata.normalize("NFKD", str(value or ""))
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
 def compact_text(value: Any) -> str:
@@ -1358,8 +1353,7 @@ def day_allowed(days: Any, now: datetime) -> bool:
         return True
     normalized = {str(d).strip().upper()[:3] for d in day_values if str(d).strip()}
     today = now.strftime("%a").upper()[:3]
-    aliases = {"TUE": "TUE", "THU": "THU", "MON": "MON", "WED": "WED", "FRI": "FRI", "SAT": "SAT", "SUN": "SUN"}
-    return aliases.get(today, today) in normalized
+    return today in normalized
 
 
 def pricing_window_is_current(window: Dict[str, Any], now: Optional[datetime] = None) -> bool:
@@ -2305,6 +2299,7 @@ def merge_public_live_stations(stations: List[Dict[str, Any]], incoming: List[Di
                           and previous.get("reliability") in {"official-live", "official-live-public-page", "official-live-status"})
         if previous_fresh and not (row.get("live_status") or {}).get("valid"):
             previous["sources"] = source_rows_union(previous, row)
+            previous["source_count"] = len(previous["sources"])
             continue
         combined = deepcopy(previous)
         previous_verification = previous.get("live_claim_verification")
@@ -2944,7 +2939,7 @@ def transform_location(location: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 "human_tariffs": human[:4],
                 "status": status,
                 "tesla_ok": std in TESLA_OK_STANDARDS,
-                "fast": (std in FAST_STANDARDS and power_kw >= 43) or power_kw >= 43,
+                "fast": power_kw >= 43,
             }
             connectors.append(connector_record)
 
@@ -3065,8 +3060,8 @@ def station_passes_route_filters(st: Dict[str, Any], *, max_price: float, fast_o
     Applied to the MapaREVE-origin `stations` list in live_response so reused
     stale/broader-fallback rows are re-filtered fail-closed, not just bbox
     (server.py engine honesty rule: "stale broader fallback is re-filtered
-    fail-closed"). A no-op for a fresh fetch, since fetch_mapareve already only
-    returns free/cheap rows plus rows within the request's own max_price.
+    fail-closed"). A fresh fetch can also lose rows here: fetch_mapareve keeps every
+    row priced at or below 0.25, so a max_price below 0.25 drops the dearer ones.
     """
     if fast_only and not st.get("fast"):
         return False
@@ -3361,6 +3356,10 @@ def _mapareve_block_record(refused: Optional[bool], probe: bool) -> None:
             return
         if refused:
             pause = _MAPAREVE_BLOCK["pause"]
+            if pause and not probe:
+                # A page admitted before the pause began is refused in the same episode;
+                # only a refused probe doubles the pause.
+                return
             pause = min(pause * 2, MAPAREVE_BLOCK_PAUSE_MAX_SECONDS) if pause else MAPAREVE_BLOCK_PAUSE_SECONDS
             _MAPAREVE_BLOCK.update(pause=pause, until=time.time() + pause)
         elif probe:
@@ -3406,7 +3405,10 @@ def _request_mapareve_page(page: int, body: bytes) -> Dict[str, Any]:
     # MapaREVE's public map query is a read-only POST data query: allowed only
     # for this exact host/path/body shape and never redirected (see transport).
     with public_get_urlopen(req, timeout=MAPAREVE_PAGE_TIMEOUT_SECONDS) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+        body = resp.read(MAPAREVE_PAGE_MAX_BYTES + 1)
+    if len(body) > MAPAREVE_PAGE_MAX_BYTES:
+        raise ValueError(f"MapaREVE page {page} exceeded {MAPAREVE_PAGE_MAX_BYTES} bytes")
+    return json.loads(body.decode("utf-8"))
 
 
 def _fetch_mapareve_pages_parallel(pages: List[int], body: bytes, budget_left: float) -> List[Tuple[int, Optional[Dict[str, Any]], Optional[str]]]:
@@ -3780,6 +3782,12 @@ def _filter_by_coords(records: List[Dict[str, Any]], coords: Coords, bbox: Optio
 # caught mid-update -- same convention as CACHE["payload"] elsewhere in this file.
 _INTEL_SCOPED: Dict[Any, Any] = {}
 _INTEL_SCOPE_THRESHOLD = 5000
+
+
+def _intel_bundle_identity(raw: Dict[str, Any]) -> Tuple[Any, ...]:
+    """Cache identity of one loaded bundle. id() alone can be reused by a reloaded
+    bundle, so the key also carries the bundle's own generation and record fingerprint."""
+    return (id(raw), raw.get("generated_at"), raw.get("recordset_sha256"), len(raw.get("records") or []))
 _INTEL_ENRICHED: Dict[str, Any] = {"key": None, "intel": None, "intel_coords": None, "seeds": None, "seeds_coords": None}
 
 
@@ -3849,7 +3857,7 @@ def _scoped_intelligence_pool(bbox: Optional[Dict[str, float]]) -> Tuple[List[Di
     if indexed and bbox is None:
         raise ValueError("Indexed intelligence requires a viewport; use paginated /api/intel for catalogue inspection")
     seed_path = DATA / "seed_leads.json"
-    key = (id(raw), tuple(sorted(bbox.items())), seed_path.stat().st_mtime_ns if seed_path.exists() else None)
+    key = (_intel_bundle_identity(raw), tuple(sorted(bbox.items())), seed_path.stat().st_mtime_ns if seed_path.exists() else None)
     with _CACHE_LOCKS["intel"]:
         cached = _INTEL_SCOPED.get(key)
     if cached is not None:
@@ -4273,16 +4281,14 @@ def _town_fallback(q: str) -> List[Dict[str, Any]]:
 
     The driver still gets chargers in the place they named, not an error. The label keeps
     the miss visible, so nobody reads the town centre as the destination itself.
+    An upstream failure raises, so the caller does not cache it as an answer.
     """
     wanted, _, town = q.rpartition(",")
     wanted, town = wanted.strip(), town.strip()
     if not wanted or len(town) < 2:
         return []
     time.sleep(_NOMINATIM_MIN_INTERVAL_SECONDS)
-    try:
-        raw = _nominatim_raw(town)
-    except Exception:
-        return []
+    raw = _nominatim_raw(town)
     for result in raw:
         if result.get("addresstype") not in _TOWN_ADDRESS_TYPES:
             continue
@@ -4349,7 +4355,10 @@ def geocode_search(query: str, limit: int = 5) -> List[Dict[str, Any]]:
                                 safe_float(r.get("place_rank")) or 0), reverse=True)
     results = _geocode_rows(raw, q)
     if not results and not airport_query:
-        results = _town_fallback(q)
+        try:
+            results = _town_fallback(q)
+        except Exception:
+            return cached["results"][:limit] if cached else []
     with _CACHE_LOCKS["geocode"]:
         GEOCODE_CACHE[key] = {"ts": now, "results": results}
         if len(GEOCODE_CACHE) > 500:
@@ -4865,7 +4874,9 @@ def directory_response(params: Dict[str, List[str]], bbox: Dict[str, float], vie
                        clamped: bool, max_price: float, fast_only: bool,
                        include_leads: bool, available_only: bool) -> Tuple[int, Dict[str, Any]]:
     scoped = dict(params, bbox=[",".join(str(bbox[k]) for k in ("latitude_sw", "longitude_sw", "latitude_ne", "longitude_ne"))])
-    _, payload = overview_response(scoped, max_price, fast_only)
+    status, payload = overview_response(scoped, max_price, fast_only)
+    if status != 200:
+        return status, payload
     leads = payload["leads"] if include_leads and not available_only else []
     lat, lon = safe_float((params.get("lat") or [None])[0]), safe_float((params.get("lon") or [None])[0])
     if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
@@ -5179,12 +5190,6 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         leads = [l for l in assembled_lead_candidates if in_bbox(l.get("lat"), l.get("lon"), bbox)]
         gaia_candidates, excluded_rows = partition_records(gaia_payload.get("stations") or [], SOURCE_POLICY_EXCLUSIONS)
         dropped["source_policy_excluded"] += len(excluded_rows)
-        if gaia_cache_info.get("stale"):
-            # A stale Gaia cache is useful evidence but never fresh authority. Mark it
-            # before merging so enrichment applies the same route-ready guard used for
-            # stale MapaREVE rows.
-            for station in gaia_candidates:
-                station["_volta_stale_live_cache"] = True
         gaia_stations = [
             st for st in gaia_candidates
             if in_bbox(st.get("lat"), st.get("lon"), bbox)
@@ -5202,9 +5207,10 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         before_viewport_filter = len(stations)
         stations = [st for st in stations if in_bbox(st.get("lat"), st.get("lon"), bbox)]
         dropped["out_of_view_live"] += max(0, before_viewport_filter - len(stations))
-        # Reapply fast_only/max_price too, unconditionally (a no-op for a fresh fetch;
-        # closes the stale/broader-fallback reuse gap where reused MapaREVE rows were
-        # never re-checked against the current request's route filters).
+        # Reapply fast_only/max_price too, unconditionally. On a fresh fetch this drops
+        # the cheap rows priced above a max_price below 0.25; it also closes the
+        # stale/broader-fallback reuse gap where reused MapaREVE rows were never
+        # re-checked against the current request's route filters.
         before_route_filter = len(stations)
         stations = [st for st in stations if station_passes_route_filters(st, max_price=max_price, fast_only=fast_only)]
         dropped["route_filtered"] += max(0, before_route_filter - len(stations))
@@ -5603,12 +5609,6 @@ def source_health_country(item: Dict[str, Any]) -> str:
     return "UNKNOWN"
 
 
-def source_health_outside_spain(item: Dict[str, Any]) -> bool:
-    lat = safe_float(item.get("lat"))
-    lon = safe_float(item.get("lon"))
-    return lat is not None and lon is not None and not in_bbox(lat, lon, SPAIN_BBOX)
-
-
 def source_health_has_exact_directory_location(item: Dict[str, Any]) -> bool:
     if source_health_tier(item) != "directory":
         return False
@@ -5740,9 +5740,10 @@ def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = F
         if not isinstance(summary, dict):
             raise ValueError("Intelligence index requires --health-summary for source health")
         return deepcopy(summary)
-    key = (id(intel), seeds.stat().st_mtime_ns if seeds.exists() else None)
-    if _SOURCE_INVENTORY.get("key") == key:
-        return deepcopy(_SOURCE_INVENTORY["value"])
+    key = (_intel_bundle_identity(intel), seeds.stat().st_mtime_ns if seeds.exists() else None)
+    with _CACHE_LOCKS["intel"]:
+        if _SOURCE_INVENTORY.get("key") == key:
+            return deepcopy(_SOURCE_INVENTORY["value"])
     leads = _health_leads(intel)
     by_tier: Dict[str, Dict[str, int]] = {}
     by_reliability: Dict[str, int] = {}
@@ -5811,7 +5812,8 @@ def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = F
         "coordinate_issues": coordinate_issues,
         "source_link_issues": source_link_issues,
     }
-    _SOURCE_INVENTORY.update({"key": key, "value": result})
+    with _CACHE_LOCKS["intel"]:
+        _SOURCE_INVENTORY.update({"key": key, "value": result})
     return deepcopy(result)
 
 
@@ -6135,14 +6137,17 @@ def source_catalog_payload() -> Dict[str, Any]:
     }
 
 
-# Minimize sensitive searches, station positions and vehicle OAuth codes/state in
-# request logs. Keep paths and the client IP (logged separately by address_string),
-# and redact before formatting details can escape through a request-line log.
-_LOG_QUERY_STRIP_RE = re.compile(r"(/api/(?:geocode|chargers|station|vehicles(?:/[^?\s]*)?))\?\S*")
+# Minimize sensitive searches, station positions, saved-charger IDs and vehicle OAuth
+# codes/state in request logs: every /api/ query string is dropped, and the watch ID
+# (the watch's only capability) is replaced. Keep paths and the client IP (logged
+# separately by address_string), and redact before formatting details can escape
+# through a request-line log.
+_LOG_QUERY_STRIP_RE = re.compile(r"(/api/[^?\s]*)\?\S*")
+_LOG_WATCH_ID_RE = re.compile(r"(/api/watches/)(?!config(?:[/\s\"]|$))[^/?\s\"]+")
 
 
 def _sanitize_log_line(message: str) -> str:
-    return _LOG_QUERY_STRIP_RE.sub(r"\1", message)
+    return _LOG_WATCH_ID_RE.sub(r"\1<id>", _LOG_QUERY_STRIP_RE.sub(r"\1", message))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -6429,8 +6434,9 @@ class Handler(BaseHTTPRequestHandler):
             # "assembled" is reduced to a small scalar summary (ts/key/counts) here; every
             # OTHER cache dict is unaffected (still stripped of "payload" only, as before)
             # -- never dump station/lead arrays into health regardless of cache shape.
-            cache_snapshot = {k: v for k, v in CACHE.items() if k not in ("payload", "assembled", "recent")}
-            assembled = CACHE.get("assembled")
+            with _CACHE_LOCKS["live"]:
+                cache_snapshot = {k: v for k, v in CACHE.items() if k not in ("payload", "assembled", "recent")}
+                assembled = CACHE.get("assembled")
             if assembled:
                 cache_snapshot["assembled"] = {
                     "ts": assembled.get("ts"),
@@ -6442,12 +6448,20 @@ class Handler(BaseHTTPRequestHandler):
                 }
             return self.send_json(200, {"ok": True, "time": now_iso(), "cache": cache_snapshot})
         if path == "/api/intel":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
             return self.send_json(200, intelligence_response(params))
         if path == "/api/sources":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
             return self.send_json(200, source_catalog_payload())
         if path == "/api/source-health":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
             return self.send_json(200, source_health_summary())
         if path == "/api/source-strategy":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
             return self.send_json(200, requested_source_strategy())
         if path == "/sitemap.xml" or path == "/cargadores" or path.startswith(("/cargadores/", "/cargador/")):
             return self.send_crawlable_page(path)

@@ -133,7 +133,7 @@ describe('map popup prices', () => {
     expect(hasVerifiedPrice(station)).toBe(false)
     expect(mapPinPreview(station)).toBeNull()
     expect(isRouteReady(station)).toBe(false)
-    expect(passesFilters(station, { ...DEFAULT_FILTERS, maxPrice: 0.25 }, '')).toBe(false)
+    expect(passesFilters(station, { ...DEFAULT_FILTERS, maxPrice: 0.25 })).toBe(false)
   })
 
   it('retains conditional source text when there is no simple numeric price', () => {

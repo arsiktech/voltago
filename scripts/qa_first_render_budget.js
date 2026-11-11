@@ -123,7 +123,7 @@ async function main() {
   if (!requestsAtFirstRender.some(isCompactOverviewUrl)) {
     failures.push("first-use overview did not request compact=true; ingestion-only bulk would delay parsing");
   }
-  if (state.modeLabel !== "Explore Spain") {
+  if (state.modeLabel !== "Explore chargers") {
     failures.push(`mode label did not explain data state: "${state.modeLabel}"`);
   }
   if (!/Saved chargers · not live|Refreshing known chargers/i.test(state.liveStatus)) {

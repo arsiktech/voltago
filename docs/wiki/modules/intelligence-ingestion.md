@@ -8,7 +8,8 @@ path; it produces leads with evidence, confidence, and provenance.
 
 - Fetch and cache public/open source data.
 - Normalize price, connector, city/province, parking, access, and source fields.
-- Add only free, cheap, or useful price-unknown charger leads.
+- Add every located charger lead; free first and cheap next is a ranking and
+  labelling rule, not an inclusion rule (paid rows keep their published price).
 - Dedupe exact and cross-source duplicates conservatively.
 - Preserve conflicting or mixed source claims instead of silently flattening
   them.
@@ -32,7 +33,7 @@ path; it produces leads with evidence, confidence, and provenance.
   shared fail-closed source-origin policy.
 - [data/free_intelligence.json](../../../data/free_intelligence.json) - current
   built database.
-- [data/cache](../../../data/cache) - local ingestion HTTP cache.
+- `data/cache` - local ingestion HTTP cache (not tracked).
 
 ## Public API
 
@@ -40,10 +41,14 @@ path; it produces leads with evidence, confidence, and provenance.
 - `add_record(records, ...) -> None`
 - `dedupe(records) -> list`
 - `merge_cross_source_duplicates(records, radius_km=0.04) -> (records, count)`
-- Active source functions: `source_valencia_municipal`, `source_lidl`,
-  `source_osm`, `source_openchargemap`, `source_barcelona_endolla`,
-  `source_madrid_official`, `source_zaragoza_official`, and
-  `source_moraleja_green` (including narrow Red MOVEM enrichment on permitted OSM rows).
+- Active source functions are the entries of `ACTIVE_SOURCE_ADAPTERS` in
+  `scripts/ingest_sources.py`, in run order: `source_valencia_municipal`,
+  `source_lidl`, `source_osm`, `source_openchargemap`, `source_barcelona_endolla`,
+  `source_madrid_official`, `source_zaragoza_official`, `source_dgt_nap`,
+  `source_catalonia_icaen`, `source_navarra_idena`, `source_castilla_leon`,
+  `source_etecnic`, `source_zunder`, `source_fenie`, `source_moraleja_green`,
+  `source_canarias_tecarga`, and `source_mapareve_public` (including narrow
+  Red MOVEM enrichment on permitted OSM rows).
 - Dormant/permission-gated historical functions include `source_consum`,
   `source_electromaps_mapi`, `source_chargemap_mappy`,
   `source_electromaps_probe`, and `source_electromaps_photo_second_pass`; none are in
@@ -53,8 +58,10 @@ path; it produces leads with evidence, confidence, and provenance.
 
 The builder appends normalized records, runs exact coordinate dedupe, then runs
 cross-source duplicate merging with guardrails. Same-source nearby rows are not
-automatically collapsed. Different-source rows are not merged when price claims
-disagree by more than EUR0.02/kWh. The chosen base row keeps higher reliability
+automatically collapsed. Different-source rows whose price claims disagree by more
+than EUR0.02/kWh merge only on a same-site identity match within the radius; the
+merged row then shows the highest published price and a `claim_conflict` listing
+every price. The chosen base row keeps higher reliability
 identity while source lists, connector labels, price, parking, and claim-conflict
 metadata are merged conservatively. The final payload is partitioned against the
 structured source-origin policy; a rebuilt candidate containing an excluded row

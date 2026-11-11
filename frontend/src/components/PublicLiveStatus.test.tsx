@@ -48,7 +48,7 @@ describe('public live status disclosure', () => {
     expect(markup).toContain('Spirii; PowerGo')
     expect(markup).not.toContain('Charging tariff')
     expect(markup).not.toContain('€/kWh')
-    expect(passesFilters(station, { ...DEFAULT_FILTERS, maxPrice: 0.25 }, '')).toBe(false)
+    expect(passesFilters(station, { ...DEFAULT_FILTERS, maxPrice: 0.25 })).toBe(false)
   })
 
   it('does not promote stale or failed source rows with retained AVAILABLE counters', () => {

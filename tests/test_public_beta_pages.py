@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import re
 import tempfile
-import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -19,6 +18,11 @@ sys.path.insert(0, str(ROOT))
 from http.server import ThreadingHTTPServer
 
 import server
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 PUBLIC = ROOT / "frontend" / "public"
@@ -99,8 +103,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
 
             with mock.patch.object(server, "WEB_DIST", root):
                 httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
-                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-                thread.start()
+                stop_server = _support.serve_in_thread(httpd)
                 try:
                     base = f"http://127.0.0.1:{httpd.server_port}"
                     for route in ("privacy", "terms", "support"):
@@ -109,9 +112,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
                             self.assertEqual(response.headers.get_content_type(), "text/html")
                             self.assertEqual(response.read().decode("utf-8"), f"PAGE {route}")
                 finally:
-                    httpd.shutdown()
-                    httpd.server_close()
-                    thread.join(timeout=3)
+                    stop_server()
 
     def test_about_and_pricing_are_real_404s_and_matrix_stays_the_app(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -123,8 +124,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
 
             with mock.patch.object(server, "WEB_DIST", root):
                 httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
-                thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-                thread.start()
+                stop_server = _support.serve_in_thread(httpd)
                 try:
                     base = f"http://127.0.0.1:{httpd.server_port}"
 
@@ -157,9 +157,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
                     self.assertEqual(status, 200)
                     self.assertIn("SPA SHELL", home)
                 finally:
-                    httpd.shutdown()
-                    httpd.server_close()
-                    thread.join(timeout=3)
+                    stop_server()
 
 
 if __name__ == "__main__":

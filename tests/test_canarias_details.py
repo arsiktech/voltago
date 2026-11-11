@@ -63,6 +63,19 @@ class CanariasDetailTests(unittest.TestCase):
         self.assertIn("Gratis 1ªhora", tariff["conditions"])
         self.assertEqual([c["type"] for c in tariff["components"]], ["FREE_PERIOD", "TIME"])
 
+    def test_unparsable_price_table_fraction_is_unknown_never_zero(self):
+        table = ('<div class="elementor-price-table"><h3 class="elementor-price-table__subheading">Tarifa</h3>'
+                 '<span class="elementor-price-table__currency">€</span>'
+                 '<span class="elementor-price-table__integer-part">0</span>'
+                 '<span class="elementor-price-table__fractional-part">35*</span>'
+                 '<span class="elementor-price-table__period">/kWh</span></div>')
+        tariff = parse_canarias_detail(page(tariff=table), URL)["tariff"]
+        self.assertEqual(tariff["components"], [])
+        self.assertIsNone(tariff["energy_eur_per_kwh"])
+        self.assertFalse(tariff["unconditional_free"])
+        self.assertFalse(tariff["usable_as_simple_energy_price"])
+        self.assertTrue(any("35*" in condition for condition in tariff["conditions"]), tariff["conditions"])
+
     def test_actual_unpriced_page_keeps_hardware_contact_and_source_image(self):
         data = parse_canarias_detail(fixture("p00275"), "https://canariasterecarga.com/es/p00275/")
         self.assertEqual(data["port_count"], 10)

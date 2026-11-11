@@ -84,6 +84,45 @@ console.log(JSON.stringify([
         self.assertIn("if (isCacheableShellNavigation(request, response) && cache)", source)
         self.assertNotIn("if (response.ok && cache) {\n      const navigationKey", source)
 
+    def test_only_spa_shell_navigations_overwrite_the_offline_shell_entry(self):
+        """Legal and coverage pages are HTML too; caching them under '/' replaced the app offline."""
+        script = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const origin = 'https://volta.test';
+const writes = [];
+const cache = { match: async () => undefined, put: async (key, response) => writes.push([key.url, response.page]) };
+const scope = {
+  URL,
+  Request: class { constructor(url, init) { this.url = url; this.method = (init && init.method) || 'GET'; } },
+  self: { location: { origin }, addEventListener() {} },
+  caches: { open: async () => cache },
+  fetch: async (request) => ({
+    ok: true,
+    page: new URL(request.url).pathname,
+    headers: { get: () => 'text/html; charset=utf-8' },
+    clone() { return this; },
+  }),
+};
+vm.createContext(scope);
+vm.runInContext(fs.readFileSync('frontend/public/sw.js', 'utf8') + '\nthis.navigate = navigationResponse;', scope);
+(async () => {
+  for (const path of ['/privacy/', '/terms/', '/support/', '/coverage/', '/cargadores', '/matrix', '/matrix/', '/index.html', '/?q=valencia', '/']) {
+    await scope.navigate({ url: origin + path, mode: 'navigate', method: 'GET' });
+  }
+  console.log(JSON.stringify(writes));
+})().catch((error) => { console.error(error); process.exitCode = 1; });
+"""
+        result = subprocess.run(['node', '-e', script], cwd=ROOT, capture_output=True,
+                                text=True, check=True, timeout=10)
+        self.assertEqual(json.loads(result.stdout), [
+            ['/', '/matrix'],
+            ['/', '/matrix/'],
+            ['/', '/index.html'],
+            ['/', '/'],
+            ['/', '/'],
+        ])
+
     def test_first_online_visit_precaches_the_complete_build_and_default_overview(self):
         vite = (FRONTEND / "vite.config.ts").read_text(encoding="utf-8")
         worker = (FRONTEND / "public" / "sw.js").read_text(encoding="utf-8")

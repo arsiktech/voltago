@@ -40,6 +40,7 @@ JS_FILES = [
     "scripts/qa_focus_walk.js",
     "scripts/qa_geolocation_distance.js",
     "scripts/qa_near_home_first_use.js",
+    "scripts/qa_price_slider.js",
     "scripts/qa_ax_tree_contract.js",
     "scripts/qa_screen_reader_contract.js",
     "scripts/qa_source_detail_transition_a11y.js",

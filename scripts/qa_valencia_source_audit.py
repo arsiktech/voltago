@@ -84,7 +84,6 @@ def primary_source(row: dict[str, Any]) -> dict[str, Any]:
 
 def source_kind(name: str, url: str | None) -> str:
     host = hostname(url)
-    lower_name = (name or "").lower()
     lower_url = (url or "").lower()
     if "gaiacharge.com" in host and "/start-session/" in lower_url:
         return "start_page"
@@ -183,10 +182,6 @@ def classify_row(row: dict[str, Any]) -> dict[str, Any]:
         "evidence_url_count": len(urls),
         "issues": issues,
     }
-
-
-def sample(rows: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
-    return rows[:limit]
 
 
 def audit_records(path: Path, bbox: dict[str, float]) -> dict:

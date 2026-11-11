@@ -1,9 +1,15 @@
 """Listing identity, safe fallbacks, and the compact client handoff contract."""
 import unittest
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
 import server
 from google_maps import attach_google_maps_navigation, google_listing_url
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class GoogleMapsTests(unittest.TestCase):
@@ -49,6 +55,16 @@ class GoogleMapsTests(unittest.TestCase):
         other = self.station(source_url="https://canariasterecarga.com/es/p00262")
         attach_google_maps_navigation(other)
         self.assertNotIn("google_listing", other["navigation"])
+
+    def test_curated_entry_without_source_url_never_matches_missing_source_url(self):
+        entry = {"station_id": "curated-only-by-id", "url": "https://maps.app.goo.gl/CuratedByIdOnly"}
+        with patch("google_maps._CURATED_LINKS", [entry]):
+            other = self.station(id="some-other-station")
+            attach_google_maps_navigation(other)
+            self.assertNotIn("google_listing", other["navigation"])
+            own = self.station(id="curated-only-by-id")
+            attach_google_maps_navigation(own)
+            self.assertEqual(own["navigation"]["google_listing"], entry["url"])
 
     def test_identified_google_url_formats(self):
         for url in (

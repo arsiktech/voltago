@@ -273,7 +273,7 @@ python3 scripts/qa_regression_suite.py \
   --include-external
 ```
 
-Expected: all 30 checks run and pass. If browser or external checks are skipped, record
+Expected: every check that `--list --include-external` prints runs and passes. If browser or external checks are skipped, record
 the skip explicitly; do not call that a full green suite.
 
 Run the native tests on iOS 27, serially:
@@ -399,7 +399,7 @@ plutil -extract UISupportedInterfaceOrientations json -o - "$APP/Info.plist"
 plutil -p "$APP/Info.plist" | rg 'NSAppTransportSecurity|NSAllowsArbitraryLoads|NSLocalNetworkUsageDescription'
 find "$APP" -path '*.lproj/InfoPlist.strings' -print -exec plutil -p {} \;
 find "$APP" -name '*.storekit' -o -name '*UITest*' -o -name '*TestHarness*'
-strings "$APP/Volta" | rg 'VoltaUITest|VoltaPaywallDebugState|127\.0\.0\.1|100\.84\.44\.96|NSAllowsArbitraryLoads'
+strings "$APP/Volta" | rg 'VoltaUITest|VoltaPaywallDebugState|127\.0\.0\.1|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]+\.[0-9]+|NSAllowsArbitraryLoads'
 
 [ "$(plutil -extract CFBundleShortVersionString raw "$APP/Info.plist")" = "$RELEASE_VERSION" ]
 [ "$(plutil -extract CFBundleVersion raw "$APP/Info.plist")" = "$RELEASE_BUILD" ]

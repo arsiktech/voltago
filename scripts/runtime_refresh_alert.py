@@ -118,6 +118,8 @@ def check(state_dir: Path, target: str, hermes: str, *, service_result: str | No
             result = subprocess.run([hermes, "send", "--to", target, "--json", "\n\n".join(parts)],
                                     capture_output=True, text=True, timeout=45, check=False)
             output = json.loads(result.stdout)
+            if not isinstance(output, dict):
+                raise ValueError("notifier output is not a JSON object")
             delivered = result.returncode == 0 and output.get("success") is True
             delivery = "confirmed" if delivered else "unconfirmed"
             message_id = output.get("message_id")

@@ -13,6 +13,13 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import server  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
+
 SPEC = importlib.util.spec_from_file_location("qa_field_test_packet", ROOT / "scripts" / "qa_field_test_packet.py")
 qa_field_test_packet = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
@@ -756,6 +763,30 @@ _No live route-ready candidate is confirmed right now. Use the backup section on
         self.assertIsNone(payload["current_state"]["deployed_recordset_sha256"])
         self.assertEqual(payload["current_state_error"], "current deployment does not expose recordset_sha256")
         self.assertFalse(any("ValueError" in failure for failure in payload["failures"]))
+
+    def test_non_json_deployment_response_is_reported_as_unavailable(self):
+        records = [{"id": "current", "price_min": 0.0}]
+        canonical_sha = qa_field_test_packet.recordset_sha256(records)
+        packet_text = qa_field_test_packet.render_packet(
+            "http://local", {"stations": [], "leads": []},
+            {"stations": [], "leads": []}, [], [], [], {},
+            {"expected_recordset_sha256": canonical_sha,
+             "deployed_recordset_sha256": canonical_sha, "match": True},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            packet = pathlib.Path(tmp) / "packet.md"
+            canonical = pathlib.Path(tmp) / "canonical.json"
+            packet.write_text(packet_text, encoding="utf-8")
+            canonical.write_text(json.dumps({"records": records}), encoding="utf-8")
+            output = io.StringIO()
+            with mock.patch.object(qa_field_packet_freshness, "current_state",
+                                   side_effect=json.JSONDecodeError("Expecting value", "<html>", 0)), \
+                 contextlib.redirect_stdout(output):
+                code = qa_field_packet_freshness.main(["--packet", str(packet), "--canonical", str(canonical)])
+        report = json.loads(output.getvalue())
+        self.assertEqual(code, 1)
+        self.assertEqual(report["current_state_error"], "current deployment state is unavailable")
+        self.assertEqual(report["failures"], ["current deployment state is unavailable"])
 
     def test_freshness_receipt_paths_survive_checkout_relocation(self):
         records = [{"id": "current", "price_min": 0.0}]

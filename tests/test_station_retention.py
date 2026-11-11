@@ -20,6 +20,12 @@ import agent_mcp  # noqa: E402
 from station_identity import preserve_record_ids  # noqa: E402
 from station_retention import (  # noqa: E402
     GRACE_DAYS, MARKER, RETAINED_KEY, RETIRED_KEY, apply_retention, identity_baseline, per_run_cap, retained_cap)
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 SOURCE = "Etecnic public charger map"
 T0 = datetime(2026, 6, 1, 12, tzinfo=timezone.utc)

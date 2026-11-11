@@ -148,12 +148,12 @@ describe('price evidence boundaries', () => {
     expect(hasVerifiedPrice(onlyEvidence)).toBe(false)
     expect(isRouteReady(onlyEvidence)).toBe(false)
     expect(decisionLevel(onlyEvidence)).toBe(decisionLevel(station()))
-    expect(passesFilters(onlyEvidence, { ...DEFAULT_FILTERS, maxPrice: 0 }, '')).toBe(false)
-    expect(passesFilters(onlyEvidence, { ...DEFAULT_FILTERS, maxPrice: 0.5 }, '')).toBe(false)
+    expect(passesFilters(onlyEvidence, { ...DEFAULT_FILTERS, maxPrice: 0 })).toBe(false)
+    expect(passesFilters(onlyEvidence, { ...DEFAULT_FILTERS, maxPrice: 0.5 })).toBe(false)
     expect(chargingEstimate(vehicle, 80, onlyEvidence, now).cost).toBeNull()
     const verified = { ...onlyEvidence, price_min: 0.37, verification: { price_verified: true } }
     expect(priceText(verified)).toBe('€0.37')
-    expect(passesFilters(verified, { ...DEFAULT_FILTERS, maxPrice: 0.25 }, '')).toBe(false)
+    expect(passesFilters(verified, { ...DEFAULT_FILTERS, maxPrice: 0.25 })).toBe(false)
     expect(chargingEstimate(vehicle, 80, verified, now).cost).toBeCloseTo(5.55)
   })
 
@@ -192,6 +192,19 @@ describe('price evidence boundaries', () => {
     client.setQueryData(['station-details', summary.id, summary.detail_snapshot], station())
     const loaded = render()
     labels.forEach(label => expect(loaded).toContain(label))
+    expect(loaded).not.toContain('Loading source details…')
+    client.clear()
+  })
+
+  it('keeps loaded details on screen while a background refetch runs', () => {
+    const client = new QueryClient()
+    const summary = station({ detail_snapshot: 'fixture-snapshot', price_evidence: evidence })
+    const key = ['station-details', summary.id, summary.detail_snapshot]
+    client.setQueryData(key, station({ connectors: [{ connector_id: 'P7', type: 'CCS2', power_kw: 50 }] }))
+    client.getQueryCache().find({ queryKey: key })?.setState({ fetchStatus: 'fetching' })
+    const markup = renderToStaticMarkup(<QueryClientProvider client={client}><StationDetails st={summary} /></QueryClientProvider>)
+    expect(markup).not.toContain('Loading source details…')
+    expect(markup).toContain('Port P7')
     client.clear()
   })
 })

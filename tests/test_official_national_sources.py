@@ -17,6 +17,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import ingest_sources as ingestion  # noqa: E402
 import server  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class BarcelonaEndollaTests(unittest.TestCase):
@@ -462,6 +467,23 @@ class ZaragozaOfficialTests(unittest.TestCase):
         self.assertIn("reuse", row["sources"][0]["license"].lower())
         self.assertEqual(row["sources"][0]["attribution"], "Ayuntamiento de Zaragoza")
         self.assertEqual(row["sources"][0]["license_url"], ingestion.ZARAGOZA_REUSE_URL)
+
+    def test_a_row_outside_spain_does_not_stamp_the_previous_row(self) -> None:
+        block = """
+        <div class="geo" id="geo">
+          <strong property="title" data-term="title" content="{title}">Puntos</strong>
+          <meta property="longitude" content="{lon}"/>
+          <meta property="latitude" content="{lat}"/>
+        </div>
+        """
+        html = (block.format(title="Puntos de recarga VE Delicias", lat="41.65", lon="-0.90")
+                + block.format(title="Fila mal geolocalizada", lat="48.85", lon="2.35"))
+        metadata = {"equipamiento": [{"title": "Fila mal geolocalizada", "lastUpdated": "2026-01-02T00:00:00"}]}
+
+        rows = ingestion.parse_zaragoza_official_page(html, metadata_payload=metadata, minimum_records=1)
+
+        self.assertEqual([row["name"] for row in rows], ["Puntos de recarga VE Delicias"])
+        self.assertNotIn("source_last_updated", rows[0]["sources"][0])
 
     def test_population_shrink_fails_closed(self) -> None:
         with self.assertRaises(RuntimeError):

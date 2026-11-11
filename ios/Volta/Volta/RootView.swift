@@ -168,7 +168,7 @@ struct MapLayer: View {
             // bounds too, so chargers near the fitted edges are included.
             if areaChanged {
                 if state.mode == .live { state.loadNearby(reason: "pan") }
-                else { Task { await state.loadOverview() } }
+                else { state.reloadOverviewForMapArea() }
             }
         }
         // Sparing: pin and cluster taps are the only map haptic; pan, zoom and locate stay silent.

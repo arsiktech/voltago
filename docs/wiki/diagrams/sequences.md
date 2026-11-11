@@ -12,7 +12,6 @@ sequenceDiagram
     participant API as server.py
     participant MapaREVE as MapaREVE public API
     participant Gaia as Gaia public page
-    participant EM as Electromaps detail API
     participant Intel as free_intelligence.json
 
     User->>SPA: choose location/search area
@@ -22,8 +21,6 @@ sequenceDiagram
     API->>Gaia: GET seeded public jump pages
     Gaia-->>API: connector status/tariff HTML
     API->>Intel: load in-view leads
-    API->>EM: fetch fresh lead details where eligible
-    EM-->>API: realtime connector details
     API->>API: reject, dedupe, enrich, corroborate, cover
     API-->>SPA: stations + leads + meta.coverage
     SPA->>SPA: chooseChargersData + filters
@@ -35,8 +32,8 @@ sequenceDiagram
 1. **Client request** - `useChargers()` in
    [frontend/src/lib/api.ts](../../../frontend/src/lib/api.ts).
 2. **Server orchestration** - `live_response()` in [server.py](../../../server.py).
-3. **Source fetch/merge** - `fetch_mapareve()`, `fetch_gaia_live()`, and
-   `fetch_electromaps_live()`; structured source policy filters every response path.
+3. **Source fetch/merge** - `fetch_mapareve()` and `fetch_gaia_live()`; structured
+   source policy filters every response path.
 4. **Honesty enrichment** - `reject_station_reason()`, `enrich_station()`,
    `apply_corroboration()`, `live_coverage_profile()`.
 
@@ -159,4 +156,4 @@ sequenceDiagram
 1. **Check list** - `suite_checks()` in
    [scripts/qa_regression_suite.py](../../../scripts/qa_regression_suite.py).
 2. **Execution** - `run_check()` captures subprocess evidence and timeouts.
-3. **Report** - [qa/regression-suite-latest.json](../../../qa/regression-suite-latest.json).
+3. **Report** - `qa/regression-suite-latest.json` (generated locally, not tracked).

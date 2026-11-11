@@ -495,11 +495,11 @@ export function sortNearbyBySafetyAndDistance(rows: Station[], origin: Coords | 
     .map(({ station }) => station)
 }
 
-export const TIER_META: Record<SourceTier, { label: string; tone: 'brand' | 'default' | 'warn' }> = {
-  live: { label: 'Live', tone: 'brand' },
-  official: { label: 'Official', tone: 'brand' },
-  directory: { label: 'Directory', tone: 'default' },
-  community: { label: 'Community', tone: 'default' },
+export const TIER_META: Record<SourceTier, { label: string }> = {
+  live: { label: 'Live' },
+  official: { label: 'Official' },
+  directory: { label: 'Directory' },
+  community: { label: 'Community' },
 }
 
 export function isParkingRisk(st: Station): boolean {
@@ -532,12 +532,6 @@ export function privateAccess(st: Station): PrivateAccess | null {
 
 export function isPrivateAccess(st: Station): boolean {
   return privateAccess(st) != null
-}
-
-export function tripTimeText(st: Station): string {
-  const drive = st.drive_eta_min_est
-  if (drive == null) return ''
-  return durationText(drive)
 }
 
 export interface AvailabilityInfo {
@@ -576,7 +570,7 @@ export function availability(st: Station): AvailabilityInfo {
 }
 
 /** Client-side display filters layered on top of the server's source-honest dataset. */
-export function passesFilters(st: Station, filters: Filters, search: string): boolean {
+export function passesFilters(st: Station, filters: Filters): boolean {
   if (filters.leads === false && st.lead) return false
   if (filters.available && !isRouteReady(st)) return false
 
@@ -597,15 +591,6 @@ export function passesFilters(st: Station, filters: Filters, search: string): bo
   }
 
   if (filters.parking && isParkingRisk(st)) return false
-
-  if (search.trim()) {
-    const q = search.trim().toLowerCase()
-    const hay = [st.name, st.city, st.address, st.source, st.source_label, ...(st.connector_labels || [])]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    if (!hay.includes(q)) return false
-  }
   return true
 }
 

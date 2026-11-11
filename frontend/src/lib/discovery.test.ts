@@ -28,3 +28,12 @@ it('retains static out-of-city inventory, but live rows win stable IDs', () => {
   expect(discoveryRows([lead], [live])).toEqual([live])
   expect(discoveryRows([{ ...lead, lead: false }], [])).toEqual([])
 })
+
+// Structural: memo(StationCard) and memo(MapView) only skip renders when handlers keep identity.
+it('passes referentially stable handlers to the memoized cards and map', () => {
+  expect(app).toContain('const onStationSelect = useCallback(')
+  expect(app).toContain('const onSave = useCallback(')
+  expect(app).toContain('const onViewportChange = useCallback(')
+  expect(app).toContain('onViewportChange={onViewportChange}')
+  expect(app).not.toContain('onViewportChange={(')
+})

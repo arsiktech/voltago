@@ -203,6 +203,23 @@ class CompletionAuditTests(unittest.TestCase):
         self.assertFalse(report["automated_evidence"]["regression_suite_ok"])
         self.assertTrue(any("full regression suite" in item for item in report["completion_blockers"]))
 
+    def test_failed_test_case_blocks_completion_like_a_blocked_one(self):
+        for ledger, expected_complete in (
+            ("Test Case ID,Last Result\nTC-001,pass\n", True),
+            ("Test Case ID,Last Result\nTC-001,pass\nTC-002,fail\n", False),
+        ):
+            with self.subTest(ledger=ledger), tempfile.TemporaryDirectory() as tmp:
+                tmp_root = pathlib.Path(tmp)
+                write_completion_ready_workspace(tmp_root, green_regression_report())
+                (tmp_root / "qa" / "test-cases.csv").write_text(ledger, encoding="utf-8")
+                with mock.patch.object(qa_completion_audit, "ROOT", tmp_root):
+                    report = qa_completion_audit.build_report()
+
+                self.assertTrue(report["ok"], report["failures"])
+                self.assertEqual(report["complete"], expected_complete, report["completion_blockers"])
+                failed_blockers = [item for item in report["completion_blockers"] if "failed test cases" in item]
+                self.assertEqual(failed_blockers, [] if expected_complete else ["failed test cases remain: TC-002"])
+
     def test_green_artifact_bootstrap_can_never_satisfy_completion_gate(self):
         check_ids = sorted(qa_artifact_integrity_contract.BOOTSTRAP_REGRESSION_CHECK_IDS)
         report = {

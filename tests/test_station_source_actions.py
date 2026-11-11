@@ -5,6 +5,11 @@ from unittest.mock import patch
 
 import server
 from station_truth import normalize_public_source_url, station_source_for
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class StationSourceActionTests(unittest.TestCase):

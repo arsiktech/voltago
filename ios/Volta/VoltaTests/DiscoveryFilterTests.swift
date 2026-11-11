@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import MapKit
 import XCTest
@@ -8,6 +9,19 @@ final class DiscoveryFilterTests: XCTestCase {
     func testLaunchDefaultsHaveNoActiveFilters() {
         let state = AppState()
         XCTAssertFalse(state.hasActiveFilters)
+    }
+
+    /// `@Published` already sends `objectWillChange`; a second send makes every observer
+    /// re-render twice for one filter change.
+    func testFreeOnlyAndPowerFloorNotifyObserversOncePerChange() {
+        let state = AppState()
+        var notifications = 0
+        let subscription = state.objectWillChange.sink { notifications += 1 }
+        state.freeOnly = true
+        XCTAssertEqual(notifications, 1)
+        state.minimumPowerKW = 50
+        XCTAssertEqual(notifications, 2)
+        subscription.cancel()
     }
 
     func testClearingFreeOnlyRestoresPaidResults() throws {

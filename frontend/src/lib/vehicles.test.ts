@@ -1,8 +1,9 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import type { Station } from '../types'
+import stationTruthCasesRaw from '../../../contracts/station_truth_cases.json?raw'
 import {
-  chargingEstimate, energyToTarget, exampleVehicle, readManualVehicle, readSpecs,
-  vehicleIsStale, vehicleRequest, withVehicleSpecs,
+  VEHICLE_CONNECTORS, chargingEstimate, energyToTarget, exampleVehicle, readManualVehicle, readSpecs,
+  vehicleIsStale, vehicleRequest, withVehicleSpecs, type VehicleConnector,
 } from './vehicles'
 
 const now = Date.parse('2026-10-19T19:00:00Z')
@@ -71,6 +72,26 @@ describe('station charging plans', () => {
     expect(chargingEstimate({ ...car, maxAcKw: null, maxDcKw: null }, 80, station, now).minimumMinutes).toBeNull()
     expect(chargingEstimate(car, 80, { ...station, connectors: [], connector_labels: ['CCS2'], max_power_kw: 350 }, now).minimumMinutes).toBeNull()
     expect(chargingEstimate({ ...car, connectors: ['NACS'] }, 80, { ...station, connectors: [{ type: 'NACS', power_kw: 22 }] }, now).minimumMinutes).toBeNull()
+  })
+  it('matches a live OCPI port by its normalised label, not its raw token', () => {
+    const live = { ...station, connectors: [{ type: 'IEC_62196_T2_COMBO', label: 'CCS2', power_kw: 150 }] }
+    expect(chargingEstimate(car, 80, live, now)).toMatchObject({ compatibility: 'compatible', minimumMinutes: 6 })
+    const relabelled = { ...station, connectors: [{ type: 'VENDOR_SOCKET_7', label: 'CCS2', power_kw: 150 }] }
+    expect(chargingEstimate(car, 80, relabelled, now)).toMatchObject({ compatibility: 'compatible', minimumMinutes: 6 })
+  })
+  it('recognises every shared connector token the car model has a type for', () => {
+    const cases = (JSON.parse(stationTruthCasesRaw) as {
+      connector_labels: Array<{ token: string | null; expected: string | null }>
+    }).connector_labels
+    const modelled = cases.filter((item): item is { token: string; expected: VehicleConnector } =>
+      typeof item.token === 'string' && VEHICLE_CONNECTORS.includes(item.expected as VehicleConnector))
+    expect(modelled.length).toBeGreaterThanOrEqual(6)
+    for (const { token, expected } of modelled) {
+      const owner = { ...car, connectors: [expected] }
+      const port = { ...station, connectors: [{ type: token, power_kw: 50 }] }
+      expect(chargingEstimate(owner, 80, port, now).compatibility, token).toBe('compatible')
+      expect(chargingEstimate(owner, 80, { ...station, connectors: [], connector_labels: [token] }, now).compatibility, token).toBe('compatible')
+    }
   })
   it('does not recommend an incompatible port or claim an ambiguous type is incompatible', () => {
     const incompatible = chargingEstimate(car, 80, { ...station, connectors: [{ type: 'CHAdeMO', power_kw: 100 }] }, now)

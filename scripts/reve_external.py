@@ -8,6 +8,7 @@ request (including a probe or failure) consumes a durable five/hour quota.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import copy
 import fcntl
 import json
@@ -198,7 +199,8 @@ def reserve_request(*, now: Optional[float] = None) -> None:
         raise SourcePolicyBlocked("REVE quota clock is invalid")
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     quota_path = STATE_PATH.with_suffix(".quota.sqlite3")
-    with sqlite3.connect(quota_path, timeout=5) as connection:
+    # The inner `with connection` commits or rolls back; closing() releases the handle.
+    with contextlib.closing(sqlite3.connect(quota_path, timeout=5)) as connection, connection:
         connection.execute("CREATE TABLE IF NOT EXISTS requests (reserved_at REAL NOT NULL)")
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("DELETE FROM requests WHERE reserved_at <= ?", (current - 3600,))

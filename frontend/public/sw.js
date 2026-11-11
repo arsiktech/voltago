@@ -15,6 +15,9 @@ const SHELL_URLS = [
   '/volta-icon-dark.svg',
   '/brand/volta-icon.png',
 ]
+// Paths the server answers with the SPA's index.html (server.py serve_static and
+// SPA_CLIENT_ROUTES). Legal and coverage pages are separate documents.
+const SPA_SHELL_PATHS = new Set(['/', '/index.html', '/matrix', '/matrix/'])
 const OFFLINE_WARNING = 'Offline — showing previously cached source-backed leads. Nothing is live.'
 
 async function putBestEffort(cache, key, response) {
@@ -207,6 +210,7 @@ function isCacheableShellNavigation(request, response) {
     request.mode === 'navigate' &&
     url.origin === self.location.origin &&
     !url.pathname.startsWith('/api/') &&
+    SPA_SHELL_PATHS.has(url.pathname) &&
     response.ok &&
     contentType.includes('text/html')
   )

@@ -29,8 +29,9 @@
  */
 
 const { chromium } = require("playwright");
-const { openFilters, closeFilters } = require("./qa_browser_harness");
 const {
+  openFilters,
+  closeFilters,
   installDeterministicBasemap,
   unexpectedBrowserErrors,
 } = require("./qa_browser_harness");

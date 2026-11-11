@@ -4,6 +4,7 @@ import { ArrowUpRight, BatteryCharging, CarFront, ChevronDown, ImagePlus, Pencil
 import { useVehicleGarage } from '../hooks/useVehicleGarage'
 import { energyToTarget, vehicleIsStale, vehicleName, type Vehicle } from '../lib/vehicles'
 import { liveMetricSwap, quickEase, smoothSpring } from '../lib/motion'
+import { escapeClosesPanel } from '../lib/escapeKey'
 import { VehicleEditor } from './VehicleEditor'
 
 function Metric({ value, unit }: { value: string; unit?: string }) {
@@ -136,13 +137,14 @@ export default function VehiclePanel({ onClose, callbackError }: { onClose: () =
   const reduce = Boolean(useReducedMotion())
   const [editing, setEditing] = useState(false)
   const close = useRef<HTMLButtonElement>(null)
+  const panel = useRef<HTMLElement>(null)
   useEffect(() => { close.current?.focus() }, [])
   useEffect(() => {
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); onClose() } }
+    const escape = (event: KeyboardEvent) => { if (escapeClosesPanel(event, panel.current)) { event.preventDefault(); onClose() } }
     document.addEventListener('keydown', escape)
     return () => document.removeEventListener('keydown', escape)
   }, [onClose])
-  return <motion.aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-modal="false" aria-labelledby="vehicle-panel-title"
+  return <motion.aside ref={panel} id="vehicle-panel" className="vehicle-panel" role="dialog" aria-modal="false" aria-labelledby="vehicle-panel-title"
     initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16, scale: 0.985 }}
     animate={{ opacity: 1, x: 0, scale: 1 }} exit={reduce ? { opacity: 0 } : { opacity: 0, x: 12, scale: 0.985 }}
     transition={reduce ? quickEase : smoothSpring}>

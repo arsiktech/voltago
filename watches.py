@@ -129,7 +129,9 @@ def _compatible(connector: Mapping[str, Any], types: Sequence[str], key_for: Cal
     if not types:
         return True
     # Never guess: a connector whose type is unknown does not match a requested type.
-    return key_for(connector.get("label") or connector.get("type")) in types
+    # Requested types are stored as display names, so compare both sides as keys.
+    key = key_for(connector.get("label") or connector.get("type"))
+    return key is not None and key in {key_for(name) for name in types}
 
 
 def connector_states(row: Mapping[str, Any], types: Sequence[str],

@@ -2,9 +2,7 @@
 """Crawlable Spanish city and station pages, and the dynamic sitemap."""
 from __future__ import annotations
 
-import json
 import sys
-import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -14,6 +12,11 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts import seo_pages as sp  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 def station(id_: str, *, city: str = "València", sources=("DGT National Access Point charging registry",), price=None,
@@ -72,6 +75,16 @@ class SeoPagesTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)", page)
         self.assertEqual(page.count("</script>"), 1)  # only the JSON-LD block closes
 
+    def test_directions_link_is_https_or_the_coordinate_fallback(self) -> None:
+        fallback = "https://www.google.com/maps/search/?api=1&amp;query=39.470000,-0.370000"
+        for stored, expected in (("javascript:alert(1)", fallback), ("http://maps.example/x", fallback),
+                                 ("https://maps.google.com/?q=1", "https://maps.google.com/?q=1")):
+            with self.subTest(stored=stored):
+                record = dict(station("n", price=0.2), navigation={"google": stored})
+                page = sp.render_station(sp.SiteIndex([record], None), sp.station_digest(record))
+                self.assertIn(f'<a class="cta" href="{expected}" rel="nofollow noopener">Cómo llegar</a>', page)
+                self.assertNotIn("javascript:", page)
+
     def test_sitemap_lists_home_index_cities_and_station_pages(self) -> None:
         priced = station("q", price=0.3)
         index = sp.SiteIndex(city_rows(5) + [priced], "2026-10-24T19:55:00Z")
@@ -122,7 +135,7 @@ class CrawlableRouteTests(unittest.TestCase):
         import server
         intel = {"generated_at": "2026-10-24T19:55:00Z", "records": city_rows(5) + [station("q", price=0.3)]}
         httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
-        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        stop_server = _support.serve_in_thread(httpd)
         base = f"http://127.0.0.1:{httpd.server_address[1]}"
         try:
             with patch("server.load_intelligence_meta", return_value=intel):
@@ -140,8 +153,7 @@ class CrawlableRouteTests(unittest.TestCase):
                 self.assertEqual(caught.exception.code, 404)
                 caught.exception.close()
         finally:
-            httpd.shutdown()
-            httpd.server_close()
+            stop_server()
 
 
 if __name__ == "__main__":

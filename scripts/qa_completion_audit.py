@@ -255,14 +255,19 @@ def regression_suite_full_green(payload: Dict[str, Any] | None) -> bool:
     return FULL_REGRESSION_CHECK_IDS <= result_ids
 
 
-def test_case_summary(rows: List[Dict[str, str]]) -> Tuple[Dict[str, int], List[str]]:
+def test_case_summary(rows: List[Dict[str, str]]) -> Tuple[Dict[str, int], List[str], List[str]]:
     result_counts = Counter(row.get("Last Result", "") for row in rows)
     blocked = [
         row.get("Test Case ID", "")
         for row in rows
         if row.get("Last Result") == "blocked"
     ]
-    return dict(result_counts), blocked
+    failed = [
+        row.get("Test Case ID", "")
+        for row in rows
+        if row.get("Last Result") == "fail"
+    ]
+    return dict(result_counts), blocked, failed
 
 
 def defect_summary(rows: List[Dict[str, str]]) -> Tuple[Dict[str, int], List[str]]:
@@ -297,7 +302,7 @@ def build_report() -> Dict[str, Any]:
     manual = read_json(ROOT / "qa" / "manual-proof-status.json", failures)
     field_freshness = read_json(ROOT / "qa" / "field-packet-freshness-latest.json", failures)
 
-    result_counts, blocked_tests = test_case_summary(tests)
+    result_counts, blocked_tests, failed_tests = test_case_summary(tests)
     defect_counts, open_defects = defect_summary(defects)
     manual_blocked = list(manual.get("blocked_gates", [])) if isinstance(manual, dict) else []
     manual_failed = list(manual.get("failed_gates", [])) if isinstance(manual, dict) else []
@@ -326,6 +331,8 @@ def build_report() -> Dict[str, Any]:
         completion_blockers.append(f"manual proof gates blocked: {', '.join(manual_blocked)}")
     if blocked_tests:
         completion_blockers.append(f"blocked test cases remain: {', '.join(blocked_tests)}")
+    if failed_tests:
+        completion_blockers.append(f"failed test cases remain: {', '.join(failed_tests)}")
     if not bool_field(manual, "ready_to_complete_manual_gates"):
         completion_blockers.append("manual proof status is not ready_to_complete_manual_gates")
 

@@ -3,7 +3,8 @@
 #
 # Default (no args) runs the fast, fully-offline tiers documented in
 # README.md: backend compile -> backend unittest -> frontend
-# vitest (~10s total). `--full` additionally runs the frontend lint and the
+# vitest (a few minutes; the backend unittest tier alone takes about two).
+# `--full` additionally runs the frontend lint and the
 # frontend production build (tsc -b typecheck + Vite build).
 #
 # This script deliberately does NOT run the browser DOM contracts or the
@@ -36,11 +37,16 @@ WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 echo "== backend: py_compile =="
-python3 -m py_compile server.py scripts/*.py
+python3 -m py_compile server.py agent_mcp.py community.py watches.py station_truth.py \
+  vehicles.py google_maps.py scripts/*.py
 echo "py_compile OK"
 echo
 
 echo "== backend: unittest discover =="
+# Keep the private community store (data/community.db) out of reach even if a
+# test forgets tests/_support.isolate_community_store().
+export VOLTA_COMMUNITY_DB="$WORKDIR/community.db"
+export VOLTA_COMMUNITY_PHOTOS="$WORKDIR/community-photos"
 UNITTEST_LOG="$WORKDIR/unittest.log"
 python3 -m unittest discover -s tests 2>&1 | tee "$UNITTEST_LOG"
 echo

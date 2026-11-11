@@ -17,7 +17,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Sequence
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -187,6 +187,7 @@ BROWSER_REGRESSION_CHECK_IDS = {
     "empty-state-keyboard",
     "geolocation-distance",
     "near-home-first-use",
+    "price-slider",
     "realtime-refresh",
 }
 # Live-upstream checks; may be skipped only when include_external=false is recorded.

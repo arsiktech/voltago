@@ -8,7 +8,7 @@ import { sourceName, stationSourceReference } from '../lib/stationSource'
 
 function Ext({ href, children }: { href?: string | null; children: ReactNode }) {
   const safeHref = publicWebUrl(href)
-  if (!safeHref) return <span className="text-faint">{children}</span>
+  if (!safeHref) return <span className="text-muted">{children}</span>
   return (
     <a
       href={safeHref}

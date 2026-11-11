@@ -147,6 +147,20 @@ class WorldwideNormalizationTests(unittest.TestCase):
     def test_quarantined_openchargemap_station_cannot_return_through_global_import(self) -> None:
         self.assertIsNone(global_ingestion.normalize_ocm(ocm_poi(station_id=169683), artifact()))
 
+    def test_openchargemap_quarantine_is_the_set_spain_ingestion_uses(self) -> None:
+        import ingest_sources
+        self.assertIsNotNone(global_ingestion.normalize_ocm(ocm_poi(station_id=4242), artifact()))
+        ingest_sources.OPENCHARGEMAP_QUARANTINED_IDS.add("4242")
+        self.addCleanup(ingest_sources.OPENCHARGEMAP_QUARANTINED_IDS.discard, "4242")
+        self.assertIsNone(global_ingestion.normalize_ocm(ocm_poi(station_id=4242), artifact()))
+
+    def test_osm_connector_raw_records_how_its_output_was_read(self) -> None:
+        element = osm_element()
+        element["tags"].update({"socket:type2": "1", "socket:type2:output": "7400"})
+        row = global_ingestion.normalize_osm(element, artifact())
+        readings = {c["label"]: c["raw"].get("output_reading") for c in row["connectors"]}
+        self.assertEqual(readings, {"CCS1": "explicit_kw", "Type 2": "bare_w"})
+
     def test_directory_operational_status_never_becomes_live_availability(self) -> None:
         for evidence in [artifact(), artifact(stale=True)]:
             with self.subTest(stale=evidence.stale):
@@ -630,6 +644,24 @@ class CandidateBuildIntegrationTests(unittest.TestCase):
         self.assertEqual(len(self.candidate()["records"]), 2)
         self.assertEqual(self.candidate()["records"][0], self.original_row)
         self.assertEqual(report["coverage_status"], "partial")
+
+    def test_revision_named_ocm_archive_is_reused_however_old_it_is(self) -> None:
+        revision = global_ingestion.OCM_EXPORT_REVISION
+        cache = self.directory / "cache"
+        cache.mkdir()
+        archive = cache / f"ocm-export-{revision}.tar.gz"
+        archive.write_bytes(b"cached immutable archive")
+        a_year_ago = time.time() - 365 * 24 * 3600
+        os.utime(archive, (a_year_ago, a_year_ago))
+        with mock.patch.object(global_ingestion, "policy_urlopen", side_effect=AssertionError("no download")) as download, \
+             mock.patch.object(global_ingestion, "ocm_export_revision", return_value=revision), \
+             mock.patch.object(global_ingestion, "iter_ocm_export", return_value=iter([ocm_poi()])):
+            report = global_builder.build(self.args())
+        download.assert_not_called()
+        manifest = report["source_manifests"][0]
+        self.assertEqual(manifest["status"], "ok")
+        self.assertEqual(manifest["snapshot"]["revision"], revision)
+        self.assertEqual(archive.read_bytes(), b"cached immutable archive")
 
     def test_partial_ocm_stream_rolls_back_accepted_rows_and_reports_failure(self) -> None:
         def pois():

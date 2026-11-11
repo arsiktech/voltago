@@ -32,7 +32,7 @@ cards remaining usable even if the map or tile network fails.
 - `useGeocode(query)` - TanStack Query hook for city/place search.
 - `chooseChargersData(args)` - data selector for instant leads vs live data vs
   fail-closed live errors.
-- `passesFilters(station, filters, search)` - display filter predicate.
+- `passesFilters(station, filters)` - display filter predicate.
 - `availability(station)` - honest live/lead availability summary.
 
 ## Internal Structure

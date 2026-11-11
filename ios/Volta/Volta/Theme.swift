@@ -23,14 +23,12 @@ enum Theme {
     static let surface = Color(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x141A17))
     static let raisedSurface = Color(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x1B221F))
     static let ink = Color(light: Color(hex: 0x0E1512), dark: Color(hex: 0xEDF1EE))
-    static let inverseInk = Color(light: Color(hex: 0xF5F6F4), dark: Color(hex: 0x0E1512))
     static let hairline = Color(light: Color(hex: 0xD3D8D4), dark: Color(hex: 0x323A36))
 
     // Use these together for evergreen map anchors in either appearance. An adaptive
     // inverse foreground on a permanent dark surface disappears in Dark Mode.
     static let darkSurface = Color(hex: 0x0E1512)
     static let darkInk = Color(hex: 0xF5F6F4)
-    static let darkSecondaryInk = Color(hex: 0xB5BEB9)
 }
 
 /// One motion vocabulary for the map, filter instrument and route ticket. Frequent UI
@@ -131,10 +129,10 @@ extension View {
 }
 
 extension Theme {
-    /// A selected card keeps its opaque surface with a faint ink wash; the ink border is
-    /// the main cue, and VoiceOver hears `.isSelected`.
     /// Border of a secondary button: at least 3:1 against the surface it sits on.
     static let hairlineStrong = Color(light: Color(hex: 0x8B948F), dark: Color(hex: 0x6F7A74))
+    /// A selected card keeps its opaque surface with a faint ink wash; the ink border is
+    /// the main cue, and VoiceOver hears `.isSelected`.
     static let selectedSurface = Color(light: Color(hex: 0xEEF0EE), dark: Color(hex: 0x1B221F))
 }
 

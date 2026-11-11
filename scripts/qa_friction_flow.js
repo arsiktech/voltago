@@ -24,10 +24,6 @@ function safeExternal(link) {
   return link?.target === "_blank" && rel.includes("noopener") && rel.includes("noreferrer");
 }
 
-function compact(text) {
-  return String(text || "").replace(/\s+/g, " ").trim();
-}
-
 async function waitSettledOverview(page) {
   await page.waitForSelector("[data-station] article.card", { timeout: 25000 });
   await page.waitForFunction(

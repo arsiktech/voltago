@@ -30,20 +30,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from tests import _support  # noqa: E402
 
 
 def _start_server() -> tuple:
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
-    port = httpd.server_address[1]
-    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-    thread.start()
-    return httpd, thread
-
-
-def _stop_server(httpd: ThreadingHTTPServer, thread: threading.Thread) -> None:
-    httpd.shutdown()
-    httpd.server_close()
-    thread.join(timeout=5)
+    return httpd, _support.serve_in_thread(httpd)
 
 
 def _fake_mapareve(*, max_price: float, available_only: bool, fast_only: bool, bbox: dict) -> dict:
@@ -63,10 +55,8 @@ def _patch_live_sources():
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class _LiveCacheResetMixin:
@@ -98,7 +88,7 @@ class RateLimitTests(_LiveCacheResetMixin, unittest.TestCase):
     no forwarded identity are exempt so local dev/QA is never throttled."""
 
     def test_sixth_request_from_forwarded_client_is_429_with_retry_after(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -126,10 +116,10 @@ class RateLimitTests(_LiveCacheResetMixin, unittest.TestCase):
             self.assertEqual(bodies[5].get("error"), "rate_limited")
             self.assertIn("warning", bodies[5])
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_loopback_caller_with_no_forwarded_header_is_never_rate_limited(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -140,7 +130,31 @@ class RateLimitTests(_LiveCacheResetMixin, unittest.TestCase):
                     ) as resp:
                         self.assertEqual(resp.status, 200)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
+
+
+class CatalogueRouteRateLimitTests(unittest.TestCase):
+    """The catalogue/source routes share the chargers budget like their neighbours;
+    a refused request builds no payload."""
+
+    def test_catalogue_routes_enforce_the_chargers_budget(self) -> None:
+        from unittest.mock import Mock
+        for path, builder in (("/api/intel", "intelligence_response"), ("/api/sources", "source_catalog_payload"),
+                              ("/api/source-health", "source_health_summary"),
+                              ("/api/source-strategy", "requested_source_strategy")):
+            with self.subTest(path=path), patch.object(server, builder, return_value={}) as build:
+                handler = object.__new__(server.Handler)
+                handler.path = path
+                handler._enforce_rate_limit = Mock(return_value=False)
+                handler.send_json = Mock()
+                handler._route_get()
+                handler._enforce_rate_limit.assert_called_once_with("chargers", server.RATE_LIMIT_RPM)
+                build.assert_not_called()
+                handler.send_json.assert_not_called()
+                handler._enforce_rate_limit.return_value = True
+                handler._route_get()
+                build.assert_called_once()
+                self.assertEqual(handler.send_json.call_args.args[0], 200)
 
 
 class GeocodeRateLimitTests(unittest.TestCase):
@@ -168,7 +182,7 @@ class GeocodeRateLimitTests(unittest.TestCase):
         # test's own outer HTTP client (urllib.request is one shared module object,
         # not a server-local copy) -- cache-seeding sidesteps that collision entirely.
         server.GEOCODE_CACHE["valencia"] = {"ts": time.time(), "results": []}
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             with patch("server.GEOCODE_RATE_LIMIT_RPM", 2), patch("server.VOLTA_TRUST_PROXY", True):
@@ -186,7 +200,7 @@ class GeocodeRateLimitTests(unittest.TestCase):
                         exc.read()
             self.assertEqual(statuses, [200, 200, 429])
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
 
 class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
@@ -198,7 +212,7 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
             return json.loads(resp.read().decode("utf-8"))
 
     def test_exact_zero_max_price_is_preserved_for_live_request(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -206,16 +220,16 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
                 payload = self._get(port, "max_price=0")
             self.assertEqual(payload["meta"]["price_cap_eur_kwh"], 0.0)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_exact_zero_max_price_is_preserved_for_compact_overview_request(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             zero_payload = self._get(port, "overview=true&compact=true&max_price=0")
             default_payload = self._get(port, "overview=true&compact=true")
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
         default_positive_prices = [
             lead["price_min"]
@@ -232,7 +246,7 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
         )
 
     def test_invalid_max_price_falls_back_to_default(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -240,10 +254,10 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
                 payload = self._get(port, "max_price=abc")
             self.assertEqual(payload["meta"]["price_cap_eur_kwh"], server.PRICE_MAX_DEFAULT)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_non_finite_max_prices_share_the_finite_default_response_and_cache_key(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -271,10 +285,10 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
             self.assertEqual(len(cache_keys), 1)
             self.assertIn(str(server.PRICE_MAX_DEFAULT), cache_keys.pop())
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_missing_max_price_uses_default(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -282,10 +296,10 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
                 payload = self._get(port, "")
             self.assertEqual(payload["meta"]["price_cap_eur_kwh"], server.PRICE_MAX_DEFAULT)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_high_max_price_is_clamped_to_five(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -296,10 +310,10 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
             self.assertIn("5.0", cache_key)
             self.assertNotIn("99", cache_key)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_max_price_snaps_to_two_decimals(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -307,10 +321,10 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
                 payload = self._get(port, "max_price=0.276")
             self.assertEqual(payload["meta"]["price_cap_eur_kwh"], 0.28)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_negative_max_price_is_clamped_to_zero(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -318,7 +332,7 @@ class MaxPriceClampTests(_LiveCacheResetMixin, unittest.TestCase):
                 payload = self._get(port, "max_price=-3")
             self.assertEqual(payload["meta"]["price_cap_eur_kwh"], 0.0)
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
 
 class ResponseHeaderTests(_LiveCacheResetMixin, unittest.TestCase):
@@ -327,7 +341,7 @@ class ResponseHeaderTests(_LiveCacheResetMixin, unittest.TestCase):
     documents reality instead of assuming a default."""
 
     def test_api_response_carries_hardening_headers(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             patchers = _patch_live_sources()
@@ -339,10 +353,10 @@ class ResponseHeaderTests(_LiveCacheResetMixin, unittest.TestCase):
                     self.assertEqual(resp.headers.get("Referrer-Policy"), "no-referrer")
                     self.assertEqual(resp.headers.get("X-Frame-Options"), "DENY")
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_static_html_response_carries_hardening_headers_and_conditional_csp(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as resp:
@@ -354,17 +368,17 @@ class ResponseHeaderTests(_LiveCacheResetMixin, unittest.TestCase):
                 else:
                     self.assertIsNone(resp.headers.get("Content-Security-Policy"))
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
     def test_csp_header_present_when_volta_csp_is_set(self) -> None:
-        httpd, thread = _start_server()
+        httpd, stop_server = _start_server()
         port = httpd.server_address[1]
         try:
             with patch("server.VOLTA_CSP", "default-src 'self'"):
                 with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as resp:
                     self.assertEqual(resp.headers.get("Content-Security-Policy"), "default-src 'self'")
         finally:
-            _stop_server(httpd, thread)
+            stop_server()
 
 
 class WarningSanitizationTests(_LiveCacheResetMixin, unittest.TestCase):
@@ -440,6 +454,31 @@ class LogSanitizationTests(unittest.TestCase):
 
     def test_leaves_unrelated_paths_untouched(self) -> None:
         raw = '"GET /api/health HTTP/1.1" 200 -'
+        self.assertEqual(server._sanitize_log_line(raw), raw)
+
+    def test_strips_every_api_query_string(self) -> None:
+        for path, query in (
+            ("/api/charger-listing", "ids=SAVED_A,SAVED_B"),
+            ("/api/free-registry", "bbox=39.4,-0.4,39.5,-0.3"),
+            ("/api/location-sources", "bbox=39.4,-0.4,39.5,-0.3"),
+            ("/api/intel", "bbox=39.4,-0.4,39.5,-0.3&limit=10"),
+            ("/api/community/summary", "ids=SAVED_A"),
+            ("/api/community/photo", "station_id=SAVED_A"),
+        ):
+            with self.subTest(path=path):
+                raw = f'"GET {path}?{query} HTTP/1.1" 200 -'
+                self.assertEqual(server._sanitize_log_line(raw), f'"GET {path} HTTP/1.1" 200 -')
+
+    def test_replaces_the_watch_id_capability_in_the_path(self) -> None:
+        for method in ("GET", "DELETE"):
+            with self.subTest(method=method):
+                raw = f'"{method} /api/watches/SECRET_WATCH_ID HTTP/1.1" 200 -'
+                sanitized = server._sanitize_log_line(raw)
+                self.assertNotIn("SECRET_WATCH_ID", sanitized)
+                self.assertEqual(sanitized, f'"{method} /api/watches/<id> HTTP/1.1" 200 -')
+        raw = '"GET /api/watches/config HTTP/1.1" 200 -'
+        self.assertEqual(server._sanitize_log_line(raw), raw)
+        raw = '"POST /api/watches HTTP/1.1" 201 -'
         self.assertEqual(server._sanitize_log_line(raw), raw)
 
 

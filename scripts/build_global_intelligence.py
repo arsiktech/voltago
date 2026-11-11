@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import sys
@@ -139,8 +140,9 @@ def run_ocm(args: argparse.Namespace, countries: set[str] | None, store: gs.Cand
                                         age, True, args.offline, age >= 168 * 3600)
             fetched = gs.FileArtifact(path, artifact)
         else:
+            # The cache name pins an immutable commit, so a cached archive never needs downloading again.
             fetched = gs.fetch_cached_file(source_url, args.cache_dir, f"ocm-export-{revision}.tar.gz", offline=args.offline,
-                                           max_bytes=gs.OCM_MAX_ARCHIVE_BYTES)
+                                           ttl_hours=math.inf, max_bytes=gs.OCM_MAX_ARCHIVE_BYTES)
         actual_revision = gs.ocm_export_revision(fetched.path)
         if actual_revision != revision:
             raise ValueError("OCM archive revision differs from --ocm-revision")

@@ -139,6 +139,26 @@ class ReveTransportAndStateTests(unittest.TestCase):
             reve.reserve_request(now=13599)
         reve.reserve_request(now=13600)
 
+    def test_quota_connections_are_closed_and_reservations_still_commit(self):
+        import sqlite3
+        opened = []
+        connect = sqlite3.connect
+
+        def tracking_connect(*args, **kwargs):
+            opened.append(connect(*args, **kwargs))
+            return opened[-1]
+        with patch.object(reve.sqlite3, "connect", side_effect=tracking_connect):
+            for _ in range(reve.MAX_REQUESTS_PER_HOUR):
+                reve.reserve_request(now=10000)
+            with self.assertRaises(reve.SourcePolicyBlocked):
+                reve.reserve_request(now=10000)
+        self.assertEqual(len(opened), reve.MAX_REQUESTS_PER_HOUR + 1)
+        for connection in opened:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
+        with self.assertRaises(reve.SourcePolicyBlocked):
+            reve.reserve_request(now=10001)
+
     def test_request_uses_exact_get_and_unredirected_header_not_url(self):
         opened = []
         def open_request(request, timeout):

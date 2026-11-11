@@ -1,5 +1,4 @@
 """Runtime refresh safety fixtures. No upstream or production operations."""
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -13,6 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import runtime_refresh as refresh
 import auto_refresh as shared
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class RuntimeRefreshTests(unittest.TestCase):
@@ -102,6 +106,16 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertFalse((self.state / 'last.json').exists())
         with self.assertRaisesRegex(RuntimeError, 'already initialized'):
             refresh.initialize(self.root, self.state)
+
+    def test_initialize_reports_a_busy_lock_like_the_refresh_path(self):
+        import fcntl
+        with (self.state / 'refresh.lock').open('a') as held:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with mock.patch('sys.stderr') as stderr:
+                self.assertEqual(refresh.initialize(self.root, self.state), 75)
+        self.assertIn('another runtime refresh is active',
+                      ''.join(call.args[0] for call in stderr.write.call_args_list))
+        self.assertFalse((self.state / 'current').exists())
 
     def test_pruning_retains_current_rollback_recent_and_unknown(self):
         paths = []
@@ -438,6 +452,20 @@ class RuntimeAlertTests(unittest.TestCase):
                 (state / 'last.json').write_text('{"ok":false,"run_id":"fixture-4"}')
                 self.assertEqual(alerts.check(state, 'telegram:fixture', '/fixture/hermes'), 0)
                 self.assertEqual(send.call_count, 1)
+
+    def test_notifier_json_that_is_not_an_object_is_a_failed_send(self):
+        import runtime_refresh_alert as alerts
+        for stdout in ('[]', '7', '"sent"', 'null'):
+            with self.subTest(stdout=stdout), tempfile.TemporaryDirectory() as temp:
+                state = Path(temp)
+                (state / 'alert-state.json').write_text('{"streak":2}')
+                (state / 'last.json').write_text('{"ok":false,"run_id":"fixture-3"}')
+                result = subprocess.CompletedProcess([], 0, stdout, '')
+                with mock.patch.object(alerts.subprocess, 'run', return_value=result):
+                    self.assertEqual(alerts.check(state, 'telegram:fixture', '/fixture/hermes'), 1)
+                saved = json.loads((state / 'alert-state.json').read_text())
+                self.assertEqual(saved['delivery'], 'unknown')
+                self.assertIsNone(saved['message_id'])
 
 
 class RuntimeAlertContentTests(unittest.TestCase):

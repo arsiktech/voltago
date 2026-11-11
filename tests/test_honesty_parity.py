@@ -34,6 +34,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import server  # noqa: E402
 import ingest_sources as ing  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 FORMAT_TS = ROOT / "frontend" / "src" / "lib" / "format.ts"
 MODELS_SWIFT = ROOT / "ios" / "Volta" / "Volta" / "Models.swift"

@@ -9,7 +9,7 @@ facts an agent can finalize.
 Reconfirm these against the final archive, not only the project file:
 
 - Bundle ID: `tech.arsik.volta`
-- Marketing version: derive from final Xcode Release build settings; currently expected `1.0`
+- Marketing version: derive from final Xcode Release build settings; currently expected `1.2`
 - Build: derive from the highest uploaded App Store Connect build; final value must be
   strictly greater and at least 2
 - Device family: iPhone only

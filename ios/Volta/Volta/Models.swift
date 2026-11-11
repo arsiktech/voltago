@@ -210,7 +210,6 @@ struct StationOwner: Decodable, Hashable {
     var name: String?
     var website: String?
     var phone: String?
-    var logo: String?
 }
 
 /// Trust state for status-sensitive presentation. A lead is separate from the four possible
@@ -1030,7 +1029,7 @@ extension Station {
     }
 
     /// Locale-INVARIANT tier classification (live / official / directory / community). Internal
-    /// comparisons (tierIsStrong, hasExactDirectoryLocation, isMapLocationVerified -- all
+    /// comparisons (hasExactDirectoryLocation, isMapLocationVerified -- all
     /// map-pin/honesty-verification logic) must key off this, never off `tierLabel`: `tierLabel`
     /// is now localized display text (String(localized:)), and comparing verification logic
     /// against a display string would silently break under a non-English device language.
@@ -1057,11 +1056,6 @@ extension Station {
         case "directory": return String(localized: "Directory")
         default: return String(localized: "Community")
         }
-    }
-
-    var tierIsStrong: Bool {
-        (trustKind == .fresh || trustKind == .lead)
-            && (tierKind == "live" || tierKind == "official")
     }
 
     var hasExactDirectoryLocation: Bool {
@@ -1116,19 +1110,6 @@ extension Station {
         if let connectorAvailability = connectorSummary?.available { return connectorAvailability > 0 }
         if let available { return available > 0 }
         return status?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "AVAILABLE"
-    }
-
-    /// Exact station records remain useful even when current connector availability is not
-    /// strong enough for Go-now. They may appear in the map/carousel, but never qualify for
-    /// route-ready celebrations or availability claims unless `isRouteReady` also passes.
-    var isVerifiedStationRecord: Bool {
-        guard !isLead, cacheStale != true else { return false }
-        guard trustKind == .fresh || trustKind == .degraded else { return false }
-        guard verification?.liveVerified == true, verification?.locationVerified != false else {
-            return false
-        }
-        let level = verification?.level
-        return level == nil || level?.isEmpty == true || level == "live"
     }
 
     var corroborationCount: Int {

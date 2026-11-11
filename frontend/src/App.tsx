@@ -453,13 +453,31 @@ export default function App() {
     return () => window.clearTimeout(timer)
   }, [requestLocation])
 
-  const onStationSelect = (id: string | null) => {
+  const cancelLocation = geo.cancel
+  const onStationSelect = useCallback((id: string | null) => {
     if (id !== null) {
       claimSearchArea()
-      geo.cancel()
+      cancelLocation()
     }
     setSelectedId(id)
-  }
+  }, [claimSearchArea, cancelLocation])
+
+  const overviewRef = useRef(overview)
+  useLayoutEffect(() => { overviewRef.current = overview }, [overview])
+  const onViewportChange = useCallback((nextViewport: Viewport) => {
+    // Map reports are debounced. A gesture made before a newer search
+    // choice must not cancel GPS or schedule another search afterward.
+    if (nextViewport.userInitiated && (nextViewport.userInitiatedAt ?? 0) < explicitAreaIntentAt.current) return
+    setViewport(nextViewport)
+    // Region shortcuts own a geographic scope even without WebGL. Only
+    // intentional map exploration hands that scope back to the viewport.
+    if (nextViewport.userInitiated && (overviewRef.current || !isLiveBbox(nextViewport.bbox))) {
+      setOverview(true)
+      setOrigin(null)
+      setCommittedBbox(null)
+      setRegion('')
+    }
+  }, [])
 
   const onSearchChange = (value: string) => {
     claimSearchArea()
@@ -506,11 +524,11 @@ export default function App() {
   // the map gets a stricter verified-location subset below so a pin never implies a
   // directory/community coordinate is exact.
   const filteredRows = useMemo(
-    () => allRows.filter((st) => passesFilters(st, filters, '')),
+    () => allRows.filter((st) => passesFilters(st, filters)),
     [allRows, filters],
   )
   const mapRows = useMemo(() => discoveryRows(inventory.data?.leads || [], allRows)
-    .filter(st => passesFilters(st, filters, '') && isMapLocationVerified(st)),
+    .filter(st => passesFilters(st, filters) && isMapLocationVerified(st)),
     [inventory.data, allRows, filters])
   // Region shortcuts and location searches own their bounds independently of the map.
   // Intentional map exploration clears an overview region to follow the visible bounds;
@@ -666,12 +684,15 @@ export default function App() {
               }
             : null
 
-  const signIn = () => {
+  const signIn = useCallback(() => {
     const storage = browserStorage()
     if (storage) writeSignedIn(storage, true)
     setSignedIn(true)
-  }
-  const onSave = (station: Station) => {
+  }, [])
+  const savedState = useRef({ signedIn, saved })
+  useLayoutEffect(() => { savedState.current = { signedIn, saved } }, [signedIn, saved])
+  const onSave = useCallback((station: Station) => {
+    const { signedIn, saved } = savedState.current
     const record = { id: station.id, name: station.name, city: station.city ?? null }
     if (!signedIn) {
       signIn()
@@ -681,7 +702,7 @@ export default function App() {
     const storage = browserStorage()
     if (storage) writeSaved(storage, next)
     setSaved(next)
-  }
+  }, [signIn])
   const removeSaved = (id: string) => {
     const next = saved.filter((item) => item.id !== id)
     const storage = browserStorage()
@@ -879,20 +900,7 @@ export default function App() {
               theme={theme}
               userCoords={geo.coords}
               onUserViewportIntent={geo.cancel}
-              onViewportChange={(nextViewport) => {
-                // Map reports are debounced. A gesture made before a newer search
-                // choice must not cancel GPS or schedule another search afterward.
-                if (nextViewport.userInitiated && (nextViewport.userInitiatedAt ?? 0) < explicitAreaIntentAt.current) return
-                setViewport(nextViewport)
-                // Region shortcuts own a geographic scope even without WebGL. Only
-                // intentional map exploration hands that scope back to the viewport.
-                if (nextViewport.userInitiated && (overview || !isLiveBbox(nextViewport.bbox))) {
-                  setOverview(true)
-                  setOrigin(null)
-                  setCommittedBbox(null)
-                  setRegion('')
-                }
-              }}
+              onViewportChange={onViewportChange}
               flyTarget={flyTarget}
               initialView={SPAIN_VIEW}
             />
