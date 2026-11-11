@@ -9,6 +9,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { FeatureCollection, Point } from 'geojson'
 import type { Bbox, Coords, Station, Viewport } from '../types'
 import { mapBounds, normalizeBbox, wrapLongitude } from '../lib/geo'
+import { setFeedbackMap } from '../lib/mapSnapshot'
 import {
   decisionLevel,
   hasVerifiedPrice,
@@ -706,6 +707,7 @@ export const MapView = memo(function MapView({
       return
     }
     mapRef.current = map
+    setFeedbackMap(map)
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 
     map.setPadding(MAP_PADDING)
@@ -804,6 +806,7 @@ export const MapView = memo(function MapView({
       const closingPopup = popupRef.current
       popupRef.current = null
       closingPopup?.remove()
+      setFeedbackMap(null)
       map.remove()
       mapRef.current = null
       readyRef.current = false

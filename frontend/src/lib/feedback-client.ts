@@ -9,6 +9,7 @@
  *  - it or a parent carries `data-fb-private` (add it to every name, address, balance you want hidden);
  *  - it matches the app's extra private selectors, an open dialog, or is a form field's value;
  *  - its text looks like an IBAN, email, international phone, card, long number or wallet address.
+ * The clone never draws noscript, script, template, a hidden element, or anything that is not displayed.
  * Requires the `modern-screenshot` package (loaded on first capture only).
  */
 
@@ -29,6 +30,7 @@ const MAX_WIDTH = 1600;
 
 const PRIVATE_SELECTOR = "[data-fb-private], [role='dialog']:not([data-fb-self]), [role='alertdialog'], [aria-modal='true']:not([data-fb-self])";
 const EXCLUDED_SELECTOR = "[data-fb-self], video, audio, iframe, embed, object";
+const SKIP_TAGS = new Set(["NOSCRIPT", "SCRIPT", "TEMPLATE"]);
 const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 const MEDIA_SELECTOR = "img, svg, canvas, picture";
 const VALUE_KEPT_INPUT_TYPES = new Set(["checkbox", "radio", "range", "button", "submit", "reset", "color"]);
@@ -128,8 +130,43 @@ function maskPatterns(root: Element) {
   }
 }
 
+/**
+ * True when the screenshot clone must not draw this node: noscript, script, template, anything
+ * with the hidden attribute, anything whose display is none, or a descendant of one of those.
+ * A browser hides noscript while JavaScript is on, but a cloned document draws that text.
+ * `Element` is taken from the node's own window so this can be tested outside a browser.
+ */
+export function feedbackCloneSkips(node: Node): boolean {
+  const view = node.ownerDocument?.defaultView;
+  const ElementCtor = view?.Element;
+  if (!ElementCtor || !(node instanceof ElementCtor)) return false;
+  const element = node as Element;
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    if (SKIP_TAGS.has(current.tagName.toUpperCase()) || current.hasAttribute("hidden") || current.matches(EXCLUDED_SELECTOR)) return true;
+    if (!view) continue;
+    try {
+      if (view.getComputedStyle(current).display === "none") return true;
+    } catch {
+      // A node the engine cannot style is still judged by its tag and hidden attribute.
+    }
+  }
+  return false;
+}
+
+function dropUndrawn(root: Element) {
+  for (const child of [...root.children]) {
+    if (feedbackCloneSkips(child)) child.remove();
+    else dropUndrawn(child);
+  }
+}
+
 /** Masks a finished clone in place. Runs before anything is drawn. */
 export function maskFeedbackClone(root: Element, extraPrivateSelector?: string) {
+  if (feedbackCloneSkips(root)) {
+    root.remove();
+    return;
+  }
+  dropUndrawn(root);
   const selector = extraPrivateSelector ? `${PRIVATE_SELECTOR}, ${extraPrivateSelector}` : PRIVATE_SELECTOR;
   if (root.matches(selector)) maskSubtree(root);
   root.querySelectorAll(selector).forEach(maskSubtree);
@@ -176,7 +213,7 @@ export async function captureFeedbackView(options: { privateSelector?: string } 
     timeout: CAPTURE_TIMEOUT_MS,
     backgroundColor: background && background !== "rgba(0, 0, 0, 0)" ? background : "#ffffff",
     style: { margin: "0", marginTop: `-${scrollY}px` },
-    filter: (node: Node) => !(node instanceof Element && node.matches(EXCLUDED_SELECTOR)),
+    filter: (node: Node) => !feedbackCloneSkips(node),
     onCloneNode: (cloned: Node) => { if (cloned instanceof Element) maskFeedbackClone(cloned, options.privateSelector); },
   });
   try {

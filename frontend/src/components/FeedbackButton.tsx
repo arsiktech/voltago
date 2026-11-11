@@ -13,6 +13,7 @@ import {
   type FeedbackMood,
 } from '../lib/feedback-client'
 import { feedbackButtonEnabled, feedbackEndpoint, feedbackSubmission } from '../lib/feedback'
+import { holdMapSnapshot } from '../lib/mapSnapshot'
 
 const MOOD_ICON: Record<FeedbackMood, LucideIcon> = {
   happy: FaceSlightlySmiling,
@@ -86,11 +87,25 @@ function FeedbackComposer({
   useEffect(() => {
     if (!open || !allowShot || dropped) return
     let live = true
-    captureFeedbackView().then((next) => {
-      if (live) setShot(next)
-    })
+    const handle = { release: () => {} }
+    void (async () => {
+      const release = await holdMapSnapshot()
+      handle.release = release
+      if (!live) {
+        release()
+        return
+      }
+      try {
+        const next = await captureFeedbackView()
+        if (live) setShot(next)
+      } finally {
+        release()
+        handle.release = () => {}
+      }
+    })()
     return () => {
       live = false
+      handle.release()
     }
   }, [open, allowShot, dropped])
 

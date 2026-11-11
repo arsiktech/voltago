@@ -5,7 +5,7 @@ import { sendFeedback } from './feedback-client'
 import clientSource from './feedback-client.ts?raw'
 import { feedbackButtonEnabled, feedbackEndpoint, feedbackEndpointFrom, feedbackSubmission } from './feedback'
 
-const CLIENT_SHA256 = '285b274f2a7002d14776aa025b32bde7dd7a80cc7dc2ce44e9448d1096e025c5'
+const CLIENT_SHA256 = '570918a01e80ea50dc3a803a765c529e52504e4380526fa9ab6142a636b8be42'
 
 async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
