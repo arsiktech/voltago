@@ -70,11 +70,12 @@ def stamp_row(row: dict) -> None:
             continue
         if str(source.get("attribution") or "").strip():
             continue
-        line = attribution_for(
-            source.get("name"),
-            source.get("url"),
-            row.get("source"),
-            row.get("source_url"),
-        )
+        # Match this source entry on its own. A merged row's primary source
+        # (often OpenStreetMap) must not overwrite a Red MOVEM, Moraleja or
+        # other corroborating line. Fall back to the row only when the entry
+        # itself names no known source.
+        line = attribution_for(source.get("name"), source.get("url"))
+        if not line:
+            line = attribution_for(row.get("source"), row.get("source_url"))
         if line:
             source["attribution"] = line
