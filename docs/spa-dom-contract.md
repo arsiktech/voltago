@@ -12,7 +12,10 @@ this file in the same change.
   width controlled by `--discovery-width`. `.discovery-map` occupies its own adjacent
   canvas area; camera fitting never includes area hidden under the results.
 - Header: `header.app-header`, brand home link `a[aria-label="Volta Go home"]`, decorative
-  `img[src="/volta-icon.svg"]` with empty `alt`, and the theme button.
+  `img[src="/volta-icon.svg"]` with empty `alt`, and the theme button. When feedback is
+  enabled, `button.feedback-button` (visible name Feedback) sits beside Your EV, and on
+  the source-coverage page header. Its popover is `[data-fb-self]`. A screenshot is
+  included only when the service's capture list includes the current page.
 - Mobile list/map switch: `button.mobile-view-toggle`, named `Show full charger list` /
   `Show map and chargers`, sits in the sticky results heading before refresh. A decorative
   grabber (`.sheet-grabber-zone`, `aria-hidden`) at the top of the sheet does the same on
@@ -41,6 +44,7 @@ this file in the same change.
 
 - Header `button.ev-header-control`, visible name beginning `Your EV`, opens the
   nonmodal `aside#vehicle-panel[role="dialog"][aria-labelledby="vehicle-panel-title"]`.
+  The panel and the header battery figure carry `data-fb-private`.
   Station search and details remain usable behind the desktop drawer. `Close your EV`
   or Escape closes it and restores focus to the header control.
 - Empty state offers `Connect your car` when live linking is configured,
@@ -67,7 +71,7 @@ this file in the same change.
   readings withhold time/cost. No estimate changes a station's decision pill.
 
 ## Search
-- Input: `input[inputmode="search"]` with `aria-label="Enter home address or city"`,
+- Input: `input[inputmode="search"][data-fb-private]` with `aria-label="Enter home address or city"`,
   `role="combobox"`, `aria-autocomplete="list"`, `aria-expanded`, `aria-controls` (set to the
   dropdown id only while it is shown), `aria-activedescendant` (set to the active option id
   while an item is highlighted). `placeholder="Search a city or address"`.

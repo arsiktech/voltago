@@ -33,6 +33,8 @@ npm run dev            # http://127.0.0.1:5183
 
 Override the proxy target with `VITE_API_TARGET` (e.g. `VITE_API_TARGET=http://127.0.0.1:8773 npm run dev`).
 
+In-app feedback stays off unless `VITE_FEEDBACK_URL`, `VITE_FEEDBACK_APP`, and `VITE_FEEDBACK_KEY` are all set. Empty values are listed in `.env.example`.
+
 ## Build
 
 ```bash

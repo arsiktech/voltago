@@ -53,7 +53,7 @@ function VehiclePortrait({ vehicle }: { vehicle: Vehicle | null }) {
       <img src={photo || '/images/ev-silver.webp'} alt={photo ? `Your photo of ${vehicle ? vehicleName(vehicle) : 'your EV'}` : 'Silver electric sedan illustration'} />
       <figcaption>{photo ? 'Your photo · on this device' : 'Vehicle illustration'}</figcaption>
       {editable && <>
-        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" tabIndex={-1} onChange={upload} aria-label="Choose your car photo" />
+        <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" tabIndex={-1} onChange={upload} aria-label="Choose your car photo" data-fb-private />
         <button type="button" className="ev-photo-button ev-icon-button" onClick={() => input.current?.click()} aria-label="Change car photo" title="Your photo stays on this device"><ImagePlus size={17} /></button>
         {photo && <button type="button" className="ev-photo-remove ev-icon-button" aria-label="Remove car photo" onClick={() => { setPhoto(null); try { localStorage.removeItem(key) } catch { /* Current-visit removal still works. */ } }}><X size={14} /></button>}
       </>}
@@ -77,7 +77,7 @@ function VehicleReadings({ vehicle, onEdit }: { vehicle: Vehicle; onEdit: () => 
     : state === 'not_charging' ? 'Not charging' : 'Unknown'
   return <>
     {garage.vehicles.length > 1 && <label className="ev-vehicle-select"><CarFront size={15} />
-      <select aria-label="Selected vehicle" value={vehicle.id} onChange={(event) => garage.selectVehicle(event.target.value)}>
+      <select aria-label="Selected vehicle" value={vehicle.id} onChange={(event) => garage.selectVehicle(event.target.value)} data-fb-private>
         {garage.vehicles.map((item) => <option key={item.id} value={item.id}>{vehicleName(item)}{item.source.mode === 'preview' ? ' · example' : item.source.mode === 'manual' ? ' · manual' : ''}</option>)}
       </select><ChevronDown size={14} aria-hidden="true" />
     </label>}
@@ -100,7 +100,7 @@ function VehicleReadings({ vehicle, onEdit }: { vehicle: Vehicle; onEdit: () => 
     </dl>
     {state === 'charging' && vehicle.chargePowerKw !== null && <p className="ev-charge-power"><BatteryCharging size={15} />Charging at {vehicle.chargePowerKw.toFixed(1)} kW</p>}
     <div className="ev-charge-target"><label htmlFor="vehicle-charge-target">Charge target</label><output htmlFor="vehicle-charge-target">{garage.target}%</output></div>
-    <div className="ev-target-slider"><span>50%</span><input id="vehicle-charge-target" aria-label="Charge target" type="range" min="50" max="100" step="5"
+    <div className="ev-target-slider"><span>50%</span><input id="vehicle-charge-target" aria-label="Charge target" type="range" min="50" max="100" step="5" data-fb-private
       style={{ '--target-progress': `${(garage.target - 50) * 2}%` } as CSSProperties}
       value={garage.target} onChange={(event) => garage.setTarget(Number(event.target.value))} aria-valuetext={`${garage.target}%`} /><span>100%</span></div>
     <div className="ev-energy-to-target"><Zap size={17} /><span>{energy === null ? 'Add battery capacity to estimate your charge.'
@@ -142,7 +142,7 @@ export default function VehiclePanel({ onClose, callbackError }: { onClose: () =
     document.addEventListener('keydown', escape)
     return () => document.removeEventListener('keydown', escape)
   }, [onClose])
-  return <motion.aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-modal="false" aria-labelledby="vehicle-panel-title"
+  return <motion.aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-modal="false" aria-labelledby="vehicle-panel-title" data-fb-private
     initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16, scale: 0.985 }}
     animate={{ opacity: 1, x: 0, scale: 1 }} exit={reduce ? { opacity: 0 } : { opacity: 0, x: 12, scale: 0.985 }}
     transition={reduce ? quickEase : smoothSpring}>

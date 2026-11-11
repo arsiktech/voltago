@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { FeedbackButton } from './FeedbackButton'
+import { useTheme } from '../hooks/useTheme'
 import { useQuery } from '@tanstack/react-query'
 import { getJSON, useGeocode } from '../lib/api'
 import type { GeocodeResult } from '../types'
@@ -136,6 +138,7 @@ export function MatrixTable({ data }: { data: MatrixResponse }) {
 }
 
 export default function SourceMatrix() {
+  const { theme } = useTheme()
   const [query, setQuery] = useState('')
   const [place, setPlace] = useState<GeocodeResult | null>(null)
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
@@ -153,12 +156,15 @@ export default function SourceMatrix() {
   })
   return (
     <main className="matrix-page">
-      <header>
-        <h1>Charger source coverage</h1>
-        <p>
-          Which public sources list each charging location. A cell shows coverage, not availability, price or whether
-          charging is free.
-        </p>
+      <header className="matrix-header">
+        <div>
+          <h1>Charger source coverage</h1>
+          <p>
+            Which public sources list each charging location. A cell shows coverage, not availability, price or whether
+            charging is free.
+          </p>
+        </div>
+        <FeedbackButton theme={theme} />
       </header>
       <form
         className="matrix-search"
@@ -178,9 +184,10 @@ export default function SourceMatrix() {
           }}
           placeholder="Calle Mayor 1, Madrid"
           autoComplete="off"
+          data-fb-private
         />
         {!place && (geocode.data?.results?.length ?? 0) > 0 && (
-          <ul className="matrix-suggestions">
+          <ul className="matrix-suggestions" data-fb-private>
             {geocode.data!.results.slice(0, 5).map((result) => (
               <li key={`${result.lat},${result.lon}`}>
                 <button type="button" onClick={() => choosePlace(result)}>
