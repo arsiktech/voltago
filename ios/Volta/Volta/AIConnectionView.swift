@@ -29,8 +29,6 @@ struct AIConnectionPrompt: View {
         copySucceeded ? String(localized: "Prompt copied") : String(localized: "Copy AI prompt")
     }
 
-    private var subtitle: String { String(localized: "Paste into your AI chat") }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: copyPrompt) {
@@ -46,7 +44,6 @@ struct AIConnectionPrompt: View {
                             Text(title)
                         }
                         .font(.caption.weight(.semibold))
-                        Text(subtitle).font(.caption2)
                     }
                 }
                 .foregroundStyle(Theme.actionInk)
@@ -59,7 +56,7 @@ struct AIConnectionPrompt: View {
                 .contentShape(.capsule)
             }
             .buttonStyle(VoltaPressButtonStyle())
-            .accessibilityLabel(Text(verbatim: title + ". " + subtitle))
+            .accessibilityLabel(Text(verbatim: title))
             .accessibilityHint("Copies a setup prompt for ChatGPT, Claude, Grok or another AI chat")
             .accessibilityIdentifier("copyAIPromptButton")
 
@@ -101,7 +98,7 @@ struct AIConnectionPrompt: View {
         }
         copySucceeded = AgentConnectionPrompt.copy(prompt, to: .general)
         if copySucceeded {
-            announce(String(localized: "Prompt copied. Paste it into your AI chat."))
+            announce(String(localized: "Prompt copied."))
         } else {
             let error = String(localized: "Couldn't copy. Tap again or copy the prompt manually.")
             copyError = error

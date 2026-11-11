@@ -315,7 +315,8 @@ class IOSReleaseContractTests(unittest.TestCase):
         support = (ROOT / "frontend" / "src" / "lib" / "supportContact.ts").read_text(encoding="utf-8")
         email = re.search(r"SUPPORT_EMAIL = '([^']+)'", support)
         self.assertIsNotNone(email)
-        self.assertIn(f"mailto:{email.group(1)}", settings)
+        self.assertIn("https://voltago.app/support", settings)
+        self.assertTrue(email.group(1).endswith("@voltago.app"))
 
     def test_recursive_release_bundle_scan_omits_debug_and_stale_privacy_copy(self):
         raw_path = os.environ.get("VOLTA_RELEASE_APP_PATH")
@@ -483,16 +484,13 @@ class IOSReleaseContractTests(unittest.TestCase):
         )
         self.assertIn("INFOPLIST_FILE = Volta/Info.plist;", release)
         self.assertIn(
-            'VOLTA_RELEASE_BASE_URL = "https://configuration.invalid";', release
+            'VOLTA_RELEASE_BASE_URL = "https://voltago.app";', release
         )
-        for setting in (
-            "VOLTA_PRIVACY_POLICY_URL",
-            "VOLTA_TERMS_URL",
-            "VOLTA_SUPPORT_URL",
-        ):
-            self.assertIn(
-                f'{setting} = "https://configuration.invalid";', release
-            )
+        self.assertIn(
+            'VOLTA_PRIVACY_POLICY_URL = "https://voltago.app/privacy";', release
+        )
+        self.assertIn('VOLTA_TERMS_URL = "https://voltago.app/terms";', release)
+        self.assertIn('VOLTA_SUPPORT_URL = "https://voltago.app/support";', release)
         for key in (
             "VoltaReleaseBaseURL",
             "VoltaPrivacyPolicyURL",

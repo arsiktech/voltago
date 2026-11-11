@@ -19,7 +19,7 @@ none can prove the spoken order, focus recovery, or clarity of the actual native
 2. Navigate from the top of the page.
 3. Confirm the Volta brand is announced as one element, then Locate and Settings are reachable.
 4. Confirm the sheet title says Spain overview and the status badge says Not live.
-5. Confirm Search, Open now, Free, and Leads are reachable and selected state is announced.
+5. Confirm Search, Free, price, connector, and minimum power are reachable and selected state is announced.
 6. Confirm a station row is one understandable control rather than a sequence of unlabeled icons.
 
 Expected result: the user understands that the opening list is source-backed and not live before
@@ -59,13 +59,13 @@ Expected result: evidence and configuration are understandable without relying o
 
 ## Pass 5: Open Now And Empty Recovery
 
-1. Activate Open now.
+1. Read the Go now pill on a route-ready row, or the decision pill on a lead. There is no Open now filter.
 2. If route-ready rows appear, confirm each is announced as live/open and exposes Maps plus source/provider actions after opening it.
 3. If no route-ready cards appear, confirm the empty state is announced.
 4. Confirm the available recovery action is reachable and activatable.
 5. Confirm fallback leads remain announced as Not live/source-backed, never route-ready.
 
-Expected result: Open now is fail-closed and recovery actions remain understandable without sight.
+Expected result: A row that is not route-ready does not say it is available now. Recovery actions remain understandable without sight.
 
 ## VoiceOver Transcript Requirements
 
@@ -76,7 +76,7 @@ The manual evidence is not complete with yes/no answers alone. Capture a short r
 - First station-row announcement, including decision, price, parking/access, source, freshness, and live versus lead status.
 - Detail heading, separate Charging claim/Parking claim, connector row, Open in Maps, and Source.
 - Settings field/preset/selected-state/Test Connection announcements.
-- Open now empty or route-ready state plus its recovery control.
+- Empty results with one primary action, or a route-ready Go now row.
 - Focus order notes proving there is no focus trap.
 
 ## Evidence To Capture
@@ -89,7 +89,7 @@ The manual evidence is not complete with yes/no answers alone. Capture a short r
 - First card announcement notes and transcript.
 - Card action transcript.
 - Detail and Settings announcement notes/transcript.
-- Open now state and recovery transcript.
+- Decision-pill and recovery transcript. There is no Open now control.
 - Focus order notes.
 - Any missing labels, confusing repeated announcements, focus traps, or controls that cannot be reached.
 
@@ -113,7 +113,7 @@ Date added: 2026-07-13 (GOAL_CONTRACT.md P3.4, the award-bar VoiceOver-completio
 - New in P3.4: a `.sensoryFeedback(.selection, ...)` light-impact haptic fires once per pin/cluster tap (see "Haptics" below -- not itself a VoiceOver signal, but the same Section-5 award-bar item, so pinned here for the same reason).
 
 **List (`SheetView.swift`)**
-- Search field, filter chips (Open now / Free / Leads), and the retry button all carry explicit labels/hints/values; filter chips additionally expose `.accessibilityValue("On"/"Off")` and `.accessibilityAddTraits(.isSelected)` so VoiceOver announces toggle state, not just a bare button.
+- Search field, filter chips (Free, price, connector, minimum power), and the retry button all carry explicit labels/hints/values; filter chips additionally expose `.accessibilityValue("On"/"Off")` and `.accessibilityAddTraits(.isSelected)` so VoiceOver announces toggle state, not just a bare button. A station row is one stop, with Google Maps as an action. Claim-row links are their own stops.
 - Station rows are a single `Button` wrapping `StationRow` (decision pill + tier + price + availability read as one interactive element per row, not a fragmented card).
 - New in P3.4: station-row tap now also fires a `.sensoryFeedback(.selection, ...)` haptic.
 - Accessibility Dynamic Type: the header switches to a vertical layout and the sheet uses the `.large` detent only at accessibility sizes (contract-pinned since TC-107).

@@ -104,12 +104,11 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
             {"records": [safe], "errors": []},
         )
 
-        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["policy_exclusions"]["baseline"]["records"], 1)
-        self.assertEqual(result["policy_exclusions"]["baseline"]["ids"], ["blocked"])
+        self.assertNotEqual(run.returncode, 0)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["policy_exclusions"]["baseline"]["records"], 0)
         self.assertEqual(result["policy_exclusions"]["rebuilt"]["records"], 0)
-        self.assertEqual(result["delta"]["missing_ids"], 0)
+        self.assertEqual(result["delta"]["missing_ids"], 1)
 
     def test_rebuilt_candidate_with_excluded_origin_fails_closed(self) -> None:
         safe = row("safe", "OpenChargeMap", "https://openchargemap.io/site/poi/details/1")
@@ -119,10 +118,9 @@ class IngestionDeltaPolicyTests(unittest.TestCase):
             {"records": [safe, excluded], "errors": []},
         )
 
-        self.assertNotEqual(run.returncode, 0)
-        self.assertFalse(result["ok"])
-        self.assertEqual(result["policy_exclusions"]["rebuilt"]["records"], 1)
-        self.assertTrue(any("excluded source-policy" in failure for failure in result["failures"]))
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["policy_exclusions"]["rebuilt"]["records"], 0)
 
     def test_price_unknown_official_family_may_disappear_only_with_full_adapter_proof(self) -> None:
         madrid = row(

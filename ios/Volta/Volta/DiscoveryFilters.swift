@@ -15,8 +15,7 @@ struct MapFilterBar: View {
     private let connectorTypes = ConnectorKind.choices
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        FlowLayout(spacing: 8, lineSpacing: 8) {
                 Button {
                     state.freeOnly.toggle()
                     filterFeedback.toggle()
@@ -122,9 +121,7 @@ struct MapFilterBar: View {
                     .presentationCompactAdaptation(compactAdaptation)
                 }
             }
-            .padding(.horizontal, 16)
-        }
-        .scrollClipDisabled()
+        .padding(.horizontal, 16)
         .sensoryFeedback(.selection, trigger: filterFeedback)
         .accessibilityIdentifier("mapFilterBar")
     }
@@ -176,6 +173,7 @@ struct MapFilterBar: View {
 /// without moving the label.
 private struct FilterChipLabel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let title: String
     let systemImage: String?
     let active: Bool
@@ -201,8 +199,7 @@ private struct FilterChipLabel: View {
                     .opacity(0.7)
             }
         }
-        // The row scrolls sideways, so a chip takes its full label size and never truncates.
-        .fixedSize()
+        .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
         .foregroundStyle(active ? Color.white : Theme.ink)
         .padding(.horizontal, 14)
         .frame(minHeight: 36)
@@ -210,7 +207,7 @@ private struct FilterChipLabel: View {
         .overlay { Capsule().strokeBorder(active ? Theme.action : Theme.hairline, lineWidth: 1) }
         .frame(minHeight: 44)
         .contentShape(.rect)
-        .animation(VoltaMotion.state, value: active)
+        .animation(reduceMotion ? nil : VoltaMotion.state, value: active)
     }
 }
 

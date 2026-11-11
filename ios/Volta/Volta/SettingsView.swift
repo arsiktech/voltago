@@ -170,8 +170,17 @@ struct SettingsView: View {
 
     #endif
 
+    private var supportPage: URL {
+        #if DEBUG
+        URL(string: "https://voltago.app/support")!
+        #else
+        VoltaRuntimeConfiguration.supportURL ?? URL(string: "https://voltago.app/support")!
+        #endif
+    }
+
     private var legalSection: some View {
         Section("Legal") {
+            #if DEBUG
             NavigationLink(value: LegalDocument.terms) {
                 Label("Terms of Use", systemImage: "doc.text")
             }
@@ -181,8 +190,22 @@ struct SettingsView: View {
                 Label("Privacy", systemImage: "hand.raised")
             }
             .accessibilityIdentifier("settingsPrivacyLink")
+            #else
+            if let terms = VoltaRuntimeConfiguration.termsOfUseURL {
+                Link(destination: terms) {
+                    Label("Terms of Use", systemImage: "doc.text")
+                }
+                .accessibilityIdentifier("settingsTermsLink")
+            }
+            if let privacy = VoltaRuntimeConfiguration.privacyPolicyURL {
+                Link(destination: privacy) {
+                    Label("Privacy", systemImage: "hand.raised")
+                }
+                .accessibilityIdentifier("settingsPrivacyLink")
+            }
+            #endif
 
-            Link(destination: URL(string: "mailto:support@voltago.app?subject=Volta%20Go%20Support")!) {
+            Link(destination: supportPage) {
                 Label("Support", systemImage: "questionmark.circle")
             }
             .accessibilityIdentifier("settingsSupportLink")

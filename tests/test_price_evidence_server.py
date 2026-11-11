@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -252,23 +253,32 @@ class PriceEvidenceServerTests(unittest.TestCase):
         strategy = server.requested_source_strategy()
         self.assertEqual(strategy["price_evidence_counts"], price_evidence_counts(rows))
         apps = {row["name"]: row for row in strategy["requested_apps"]}
-        for name, count in (("Repsol", 0), ("Electromaps", 1), ("Chargemap", 1)):
-            self.assertEqual(apps[name]["status"], "active-additive-price-only-bounded")
+        self.assertEqual(apps["Repsol"]["status"], "active-additive-price-only-bounded")
+        self.assertEqual(apps["Repsol"]["records_now"]["additive_price_evidence"], 0)
+        self.assertEqual(apps["Repsol"]["records_now"]["direct_station_records"], 0)
+        for name, count in (("Electromaps", 1), ("Chargemap", 1)):
             self.assertEqual(apps[name]["decision_type"], "owner-collection-policy-not-provider-licence")
             self.assertEqual(apps[name]["records_now"]["additive_price_evidence"], count)
             self.assertEqual(apps[name]["records_now"]["direct_station_records"], 0)
             self.assertIn("5.2.2", apps[name]["risk"])
             self.assertIn("not a provider licence", apps[name]["risk"])
-        self.assertEqual(apps["Consum store locator"]["status"], "link-only-rights-blocked")
+        self.assertEqual(apps["Electromaps"]["status"], "active-directory-live-and-price")
+        self.assertEqual(apps["Chargemap"]["status"], "active-directory-and-price")
+        self.assertEqual(apps["Consum store locator"]["status"], "active-directory")
 
-    def test_historical_electromaps_live_helpers_make_no_requests(self):
-        self.assertFalse(server.ELECTROMAPS_DIRECT_ENABLED)
-        with patch.object(server.urllib.request, "urlopen") as network:
-            self.assertIsNone(server._electromaps_detail("757380"))
-            payload = server.fetch_electromaps_live([registry_row()], max_price=5.0, fetched_at=server.now_iso())
-        self.assertEqual(payload["stations"], [])
-        self.assertEqual(payload["checked_ids"], set())
-        network.assert_not_called()
+    def test_electromaps_live_uses_cache_and_stays_bounded(self):
+        self.assertTrue(server.ELECTROMAPS_DIRECT_ENABLED)
+        self.assertLessEqual(server.ELECTROMAPS_LIVE_DEADLINE, 2.0)
+        server.ELECTROMAPS_CACHE["757380"] = {"ts": time.time(), "detail": {"id": "757380", "connectors": []}}
+        try:
+            with patch.object(server.urllib.request, "urlopen") as network:
+                detail = server._electromaps_detail("757380")
+                payload = server.fetch_electromaps_live([registry_row()], max_price=5.0, fetched_at=server.now_iso())
+            self.assertEqual(detail["id"], "757380")
+            self.assertEqual(payload["stations"], [])
+            network.assert_not_called()
+        finally:
+            server.ELECTROMAPS_CACHE.pop("757380", None)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 {
   "version": 7,
-  "updated_at": "2026-10-20",
+  "updated_at": "2026-11-10",
   "normalization": "unicode-casefold-strip-diacritics",
   "granted_reuse": [
     {
@@ -125,82 +125,57 @@
       "access_method_note": "Anonymous HTTPS GET only; no credentials, sessions or provider actions.",
       "transformation_required": "Only sites marked Activo; counts never treated as live availability.",
       "revocation_gate": "Remove this grant to stop collection in scripts/ingest_sources.py source_zunder."
-    }
-  ],
-  "exclusions": [
+    },
     {
-      "id": "electromaps-reuse-rights",
+      "id": "electromaps-owner-accepted-reuse-2026-11-10",
       "family": "Electromaps",
       "source_family_terms": [
         "electromaps"
       ],
       "origin_hosts": [
-        "electromaps.com"
+        "electromaps.com",
+        "www.electromaps.com"
       ],
-      "match_scope": "structured-source-origin-only",
-      "status": "station-evidence-blocked-price-annotations-permitted",
-      "homepage_url": "https://www.electromaps.com/",
-      "terms_url": "https://www.electromaps.com/es/terms-and-conditions",
-      "reason": "Station evidence remains excluded. The owner permits only the corresponding typed price_evidence annotations under owner_collection_decisions. This collection policy does not grant a provider reuse licence or rights clearance.",
-      "scope": [
-        "runtime-stations",
-        "intelligence-records",
-        "ingestion-output",
-        "source-family-canaries"
-      ],
-      "reintroduction_gate": "Express written reuse permission plus a separate GET-only public-adapter review; conventional homepage links are not station evidence.",
-      "permitted_price_evidence_kinds": [
-        "electromaps_community"
-      ]
+      "status": "permitted",
+      "basis": "Owner decision 10 Nov 2026 to ship station rows, live status and the photo pass, accepting Apple Guideline 5.2.2 and provider reuse risk. Not a provider licence.",
+      "granted_on": "2026-11-10",
+      "attribution_required": "Electromaps",
+      "revocation_gate": "Restore the electromaps-reuse-rights exclusion and set ELECTROMAPS_DIRECT_ENABLED false."
     },
     {
-      "id": "chargemap-reuse-and-robots",
+      "id": "chargemap-owner-accepted-reuse-2026-11-10",
       "family": "Chargemap",
       "source_family_terms": [
-        "chargemap public map api"
+        "chargemap"
       ],
       "origin_hosts": [
-        "chargemap.com"
+        "chargemap.com",
+        "map.chargemap.com"
       ],
-      "match_scope": "structured-source-origin-only",
-      "status": "station-evidence-blocked-price-annotations-permitted",
-      "homepage_url": "https://chargemap.com/",
-      "terms_url": "https://chargemap.com/es-es/about/legal",
-      "reason": "Station evidence remains excluded. The owner permits only the corresponding typed price_evidence annotations under owner_collection_decisions. This collection policy does not grant a provider reuse licence or rights clearance.",
-      "scope": [
-        "runtime-stations",
-        "intelligence-records",
-        "ingestion-output",
-        "source-family-canaries"
-      ],
-      "reintroduction_gate": "Written API or data permission plus a separate public GET-only adapter review.",
-      "permitted_price_evidence_kinds": [
-        "chargemap_pass"
-      ]
+      "status": "permitted",
+      "basis": "Owner decision 10 Nov 2026 to ship station rows, accepting Apple Guideline 5.2.2 and provider reuse risk. Not a provider licence.",
+      "granted_on": "2026-11-10",
+      "attribution_required": "Chargemap",
+      "revocation_gate": "Restore the chargemap-reuse-and-robots exclusion and remove source_chargemap_mappy from ACTIVE_SOURCE_ADAPTERS."
     },
     {
-      "id": "consum-locator-reuse-permission",
+      "id": "consum-owner-accepted-reuse-2026-11-10",
       "family": "Consum store locator",
       "source_family_terms": [
-        "consum store locator"
+        "consum"
       ],
       "origin_hosts": [
-        "consum.es"
+        "consum.es",
+        "www.consum.es"
       ],
-      "match_scope": "structured-source-origin-only",
-      "status": "link-only-rights-blocked",
-      "homepage_url": "https://www.consum.es/",
-      "terms_url": "https://www.consum.es/aviso-legal-y-terminos-y-condiciones/",
-      "reason": "Consum's public locator and same-site JSON surface do not provide an open reuse grant. The legal notice limits copying and storage and permits only conservative homepage linking absent written authorization.",
-      "scope": [
-        "runtime-stations",
-        "intelligence-records",
-        "ingestion-output",
-        "source-family-canaries"
-      ],
-      "reintroduction_gate": "Written permission covering periodic retrieval, caching, transformation, redistribution, attribution, and deep links; homepage links alone are not station evidence."
+      "status": "permitted",
+      "basis": "Owner decision 10 Nov 2026 to ship Valencia locator rows, accepting Apple Guideline 5.2.2 and provider reuse risk. Not a provider licence.",
+      "granted_on": "2026-11-10",
+      "attribution_required": "Consum",
+      "revocation_gate": "Restore the consum-locator-reuse-permission exclusion and remove source_consum from ACTIVE_SOURCE_ADAPTERS."
     }
   ],
+  "exclusions": [],
   "owner_collection_decisions": [
     {
       "status": "active-additive-price-only-bounded",

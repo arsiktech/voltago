@@ -21,6 +21,7 @@ import os
 import re
 import ast
 import concurrent.futures
+from collections import deque
 import html as html_lib
 import sys
 import threading
@@ -50,6 +51,7 @@ from scripts.price_evidence import price_evidence_counts
 from scripts import source_matrix
 from scripts import seo_pages
 from scripts.source_policy import load_source_policy_exclusions, partition_records, recordset_sha256, value_is_excluded
+from scripts.source_attribution import stamp_row
 from scripts.source_transport import SourcePolicyBlocked, policy_urlopen
 from scripts import public_live_status
 from scripts.spain_geography import point_in_spain
@@ -2606,7 +2608,7 @@ def merge_nearby_source_stations(stations: List[Dict[str, Any]], secondary_stati
 # old yet genuinely free), so we do NOT gate on its age — we gate on the realtime telemetry flag and
 # stamp last_seen with the moment we observed it.
 ELECTROMAPS_MAPI = "https://www.electromaps.com/mapi/v2"
-ELECTROMAPS_DIRECT_ENABLED = False
+ELECTROMAPS_DIRECT_ENABLED = True
 ELECTROMAPS_HEADERS = {
     "Accept": "application/json",
     "App-platform": "web",
@@ -2617,6 +2619,11 @@ ELECTROMAPS_CACHE: Dict[str, Any] = {}
 ELECTROMAPS_DETAIL_TTL = int(os.environ.get("VOLTA_ELECTROMAPS_DETAIL_TTL", "150"))     # seconds
 ELECTROMAPS_LIVE_MAX = int(os.environ.get("VOLTA_ELECTROMAPS_LIVE_MAX", "60"))           # detail fetches / request
 ELECTROMAPS_FETCH_BUDGET = float(os.environ.get("VOLTA_ELECTROMAPS_FETCH_BUDGET", "6.0"))
+# Wall-clock cap for one live view. Cached details return inside it; unfinished
+# detail calls keep their lead and fill the cache in the background. Overview
+# (first paint) never calls this path.
+ELECTROMAPS_LIVE_DEADLINE = float(os.environ.get("VOLTA_ELECTROMAPS_LIVE_DEADLINE", "2.0"))
+_ELECTROMAPS_RATE: Deque[float] = deque()
 # Electromaps' baked status timestamps run to a MEDIAN of ~1 year old (some 5+ years). A connector's
 # status_updated_at is the last STATE CHANGE, so we read it as "when Electromaps last had telemetry":
 # older than this many days => stale/abandoned listing, drop it. Tune with the env var.
@@ -2649,6 +2656,18 @@ def _is_epoch_ts(ts: Any) -> bool:
     return (not s) or s.startswith("1970-") or s.startswith("0001-")
 
 
+def _electromaps_rate_allows() -> bool:
+    """At most ELECTROMAPS_LIVE_MAX uncached detail fetches per minute, process-wide."""
+    now = time.monotonic()
+    with _CACHE_LOCKS["electromaps"]:
+        while _ELECTROMAPS_RATE and now - _ELECTROMAPS_RATE[0] > 60:
+            _ELECTROMAPS_RATE.popleft()
+        if len(_ELECTROMAPS_RATE) >= ELECTROMAPS_LIVE_MAX:
+            return False
+        _ELECTROMAPS_RATE.append(now)
+        return True
+
+
 def _electromaps_detail(loc_id: str) -> Optional[Dict[str, Any]]:
     """Fetch a location detail (current real-time connector status), cached short by id."""
     if not ELECTROMAPS_DIRECT_ENABLED:
@@ -2658,6 +2677,8 @@ def _electromaps_detail(loc_id: str) -> Optional[Dict[str, Any]]:
         cached = ELECTROMAPS_CACHE.get(loc_id)
         if cached and now - cached["ts"] < ELECTROMAPS_DETAIL_TTL:
             return cached["detail"]
+    if not _electromaps_rate_allows():
+        return cached["detail"] if cached else None
     url = f"{ELECTROMAPS_MAPI}/locations/{loc_id}?skipAuthTokenValidation=true"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=ELECTROMAPS_HEADERS), timeout=ELECTROMAPS_FETCH_BUDGET) as resp:
@@ -2736,6 +2757,7 @@ def build_electromaps_station(lead: Dict[str, Any], detail: Dict[str, Any], fetc
         "sources": source_rows_union(lead, {"sources": [{
             "name": "Electromaps real-time status",
             "url": em_url,
+            "attribution": "Electromaps",
             "evidence": f"Electromaps live telemetry (realtime=true): {avail_now}/{len(live_connectors)} connectors available now.",
         }]}),
         "reliability": "official-live-aggregator",
@@ -2787,19 +2809,39 @@ def fetch_electromaps_live(targets: List[Dict[str, Any]], *, max_price: float, f
         loc_id, lead = pair
         return loc_id, lead, _electromaps_detail(loc_id)
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(pairs))) as ex:
-        for loc_id, lead, detail in ex.map(work, pairs):
-            if detail is None:
-                continue  # our fetch failed: leave the lead as-is, don't punish on our error
-            checked.add(loc_id)
-            station = build_electromaps_station(lead, detail, fetched_at)
-            if station:
-                stations.append(station)
-                promoted.add(loc_id)
-            else:
-                cons = detail.get("connectors") or []
-                if cons and all(normalize_status(c.get("status")) == "OUTOFORDER" for c in cons):
-                    dead.add(loc_id)  # the live feed now says every connector is out of service
+    def consume(result: Tuple[str, Dict[str, Any], Optional[Dict[str, Any]]]) -> None:
+        loc_id, lead, detail = result
+        if detail is None:
+            return  # our fetch failed: leave the lead as-is, don't punish on our error
+        checked.add(loc_id)
+        station = build_electromaps_station(lead, detail, fetched_at)
+        if station:
+            stations.append(station)
+            promoted.add(loc_id)
+        else:
+            cons = detail.get("connectors") or []
+            if cons and all(normalize_status(c.get("status")) == "OUTOFORDER" for c in cons):
+                dead.add(loc_id)  # the live feed now says every connector is out of service
+
+    # Return by the deadline so a cold fan-out cannot hold the live response.
+    # Threads already in flight keep filling ELECTROMAPS_CACHE after we return.
+    deadline = time.monotonic() + max(0.1, ELECTROMAPS_LIVE_DEADLINE)
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(pairs)))
+    try:
+        pending = {pool.submit(work, pair) for pair in pairs}
+        while pending and time.monotonic() < deadline:
+            done, pending = concurrent.futures.wait(
+                pending,
+                timeout=max(0.01, deadline - time.monotonic()),
+                return_when=concurrent.futures.FIRST_COMPLETED,
+            )
+            for future in done:
+                try:
+                    consume(future.result())
+                except Exception:
+                    continue
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
     return {"stations": stations, "checked_ids": checked, "promoted_ids": promoted, "dead_ids": dead}
 
 
@@ -4027,6 +4069,53 @@ def charger_listing_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[st
     return 200, {"chargers": found}
 
 
+def _catalogue_row(identifier: str) -> Optional[Tuple[Dict[str, Any], str]]:
+    """One canonical catalogue row by id. No live or upstream I/O."""
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,255}", identifier):
+        return None
+    records = load_intelligence_meta().get("records") or []
+    if isinstance(records, IndexedRecords):
+        with records.index.connection() as connection:
+            rows = connection.execute(
+                "SELECT payload FROM stations WHERE identifier=? ORDER BY seq LIMIT 2", (identifier,),
+            ).fetchall()
+        if len(rows) != 1:
+            return None
+        return records.index.decode(rows[0][0]), "free/cheap intelligence DB"
+    matches = [row for row in records if str(row.get("id") or "") == identifier]
+    if len(matches) == 1:
+        return matches[0], "free/cheap intelligence DB"
+    seeds = [row for row in _raw_seed_records() if str(row.get("id") or "") == identifier]
+    if len(matches) == 0 and len(seeds) == 1:
+        return seeds[0], "manual research lead"
+    return None
+
+
+def saved_chargers_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
+    """Compact summaries for saved chargers that are outside the current map payload.
+
+    At most 25 ids. Catalogue only: no live fetch, so this cannot slow first paint.
+    """
+    ids = [value for value in (params.get("ids") or [""])[0].split(",") if value]
+    if not ids or len(ids) > 25:
+        return 400, {"error": "invalid_ids"}
+    snapshot = catalogue_detail_snapshot()
+    stations: List[Dict[str, Any]] = []
+    for identifier in ids:
+        found = _catalogue_row(identifier)
+        if not found:
+            continue
+        raw, default_source = found
+        if not source_policy_record_allowed(raw):
+            continue
+        station = _normalize_lead(deepcopy(raw), default_source)
+        if reject_station_reason(station):
+            continue
+        stamp_row(station)
+        stations.append(summary_station_for_ui(station, snapshot))
+    return 200, {"stations": stations, "leads": [], "snapshot": snapshot}
+
+
 def known_station_ids() -> set:
     """Ids a check-in/photo may reference: intel + seeds + currently cached live rows
     + accepted community suggestions. 60 s memo; new points go through /station."""
@@ -4517,6 +4606,7 @@ def catalogue_detail_snapshot() -> str:
 
 
 def summary_station_for_ui(station: Dict[str, Any], snapshot: str) -> Dict[str, Any]:
+    stamp_row(station)
     row = {key: value for key, value in station.items() if key in SUMMARY_OVERVIEW_FIELDS}
     if isinstance(station.get("sources"), list):
         row["sources"] = [
@@ -4524,6 +4614,20 @@ def summary_station_for_ui(station: Dict[str, Any], snapshot: str) -> Dict[str, 
             for source in station["sources"] if isinstance(source, dict)
         ]
     row["detail_snapshot"] = snapshot
+    media = station.get("media") if isinstance(station.get("media"), dict) else None
+    approved = []
+    for photo in (media or {}).get("photos") or []:
+        if isinstance(photo, dict) and photo.get("display_rights_approved") is True:
+            approved.append({
+                key: photo.get(key)
+                for key in (
+                    "url", "thumbnail_url", "source", "source_url", "caption",
+                    "license", "attribution", "display_rights_approved",
+                )
+                if photo.get(key) not in (None, "")
+            })
+    if approved:
+        row["media"] = {"photos": approved[:1], "photo_status": "public_photo_available"}
     return row
 
 
@@ -4566,6 +4670,7 @@ def station_detail_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str
     if not source_policy_record_allowed(raw):
         return 404, {"error": "not_found"}
     station = _normalize_lead(deepcopy(raw), default_source)
+    stamp_row(station)
     if reject_station_reason(station):
         return 404, {"error": "not_found"}
     _refresh_time_derived_fields(attach_community_rows([station]))
@@ -4653,6 +4758,7 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
             continue
         if origin and source_health_has_valid_coordinates(lead):
             lead["distance_km"] = round(haversine_km(origin[0], origin[1], lead["lat"], lead["lon"]), 2)
+        stamp_row(lead)
         apply_corroboration(lead)
         # Corroboration must reach ranking here, not just the corroboration block:
         # recommendation_score was computed at ingestion/normalization time, before
@@ -5485,6 +5591,10 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         existing_warning = str(payload.get("warning") or "").strip()
         payload["warning"] = f"{existing_warning} {policy_warning}".strip() if existing_warning else policy_warning
 
+    for row in stations:
+        stamp_row(row)
+    for row in payload.get("leads") or []:
+        stamp_row(row)
     payload["stations"] = stations
     payload["price_evidence_counts"] = price_evidence_counts(stations + payload["leads"])
     payload["gaia"] = {
@@ -5508,9 +5618,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         "checked_leads": 0,
         "promoted_live": 0,
         "out_of_service_dropped": 0,
-        "runtime_live_enabled": False,
+        "runtime_live_enabled": ELECTROMAPS_DIRECT_ENABLED,
         "source_url": "https://www.electromaps.com/",
-        "policy": PRICE_EVIDENCE_POLICY + " Community prices retain the source update date; a fresh fetch is not a new observation. Historical live refresh remains disabled.",
+        "policy": PRICE_EVIDENCE_POLICY + " Community prices retain the source update date; a fresh fetch is not a new observation. Live status is on, cached per location, rate-limited, and capped so it does not hold first paint.",
     }
     payload["intel"] = {
         "generated_at": intel_meta.get("generated_at"),
@@ -5876,12 +5986,12 @@ def source_health_summary() -> Dict[str, Any]:
             "fenie": fenie_policy,
             "electromaps": {
                 "name": "Electromaps real-time detail cache",
-                "status": PRICE_EVIDENCE_SOURCE_STATUS,
-                "cached_details": 0,
-                "has_payload": False,
-                "runtime_live_enabled": False,
+                "status": "active-directory-live-and-price",
+                "cached_details": len(ELECTROMAPS_CACHE),
+                "has_payload": bool(ELECTROMAPS_CACHE),
+                "runtime_live_enabled": ELECTROMAPS_DIRECT_ENABLED,
                 "source_url": "https://www.electromaps.com/",
-                "policy": "Historical runtime live fetching stays disabled. " + PRICE_EVIDENCE_POLICY,
+                "policy": "Live detail fetches are cached, rate-limited to 60 a minute, and return within 2 seconds. " + PRICE_EVIDENCE_POLICY,
             },
         },
         "engine": {
@@ -5904,6 +6014,20 @@ def source_health_summary() -> Dict[str, Any]:
 
 
 _GLOBAL_SOURCE_COUNTS: Dict[str, Any] = {}
+
+
+def _named_source_count(records: Any, needle: str) -> int:
+    if isinstance(records, IndexedRecords) or not isinstance(records, list):
+        return 0
+    needle = needle.casefold()
+    count = 0
+    for row in records:
+        if not isinstance(row, dict):
+            continue
+        blob = " ".join(str(row.get(key) or "") for key in ("source", "source_url")).casefold()
+        if needle in blob:
+            count += 1
+    return count
 
 
 def global_source_counts(records: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -6004,10 +6128,10 @@ def requested_source_strategy() -> Dict[str, Any]:
             },
             {
                 "name": "Electromaps",
-                "status": PRICE_EVIDENCE_SOURCE_STATUS,
+                "status": "active-directory-live-and-price",
                 "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
-                "method": "Bounded Spain-only anonymous public map-list/detail GETs attach dated community price text to uniquely matched existing stations. Source updated_at is mandatory and remains distinct from fetch time. Snapshots retain only required matching and price fields, without user profiles, reviews, photos or media. Historical live refresh remains disabled.",
-                "records_now": {"additive_price_evidence": evidence_counts["electromaps_community"], "direct_station_records": 0, "live_stations": 0},
+                "method": "Owner decision 10 Nov 2026: Valencia-bounded directory pins, the photo pass, and live status (cached, 60 details per minute, 2s view deadline) plus the existing Spain price annotations. Attribution is Electromaps. This is not a provider licence.",
+                "records_now": {"additive_price_evidence": evidence_counts["electromaps_community"], "direct_station_records": _named_source_count(records, "electromaps"), "live_stations": live_owner_probe("electromaps")["live_owner_total"]},
                 "source_url": "https://www.electromaps.com/",
                 "risk": PRICE_EVIDENCE_POLICY + " Old source dates stay old after retrieval; ambiguity withholds the claim.",
             },
@@ -6027,18 +6151,19 @@ def requested_source_strategy() -> Dict[str, Any]:
             },
             {
                 "name": "Chargemap",
-                "status": PRICE_EVIDENCE_SOURCE_STATUS,
+                "status": "active-directory-and-price",
                 "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
-                "method": "Bounded Spain-only anonymous public map-list and price-HTML GETs attach Price with Chargemap Pass evidence to uniquely matched existing stations. Preserve started-unit billing, idle triggers, grace periods and numeric fees. List is_free never supplies free evidence.",
-                "records_now": {"additive_price_evidence": evidence_counts["chargemap_pass"], "direct_station_records": 0, "live_stations": 0},
+                "method": "Owner decision 10 Nov 2026: Valencia-bounded public map pins with attribution Chargemap, plus the existing Chargemap Pass price annotations. List is_free never supplies free evidence. This is not a provider licence.",
+                "records_now": {"additive_price_evidence": evidence_counts["chargemap_pass"], "direct_station_records": _named_source_count(records, "chargemap"), "live_stations": 0},
                 "source_url": "https://chargemap.com/",
                 "risk": PRICE_EVIDENCE_POLICY + " This is a payment-route price, not a direct operator quote; directory statuses never grant live authority.",
             },
             {
                 "name": "Consum store locator",
-                "status": "link-only-rights-blocked",
-                "method": "Conventional homepage link only. Direct and nested store-location or charger evidence is excluded because the public locator has no open reuse grant.",
-                "records_now": {"direct_station_records": 0, "nested_station_evidence_records": 0},
+                "status": "active-directory",
+                "decision_type": PRICE_EVIDENCE_DECISION_TYPE,
+                "method": "Owner decision 10 Nov 2026: Valencia supermarket locator rows with attribution Consum. The owner accepted the reuse-rights risk. This is not a provider licence.",
+                "records_now": {"direct_station_records": _named_source_count(records, "consum"), "nested_station_evidence_records": 0},
                 "source_url": "https://www.consum.es/",
                 "risk": "Written permission covering retrieval, caching, transformation, redistribution, attribution, and deep links is required before station evidence can return.",
             },
@@ -6387,6 +6512,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
                 return
             status, payload = charger_listing_response(params)
+            return self.send_json(status, payload)
+        if path == "/api/saved-chargers":
+            if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):
+                return
+            status, payload = saved_chargers_response(params)
             return self.send_json(status, payload)
         if path == "/api/free-registry":
             if not self._enforce_rate_limit("chargers", RATE_LIMIT_RPM):

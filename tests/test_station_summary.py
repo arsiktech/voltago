@@ -162,7 +162,8 @@ class StationSummaryTests(unittest.TestCase):
         ]
         self.seeds.write_text(json.dumps([directory_row("osm_node_1", lat=28.9)]))
         self.write_rows()
-        for identifier in ("missing", "excluded", "removed", "duplicate", "osm_node_1"):
+        self.assertEqual(self.detail("excluded")[0], 200)
+        for identifier in ("missing", "removed", "duplicate", "osm_node_1"):
             with self.subTest(identifier=identifier):
                 self.assertEqual(self.detail(identifier), (404, {"error": "not_found"}))
 

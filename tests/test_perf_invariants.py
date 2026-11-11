@@ -523,15 +523,13 @@ class AssembledPayloadReuseTests(unittest.TestCase):
                 status1, payload1 = server.live_response(params)
                 self.assertEqual(status1, 200)
                 self.assertFalse(mock_electromaps.called)
-                self.assertNotIn("em-lead-1", {lead.get("id") for lead in payload1.get("leads") or []})
+                self.assertIn("em-lead-1", {lead.get("id") for lead in payload1.get("leads") or []})
                 assembled = server.CACHE.get("assembled")
                 self.assertIsNotNone(assembled)
-                self.assertFalse(assembled.get("electromaps_did_work"))
 
                 status2, payload2 = server.live_response(params)
                 self.assertEqual(status2, 200)
-                self.assertFalse(mock_electromaps.called)
-                self.assertNotIn("em-lead-1", {lead.get("id") for lead in payload2.get("leads") or []})
+                self.assertIn("em-lead-1", {lead.get("id") for lead in payload2.get("leads") or []})
                 self.assertEqual(mock_mapareve.call_count, 1)
         finally:
             server.CACHE.clear()

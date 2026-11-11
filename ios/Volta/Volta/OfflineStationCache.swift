@@ -11,7 +11,8 @@ import Foundation
 /// No map tiles or photos are stored.
 enum OfflineStationCache {
     static let schemaVersion = 1
-    static let maxAreaBytes = 4_000_000
+    /// Mainland summary responses are about 10 MB decoded. Keep the whole body.
+    static let maxAreaBytes = 16_000_000
     static let maxSavedStations = 200
     /// Tests point this at a temporary folder so they never touch the owner's cache.
     static var directoryOverride: URL?

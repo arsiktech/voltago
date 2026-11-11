@@ -61,8 +61,10 @@ def load_source_policy_exclusions(path: Optional[Path] = None) -> Dict[str, Any]
     policy_path = (path or DEFAULT_EXCLUSIONS_PATH).expanduser()
     payload = json.loads(policy_path.read_text(encoding="utf-8"))
     exclusions = payload.get("exclusions")
-    if not isinstance(exclusions, list) or not exclusions:
-        raise RuntimeError(f"source policy has no exclusions: {policy_path}")
+    # A missing or non-list field is a broken file. An empty list is the
+    # 10 Nov 2026 owner decision: Electromaps, Chargemap and Consum are not blocked.
+    if not isinstance(exclusions, list):
+        raise RuntimeError(f"source policy exclusions must be a list: {policy_path}")
     for exclusion in exclusions:
         if (
             not isinstance(exclusion, dict)

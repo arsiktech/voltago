@@ -463,10 +463,10 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
-				VOLTA_PRIVACY_POLICY_URL = "https://configuration.invalid";
-				VOLTA_RELEASE_BASE_URL = "https://configuration.invalid";
-				VOLTA_SUPPORT_URL = "https://configuration.invalid";
-				VOLTA_TERMS_URL = "https://configuration.invalid";
+				VOLTA_PRIVACY_POLICY_URL = "https://voltago.app/privacy";
+				VOLTA_RELEASE_BASE_URL = "https://voltago.app";
+				VOLTA_SUPPORT_URL = "https://voltago.app/support";
+				VOLTA_TERMS_URL = "https://voltago.app/terms";
 			};
 			name = Release;
 		};

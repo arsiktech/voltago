@@ -51,6 +51,14 @@ async function fixturePage(browser, viewport, theme = "light", clipboard = "nati
   return { context, page };
 }
 
+async function expectAgentButton(page, copy) {
+  const button = page.locator("button.agent-connect");
+  await page.getByRole("button", { name: copy, exact: true }).and(button).waitFor();
+  const visible = (await button.innerText()).replace(/\s+/g, " ").trim();
+  assert.equal(visible, copy);
+  return button;
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true, ...(chromePath ? { executablePath: chromePath } : {}) });
   try {
@@ -60,11 +68,10 @@ async function main() {
       { name: "mobile", width: 390, height: 844, theme: "light" },
     ]) {
       const { context, page } = await fixturePage(browser, { width, height }, theme);
-      const button = page.locator("button.agent-connect");
-      assert((await button.innerText()).includes("Paste into your AI chat"));
+      const button = await expectAgentButton(page, "Copy AI prompt");
       assert((await button.boundingBox()).height >= 44);
       await button.click();
-      await page.getByRole("button", { name: "Prompt copied Paste into your AI chat", exact: true }).waitFor();
+      await expectAgentButton(page, "Prompt copied");
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), expectedPrompt);
       assert.equal(await page.locator("dialog[open]").count(), 0);
       assert.equal(await page.locator("textarea").count(), 0);
@@ -89,12 +96,12 @@ async function main() {
       await manual.focus();
       assert(await manual.evaluate(element => element.selectionStart === 0 && element.selectionEnd === element.value.length));
       assert.equal(await page.locator("dialog[open]").count(), 0);
-      assert(!(await page.locator("button.agent-connect").innerText()).includes("Prompt copied"));
+      await expectAgentButton(page, "Copy AI prompt");
       await page.evaluate(() => Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
         writeText: async text => { window.__qaCopiedPrompt = text; },
       } }));
       await page.locator("button.agent-connect").click();
-      await page.getByRole("button", { name: "Prompt copied Paste into your AI chat", exact: true }).waitFor();
+      await expectAgentButton(page, "Prompt copied");
       assert.equal(await page.evaluate(() => window.__qaCopiedPrompt), expectedPrompt);
       assert.equal(await manual.count(), 0);
       checks.push(`complete selectable prompt and successful retry after clipboard ${clipboard}`);
