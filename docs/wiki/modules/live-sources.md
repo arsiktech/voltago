@@ -35,10 +35,10 @@ live status under strict gates.
 
 MapaREVE is primary and bounded by timeout, fetch budget, max pages, price
 headroom, connector type, and bbox. Gaia keeps a short cache and serves stale only
-with warnings. The source tree retains historical Electromaps parsing functions and
-tests for defensive compatibility, but `ELECTROMAPS_DIRECT_ENABLED` is false and the
-rights policy prevents those rows from entering fresh, stale, or assembled responses.
-Reactivation requires written reuse permission plus a separate adapter review.
+with warnings. Electromaps live detail is on (`ELECTROMAPS_DIRECT_ENABLED` is true,
+under the reuse grant dated 2026-11-10 in `data/source_policy_exclusions.json`). It is
+cached for `ELECTROMAPS_DETAIL_TTL`, limited to `ELECTROMAPS_LIVE_MAX` uncached detail
+fetches, and bounded by `ELECTROMAPS_LIVE_DEADLINE` so it does not hold the response.
 
 ### Request-method policy
 
@@ -65,8 +65,9 @@ revocation gate. Overpass uses GET.
 - Feníe is homepage attribution/link-only. Its direct adapter is retired and
   structured-origin station evidence is excluded; independently sourced operator
   mentions keep their actual source provenance.
-- Electromaps, Chargemap, and Consum station evidence is permission-gated/retired;
-  function presence is not evidence that an adapter is active.
+- Electromaps, Chargemap, and Consum station evidence is active under reuse grants in
+  `data/source_policy_exclusions.json`; removing a grant is the way to stop a source.
+  Function presence alone is not evidence that an adapter is active.
 - Cloud/datacenter hosts can receive poorer upstream behavior than a local
   residential IP.
 

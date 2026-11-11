@@ -47,11 +47,12 @@ path; it produces leads with evidence, confidence, and provenance.
   `source_madrid_official`, `source_zaragoza_official`, `source_dgt_nap`,
   `source_catalonia_icaen`, `source_navarra_idena`, `source_castilla_leon`,
   `source_etecnic`, `source_zunder`, `source_fenie`, `source_moraleja_green`,
-  `source_canarias_tecarga`, and `source_mapareve_public` (including narrow
-  Red MOVEM enrichment on permitted OSM rows).
-- Dormant/permission-gated historical functions include `source_consum`,
-  `source_electromaps_mapi`, `source_chargemap_mappy`,
-  `source_electromaps_probe`, and `source_electromaps_photo_second_pass`; none are in
+  `source_canarias_tecarga`, `source_mapareve_public` (including narrow
+  Red MOVEM enrichment on permitted OSM rows), `source_electromaps_mapi`,
+  `source_electromaps_photo_second_pass`, `source_chargemap_mappy`, and
+  `source_consum`. The last four run under the reuse grants dated 2026-11-10 in
+  `data/source_policy_exclusions.json`.
+- `source_electromaps_probe` is the one historical function that is not in
   `ACTIVE_SOURCE_ADAPTERS`.
 
 ## Internal Structure
@@ -78,8 +79,8 @@ fails the delta gate.
 - The script currently still has some Valencia-era source functions; its output
   is national because `add_record()` gates against `SPAIN_BBOX`.
 - Do not infer activity from a function definition. `ACTIVE_SOURCE_ADAPTERS` and the
-  structured source policy are the executable source-of-truth; commercial adapters
-  stay dormant until their documented written-permission gates are met.
+  structured source policy are the executable source-of-truth; a commercial adapter
+  runs only while its reuse grant is recorded in that policy.
 - Treat the canonical file's own metadata as current; counts change with verified
   rebuilds and should not be duplicated in documentation.
 - `auto_refresh.py --dry-run` builds and gates without promotion. Real mode requires

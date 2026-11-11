@@ -70,7 +70,7 @@ See [architecture.md](architecture.md) and [diagrams/sequences.md](diagrams/sequ
 |---|---|
 | [backend-server](modules/backend-server.md) | HTTP serving, API routes, caching, and response assembly. |
 | [data-honesty-engine](modules/data-honesty-engine.md) | Decision, verification, parking, pricing, corroboration, and rejection logic. |
-| [live-sources](modules/live-sources.md) | Public live adapters for MapaREVE/Gaia, the disabled Electromaps path, and retired-source policy gates. |
+| [live-sources](modules/live-sources.md) | Public live adapters for MapaREVE/Gaia, Electromaps promotion, and retired-source policy gates. |
 | [frontend-spa](modules/frontend-spa.md) | React app orchestration, data fetching, filters, live/overview modes. |
 | [frontend-components](modules/frontend-components.md) | Map, virtualized list, station cards, source provenance, filters, banners. |
 | [intelligence-ingestion](modules/intelligence-ingestion.md) | Public-source intelligence build, dedupe, and safe refresh workflow. |

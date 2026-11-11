@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -183,7 +184,16 @@ class IngestionCanaryTests(unittest.TestCase):
             ]}), encoding="utf-8")
             self.assertEqual(qa_ingestion_canary.source_evidence_counts(path, {}),
                              [["Electromaps web-map API", 1]])
-            self.assertEqual(qa_ingestion_canary.source_evidence_counts(path), [])
+            # The shipped policy may exclude nothing, so give the default one exclusion:
+            # only the default path (policy=None) may apply it.
+            excluding = {"exclusions": [{
+                "id": "electromaps-test", "family": "Electromaps",
+                "source_family_terms": ["electromaps"], "origin_hosts": ["electromaps.com"],
+            }]}
+            with mock.patch.object(qa_ingestion_canary, "SOURCE_POLICY_EXCLUSIONS", excluding):
+                self.assertEqual(qa_ingestion_canary.source_evidence_counts(path), [])
+                self.assertEqual(qa_ingestion_canary.source_evidence_counts(path, {}),
+                                 [["Electromaps web-map API", 1]])
 
     def test_trim_history_replaces_the_file_instead_of_rewriting_it_in_place(self):
         with tempfile.TemporaryDirectory() as tmp:

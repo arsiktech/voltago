@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - Python <3.9 fallback is not expected her
     ZoneInfo = None
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 import hmac
 
