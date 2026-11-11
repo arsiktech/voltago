@@ -300,7 +300,7 @@ struct ClusterBubble: View {
 
     var body: some View {
         Text(cluster.count, format: .number)
-            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .font(.caption.weight(.bold))
             .monospacedDigit()
             .foregroundStyle(Theme.darkInk)
             .padding(.horizontal, 7)
@@ -338,7 +338,7 @@ struct PricePill: View {
         Group {
             if station.hasVerifiedPrice {
                 Text(station.priceText)
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .font(.caption.weight(.bold))
                     .monospacedDigit()
                     .foregroundStyle(label)
                     .padding(.horizontal, 9)

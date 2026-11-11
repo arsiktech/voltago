@@ -235,6 +235,7 @@ struct AvailabilityLine: View {
 /// The decision pill. Go now is the only solid evidence fill; every other level is a
 /// tint with a full-strength label, so the eye finds the usable charger first.
 struct DecisionPill: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let station: Station
 
     var body: some View {
@@ -245,10 +246,10 @@ struct DecisionPill: View {
             .font(.caption.weight(.bold))
             .padding(.horizontal, 9)
             .padding(.vertical, 4)
-            .foregroundStyle(solid ? Color.white : kind.color)
-            .background(solid ? kind.color : kind.color.opacity(0.14), in: .capsule)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(solid ? Color.white : Theme.ink)
+            .background(solid ? kind.color : kind.color.opacity(0.22), in: .capsule)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: true)
     }
 }
 
@@ -332,9 +333,11 @@ struct StationDetailView: View {
     @EnvironmentObject private var state: AppState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private let fallbackStation: Station
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var checkinBusy = false
     /// The verdict just submitted this visit (drives the thank-you state). nil = not yet checked in.
     @State private var checkinSent: String?
+    @State private var checkinError: String?
 
     init(station: Station) {
         fallbackStation = station
@@ -594,11 +597,14 @@ struct StationDetailView: View {
                         .foregroundStyle(Theme.actionInk)
                         .fixedSize(horizontal: false, vertical: true)
                 } else {
-                    Text("Help other drivers — tell us if you could charge. Community reports never mark a charger “live”.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                     checkinControls
+                    if let checkinError {
+                        Text(checkinError)
+                            .font(.subheadline)
+                            .foregroundStyle(Theme.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("checkinError")
+                    }
                 }
             }
 
@@ -789,7 +795,7 @@ struct StationDetailView: View {
             }
         }
         .padding(.vertical, 2)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     private func row(icon: String, title: String, detail: String?, tint: Color = .secondary) -> some View {
@@ -834,7 +840,12 @@ struct StationDetailView: View {
             Task {
                 let ok = await state.submitCheckin(station: station, verdict: verdict)
                 checkinBusy = false
-                if ok { withAnimation(VoltaMotion.state) { checkinSent = verdict } }
+                if ok {
+                    checkinError = nil
+                    withAnimation(reduceMotion ? nil : VoltaMotion.state) { checkinSent = verdict }
+                } else {
+                    checkinError = String(localized: "Check-in could not be sent. Try again.")
+                }
             }
         } label: {
             Label(title, systemImage: systemImage)
@@ -872,6 +883,16 @@ struct StationDetailView: View {
 struct PublicPhotoView: View {
     let photo: StationPhoto
 
+    private func photoPlaceholder(_ title: String) -> some View {
+        ZStack {
+            Theme.raisedSurface
+            Label(title, systemImage: "photo")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Theme.ink)
+        }
+        .accessibilityLabel(title)
+    }
+
     var body: some View {
         if let url = photo.safeURL {
             AsyncImage(url: url) { phase in
@@ -881,7 +902,7 @@ struct PublicPhotoView: View {
                         .resizable()
                         .scaledToFill()
                 case .failure:
-                    Color.clear
+                    photoPlaceholder(String(localized: "Photo unavailable"))
                 case .empty:
                     ZStack {
                         Theme.surface

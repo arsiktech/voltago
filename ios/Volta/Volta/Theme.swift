@@ -21,9 +21,11 @@ enum Theme {
     // the Go-now green stand out as the only saturated signal on screen.
     static let canvas = Color(light: Color(hex: 0xF5F6F4), dark: Color(hex: 0x0B0F0D))
     static let surface = Color(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x141A17))
-    static let raisedSurface = Color(light: Color(hex: 0xFFFFFF), dark: Color(hex: 0x1B221F))
+    static let raisedSurface = Color(light: Color(hex: 0xEEF0EE), dark: Color(hex: 0x1B221F))
     static let ink = Color(light: Color(hex: 0x0E1512), dark: Color(hex: 0xEDF1EE))
-    static let hairline = Color(light: Color(hex: 0xD3D8D4), dark: Color(hex: 0x323A36))
+    static let muted = Color(light: Color(hex: 0x5A6560), dark: Color(hex: 0x9AA59F))
+    /// 3.1:1 on white and on the dark surface. UI-component AA, not body text.
+    static let hairline = Color(light: Color(hex: 0x8B948F), dark: Color(hex: 0x8E9993))
 
     // Use these together for evergreen map anchors in either appearance. An adaptive
     // inverse foreground on a permanent dark surface disappears in Dark Mode.

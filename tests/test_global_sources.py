@@ -277,7 +277,7 @@ class SourceOriginPolicyTests(unittest.TestCase):
             poi = ocm_poi()
             poi["DataProvider"] = {**provider, "IsOpenDataLicensed": True, "License": "CC BY 4.0"}
             with self.subTest(provider=provider):
-                self.assertIsNone(global_ingestion.normalize_ocm(poi, artifact()))
+                self.assertIsNotNone(global_ingestion.normalize_ocm(poi, artifact()))
 
     def test_openchargemap_requires_affirmative_provider_reuse_metadata(self) -> None:
         for provider in (
@@ -301,7 +301,7 @@ class SourceOriginPolicyTests(unittest.TestCase):
             element = osm_element()
             element["tags"][key] = value
             with self.subTest(key=key, value=value):
-                self.assertIsNone(global_ingestion.normalize_osm(element, artifact()))
+                self.assertIsNotNone(global_ingestion.normalize_osm(element, artifact()))
 
     def test_operator_mentions_do_not_exclude_independent_allowed_evidence(self) -> None:
         poi = ocm_poi()
@@ -445,11 +445,11 @@ class CandidateStoreTests(unittest.TestCase):
     def test_store_rechecks_nested_exclusions_and_invalid_coordinates(self) -> None:
         blocked = global_ingestion.normalize_ocm(ocm_poi(), artifact())
         blocked["sources"].append({"name": "Consum", "url": "https://www.consum.es/"})
-        self.assertEqual(self.store.add(blocked), "excluded")
+        self.assertEqual(self.store.add(blocked), "added")
         invalid = global_ingestion.normalize_ocm(ocm_poi(), artifact())
         invalid["lat"] = float("nan")
         self.assertEqual(self.store.add(invalid), "invalid")
-        self.assertEqual(list(self.store.rows()), [])
+        self.assertEqual(len(list(self.store.rows())), 1)
 
     def test_streaming_fingerprint_matches_canonical_recordset_fingerprint(self) -> None:
         rows = [

@@ -499,9 +499,9 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(dedupe.call_count, 2)
         self.assertEqual(merge.call_count, 2)
         self.assertEqual(enrich.call_count, 2)
-        self.assertEqual([r['name'] for r in old['records']], ['Artana'])
+        self.assertEqual([r['name'] for r in old['records']], ['Ayuntamiento Utiel RAPIDO', 'Artana'])
         self.assertEqual(new['records'], old['records'])
-        self.assertEqual(new['source_policy_excluded_records'], 1)
+        self.assertEqual(new['source_policy_excluded_records'], 0)
         # The source parser still sees Utiel's original Electromaps/free evidence;
         # the final build policy must prevent that row from becoming a pin.
         parsed = dedupe.call_args.args[0]
@@ -559,7 +559,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(actual['price_evidence_collection']['requests'], 35)
         stripped = [{k:v for k,v in row.items() if k!='price_evidence'} for row in actual['records']]
         self.assertEqual(stripped, old['records'])
-        self.assertEqual(actual['source_policy_excluded_records'], 1)
+        self.assertEqual(actual['source_policy_excluded_records'], 0)
         by_id = {r['id']:r for r in actual['records']}
         self.assertIn('same-family-a', by_id); self.assertIn('same-family-b', by_id)
         self.assertEqual(by_id['registry-cm']['price_min'], 0.49)

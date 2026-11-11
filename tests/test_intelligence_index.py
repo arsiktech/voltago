@@ -123,10 +123,10 @@ class IntelligenceIndexTests(unittest.TestCase):
     def test_source_policy_applies_before_index_and_metadata_hash(self):
         blocked = {"id": "blocked", "source": "Consum", "source_url": "https://www.consum.es/station"}
         index = self.build(self.rows + [blocked])
-        self.assertEqual(len(index.records), 5)
-        self.assertEqual(index.metadata()["source_policy_excluded_records"], 1)
-        self.assertEqual(index.metadata()["recordset_sha256"], recordset_sha256(self.rows))
-        self.assertIsNone(index.get_by_id("blocked"))
+        self.assertEqual(len(index.records), 6)
+        self.assertEqual(index.metadata()["source_policy_excluded_records"], 0)
+        self.assertEqual(index.metadata()["recordset_sha256"], recordset_sha256(self.rows + [blocked]))
+        self.assertIsNotNone(index.get_by_id("blocked"))
 
     def test_policy_mismatch_fails_closed(self):
         self.build()

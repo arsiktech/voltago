@@ -30,7 +30,7 @@ assembly. Do not concatenate a common template with a monetization snippet.
 Use only when `PaywallConfig.enabled` is `false` in the uploaded Release binary:
 
 ```text
-Volta is an iPhone, portrait-only EV-charging decision tool for Spain. It separates current live evidence from official, directory, community, and stale evidence. A station is route-ready only when current public evidence supports it. Otherwise Volta says Check first, Verify first, Not live, or stale; Open now can intentionally return no results.
+Volta is an iPhone, portrait-only EV-charging decision tool for Spain. It separates current live evidence from official, directory, community, and stale evidence. A station is route-ready only when current public evidence supports it. Otherwise Volta says Check first, Verify first, Not live, or stale. There is no Open now filter. A row’s decision pill is the availability claim.
 
 Service: [STABLE PUBLIC HTTPS VOLTA ENDPOINT]
 Privacy: [FINAL PUBLIC PRIVACY URL]
@@ -43,7 +43,7 @@ Suggested review path:
 1. Launch. The app requests When In Use location permission on first use and opens nearby chargers after a successful fix. While location is pending or unavailable, the national overview shows source-backed leads marked Not live.
 2. Search for “València” and select a result to request live data from the Service URL above.
 3. Open a station card to inspect charging and parking evidence, connector/access facts, freshness, and available public-source links.
-4. Select Open now. If current route-ready evidence is absent, the empty result is deliberate; stale or directory evidence is not promoted to available.
+4. Read a row’s decision pill. Go now is the only route-ready claim. If no row says Go now, that empty-of-live result is deliberate; stale or directory evidence is not promoted to available.
 5. Open Settings and test Privacy, Terms, and Support. Each opens its matching public HTTPS page above without login.
 
 Location is optional. Volta requests it once at launch, asking for When In Use permission if needed; Locate allows another request. Coordinates go to the configured Volta Service for nearby results and ranking. City search remains available after denial, and a newer manual search or map choice takes priority over a delayed startup fix.
@@ -63,7 +63,7 @@ Use only after both App Store products, prices, territories, agreements, offer,
 localizations, hosted legal URLs, and the uploaded Release binary have been verified:
 
 ```text
-Volta is a portrait-only iPhone EV-charging decision tool for Spain. It distinguishes live, official, directory, community, and stale evidence. Only current public evidence makes a station route-ready; otherwise it says Check first, Verify first, Not live, or stale, and Open now may be empty.
+Volta is a portrait-only iPhone EV-charging decision tool for Spain. It distinguishes live, official, directory, community, and stale evidence. Only current public evidence makes a station route-ready; otherwise the decision pill says Check first, Verify first, Not live, or stale. There is no Open now filter.
 
 Service: [STABLE PUBLIC HTTPS VOLTA ENDPOINT]
 Privacy: [FINAL PUBLIC PRIVACY URL]
@@ -76,7 +76,7 @@ Suggested review path:
 1. Launch without a verified entitlement to see Volta Plus. Use the App Store sandbox; no Volta credentials are needed. Test Restore Purchases, Terms, and Privacy. Terms and Privacy open their matching public HTTPS pages above without login.
 2. After entitlement, the charger experience requests When In Use location permission if needed and opens nearby chargers after a successful fix. While location is pending or unavailable, the national overview shows source-backed Not live leads.
 3. Search “València” to request live data from the Service URL, then open a card to inspect charging/parking evidence, connector/access facts, freshness, and public-source links.
-4. Select Open now. With no current route-ready evidence, the empty result is deliberate; stale/directory data is not promoted to available.
+4. Read a row’s decision pill. With no Go now row, that result is deliberate; stale/directory data is not promoted to available.
 5. Open Settings and test Privacy, Terms, and Support. Each opens its matching public HTTPS page above without login.
 
 Location is optional. Volta requests it once when discovery opens, asking for When In Use permission if needed; Locate allows another request. Coordinates go to the configured Service for nearby results/ranking; city search remains after denial, and a newer manual search or map choice takes priority over a delayed startup fix.

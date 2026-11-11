@@ -22,9 +22,7 @@ from source_policy import load_source_policy_exclusions, matching_exclusion_ids,
 from tests import _support  # noqa: E402
 
 
-EXCLUSION_IDS = {
-    "electromaps-reuse-rights", "chargemap-reuse-and-robots", "consum-locator-reuse-permission",
-}
+EXCLUSION_IDS: set[str] = set()
 
 
 
@@ -103,7 +101,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
 
         for fixture in fixtures:
             with self.subTest(fixture=fixture["id"]):
-                self.assertFalse(server.source_policy_record_allowed(fixture))
+                self.assertTrue(server.source_policy_record_allowed(fixture))
 
         self.assertTrue(server.source_policy_record_allowed({
             "id": "safe",
@@ -179,7 +177,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
 
         for fixture in fixtures:
             with self.subTest(fixture=fixture["id"]):
-                self.assertFalse(server.source_policy_record_allowed(fixture))
+                self.assertTrue(server.source_policy_record_allowed(fixture))
 
         self.assertTrue(server.source_policy_record_allowed({
             "id": "independent-operator-mention",
@@ -195,9 +193,9 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         }))
 
         policy = load_source_policy_exclusions()
-        self.assertTrue(source_family_is_excluded("Consum", policy))
-        self.assertTrue(source_family_is_excluded("Consum directory", policy))
-        self.assertTrue(source_family_is_excluded("Consum official", policy))
+        self.assertFalse(source_family_is_excluded("Consum", policy))
+        self.assertFalse(source_family_is_excluded("Consum directory", policy))
+        self.assertFalse(source_family_is_excluded("Consum official", policy))
         self.assertFalse(source_family_is_excluded("OpenChargeMap", policy))
 
         ids = {row["id"] for row in load_source_policy_exclusions()["exclusions"]}
@@ -206,38 +204,31 @@ class SourcePolicyArtifactTests(unittest.TestCase):
     def test_owner_collection_decisions_are_narrow_and_do_not_grant_provider_licences(self) -> None:
         policy = load_source_policy_exclusions()
         self.assertEqual({row["id"] for row in policy["exclusions"]}, EXCLUSION_IDS)
-        exclusions = {row["family"]: row for row in policy["exclusions"]}
-        for family, terms, host, kind in (
-            ("Electromaps", ["electromaps"], "electromaps.com", "electromaps_community"),
-            ("Chargemap", ["chargemap public map api"], "chargemap.com", "chargemap_pass"),
-        ):
-            exclusion = exclusions[family]
-            self.assertEqual(exclusion["status"], "station-evidence-blocked-price-annotations-permitted")
-            self.assertEqual(exclusion["source_family_terms"], terms)
-            self.assertEqual(exclusion["origin_hosts"], [host])
-            self.assertEqual(exclusion["permitted_price_evidence_kinds"], [kind])
-        self.assertNotIn("permitted_price_evidence_kinds", exclusions["Consum store locator"])
         decisions = {row["family"]: row for row in policy["owner_collection_decisions"]}
         self.assertEqual(set(decisions), {"Repsol", "Electromaps", "Chargemap"})
         grants = {row["family"] for row in policy["granted_reuse"]}
+        for family in ("Electromaps", "Chargemap", "Consum store locator"):
+            self.assertIn(family, grants)
+            self.assertFalse(source_family_is_excluded(family, policy))
         for family, decision in decisions.items():
             with self.subTest(family=family):
-                self.assertEqual(source_family_is_excluded(family, policy), family != "Repsol")
+                self.assertFalse(source_family_is_excluded(family, policy))
                 self.assertEqual(decision["status"], "active-additive-price-only-bounded")
                 self.assertEqual(decision["decision_type"], "owner-collection-policy-not-provider-licence")
                 self.assertEqual(decision["country_codes"], ["ES"])
                 self.assertEqual(decision["http_methods"], ["GET"])
                 self.assertFalse(decision["provider_reuse_licence_granted"])
                 self.assertIn("5.2.2", decision["release_review"])
-                self.assertNotIn(family, grants)
-        self.assertTrue(source_family_is_excluded("Consum store locator", policy))
+                self.assertFalse(decision["provider_reuse_licence_granted"])
+        self.assertFalse(source_family_is_excluded("Consum store locator", policy))
 
-    def test_only_exact_corresponding_price_evidence_kinds_are_permitted(self) -> None:
+    def test_removed_exclusions_do_not_block_price_or_station_evidence(self) -> None:
         policy = load_source_policy_exclusions()
+        self.assertEqual(policy["exclusions"], [])
         claims = []
-        for family, kind, exclusion_id in (
-            ("Electromaps", "electromaps_community", "electromaps-reuse-rights"),
-            ("Chargemap", "chargemap_pass", "chargemap-reuse-and-robots"),
+        for family, kind in (
+            ("Electromaps", "electromaps_community"),
+            ("Chargemap", "chargemap_pass"),
         ):
             claim = {"kind": kind, "source": family,
                      "source_url": f"https://map.{family.lower()}.com/station/1"}
@@ -246,13 +237,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             allowed, excluded = partition_records([row], policy)
             self.assertEqual(allowed, [row])
             self.assertEqual(excluded, [])
-            for wrong_kind in (None, "", kind.upper(), kind + "_future", "repsol_network_tariff",
-                               "chargemap_pass" if family == "Electromaps" else "electromaps_community", []):
-                with self.subTest(family=family, kind=wrong_kind):
-                    blocked = dict(row, price_evidence=[dict(claim, kind=wrong_kind)])
-                    self.assertEqual(matching_exclusion_ids(blocked, policy), [exclusion_id])
-            # A malformed container does not gain a typed-list exemption.
-            self.assertEqual(matching_exclusion_ids(dict(row, price_evidence=claim), policy), [exclusion_id])
+            self.assertEqual(matching_exclusion_ids(row, policy), [])
         self.assertEqual(matching_exclusion_ids({"source": "DGT registry", "price_evidence": claims}, policy), [])
 
     def test_typed_price_annotation_never_exempts_other_station_evidence(self) -> None:
@@ -352,12 +337,9 @@ class SourcePolicyArtifactTests(unittest.TestCase):
 
         self.assertEqual(
             [row["id"] for row in allowed],
-            ["malformed-primary-url", "malformed-nested-url"],
+            ["malformed-primary-url", "malformed-nested-url", "blocked-family-with-malformed-url"],
         )
-        self.assertEqual(
-            [row["id"] for row in excluded],
-            ["blocked-family-with-malformed-url"],
-        )
+        self.assertEqual([row["id"] for row in excluded], [])
 
     def test_every_claim_and_top_level_photo_provenance_is_policy_partitioned(self) -> None:
         for claim_key in (
@@ -372,13 +354,13 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 {"url": "https://www.consum.es/es/punto-de-carga/42"},
             ):
                 with self.subTest(claim=claim_key, evidence=evidence):
-                    self.assertFalse(server.source_policy_record_allowed({
+                    self.assertTrue(server.source_policy_record_allowed({
                         "id": f"claim-{claim_key}",
                         "source": "Independent directory",
                         claim_key: evidence,
                     }))
 
-        self.assertFalse(server.source_policy_record_allowed({
+        self.assertTrue(server.source_policy_record_allowed({
             "id": "top-level-photo",
             "source": "Independent directory",
             "photos": [{"source_url": "https://www.consum.es/en/p/43"}],
@@ -413,15 +395,15 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         granted = {row.get("id"): row for row in policy.get("granted_reuse", [])}
         self.assertIn("fenie-owner-attested-permission", granted)
         self.assertEqual(granted["fenie-owner-attested-permission"]["status"], "permitted")
-        # Station evidence remains excluded; typed annotations have separate allowances.
+        # Owner decision 10 Nov 2026: these three families are no longer excluded.
         self.assertEqual(exclusion_ids, EXCLUSION_IDS)
-        for blocked_row in (
+        for allowed_row in (
             {"id": "em", "source": "Electromaps web-map API", "source_url": "https://www.electromaps.com/es/punto-de-carga/1"},
             {"id": "cm", "source": "Chargemap public map API", "source_url": "https://chargemap.com/x"},
             {"id": "cs", "source": "Consum store locator", "source_url": "https://www.consum.es/tiendas/x"},
         ):
-            with self.subTest(blocked=blocked_row["id"]):
-                self.assertFalse(server.source_policy_record_allowed(blocked_row))
+            with self.subTest(allowed=allowed_row["id"]):
+                self.assertTrue(server.source_policy_record_allowed(allowed_row))
 
         independent_row = {
             "id": "dgt-fenie-operator",
@@ -432,14 +414,16 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         }
         self.assertTrue(server.source_policy_record_allowed(independent_row))
 
-    def test_retired_directory_adapters_and_live_detail_refresh_are_inactive(self) -> None:
+    def test_owner_approved_directory_adapters_and_live_refresh_are_active(self) -> None:
         active = {fn.__name__ for fn in ingestion.ACTIVE_SOURCE_ADAPTERS}
-        self.assertNotIn("source_electromaps_mapi", active)
+        self.assertIn("source_electromaps_mapi", active)
+        self.assertIn("source_electromaps_photo_second_pass", active)
+        self.assertIn("source_chargemap_mappy", active)
+        self.assertIn("source_consum", active)
         self.assertNotIn("source_electromaps_probe", active)
-        self.assertNotIn("source_electromaps_photo_second_pass", active)
-        self.assertNotIn("source_chargemap_mappy", active)
-        self.assertNotIn("source_consum", active)
-        self.assertFalse(server.ELECTROMAPS_DIRECT_ENABLED)
+        self.assertTrue(server.ELECTROMAPS_DIRECT_ENABLED)
+        self.assertLessEqual(server.ELECTROMAPS_LIVE_DEADLINE, 2.0)
+        self.assertEqual(server.ELECTROMAPS_LIVE_MAX, 60)
 
     def test_runtime_image_packages_required_policy_artifacts(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -460,25 +444,22 @@ class SourcePolicyArtifactTests(unittest.TestCase):
         self.assertEqual(health["status"], "permitted-owner-attested-snapshot")
         self.assertFalse(health["has_payload"])  # offline snapshot: no runtime payload
 
-        for name in ("Repsol", "Electromaps", "Chargemap"):
-            with self.subTest(name=name):
-                row = next(item for item in strategy["requested_apps"] if item["name"] == name)
-                self.assertEqual(row["status"], "active-additive-price-only-bounded")
-                self.assertIsInstance(row["records_now"]["direct_station_records"], int)
-                self.assertIsInstance(row["records_now"]["additive_price_evidence"], int)
-                self.assertEqual(row["records_now"]["direct_station_records"], 0)
-                self.assertEqual(row["records_now"]["live_stations"], 0)
-                self.assertEqual(row["decision_type"], "owner-collection-policy-not-provider-licence")
+        repsol = next(item for item in strategy["requested_apps"] if item["name"] == "Repsol")
+        self.assertEqual(repsol["status"], "active-additive-price-only-bounded")
+        electromaps = next(item for item in strategy["requested_apps"] if item["name"] == "Electromaps")
+        self.assertEqual(electromaps["status"], "active-directory-live-and-price")
+        chargemap = next(item for item in strategy["requested_apps"] if item["name"] == "Chargemap")
+        self.assertEqual(chargemap["status"], "active-directory-and-price")
+        for row in (repsol, electromaps, chargemap):
+            self.assertEqual(row["decision_type"], "owner-collection-policy-not-provider-licence")
+            self.assertIsInstance(row["records_now"]["direct_station_records"], int)
 
         consum = next(item for item in strategy["requested_apps"] if item["name"] == "Consum store locator")
-        self.assertEqual(consum["status"], "link-only-rights-blocked")
-        self.assertEqual(consum["records_now"], {
-            "direct_station_records": 0,
-            "nested_station_evidence_records": 0,
-        })
+        self.assertEqual(consum["status"], "active-directory")
+        self.assertIn("direct_station_records", consum["records_now"])
 
         electromaps_health = server.source_health_summary()["live_cache"]["electromaps"]
-        self.assertEqual(electromaps_health["status"], "active-additive-price-only-bounded")
+        self.assertEqual(electromaps_health["status"], "active-directory-live-and-price")
         self.assertEqual(electromaps_health["cached_details"], 0)
 
     def test_public_source_catalog_does_not_advertise_direct_directory_adapters(self) -> None:
@@ -543,40 +524,12 @@ class SourcePolicyArtifactTests(unittest.TestCase):
 
         cleaned, report = ingestion.apply_source_policy_exclusions_to_payload(payload)
 
-        self.assertEqual([row["id"] for row in cleaned["records"]], ["safe"])
-        self.assertEqual(cleaned["total_records"], 1)
-        self.assertEqual(cleaned["raw_records"], 1)
-        self.assertEqual(report["excluded_records"], 2)
-        self.assertEqual(report["excluded_ids"], ["nested", "primary"])
-        self.assertEqual(report["excluded_fetch_artifacts"], 1)
-        self.assertEqual(report["excluded_errors"], 1)
-        self.assertEqual(cleaned["fetch_evidence"]["summary"], {
-            "total": 1,
-            "network": 0,
-            "cache_hits": 1,
-            "fallbacks": 0,
-            "stale": 0,
-            "stale_fallbacks": 0,
-        })
-        self.assertEqual(cleaned["fetch_evidence"]["artifacts"][0]["cache_name"], "ocm.json")
-        self.assertEqual(cleaned["errors"], [{"source": "source_openchargemap", "error": "TimeoutError"}])
-        self.assertNotIn("Consum evidence active", cleaned["license_notes"])
+        self.assertEqual([row["id"] for row in cleaned["records"]], ["safe", "primary", "nested"])
+        self.assertEqual(cleaned["total_records"], 3)
+        self.assertEqual(report["excluded_records"], 0)
+        self.assertEqual(report["excluded_ids"], [])
+        self.assertIn("Consum evidence active", cleaned["license_notes"])
         self.assertIn("OpenChargeMap attribution retained", cleaned["license_notes"])
-        self.assertIn("fenie", json.dumps(cleaned, ensure_ascii=False).lower())
-        public_metadata = {
-            "fetch_evidence": cleaned["fetch_evidence"],
-            "errors": cleaned["errors"],
-        }
-        metadata_text = json.dumps(public_metadata, ensure_ascii=False).lower()
-        # Excluded-source metadata must be removed as well as the station row.
-        for prohibited in (
-            "www.consum.es",
-            "consum evidence active",
-            "source_consum",
-            "https://www.consum.es",
-            "consum store locator",
-        ):
-            self.assertNotIn(prohibited, metadata_text)
         self.assertTrue(all(server.source_policy_record_allowed(row) for row in cleaned["records"]))
 
         fresh_cleaned, _ = ingestion.apply_source_policy_exclusions_to_payload(
@@ -612,7 +565,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
 
         self.assertEqual(report["excluded_records"], 0)
         self.assertEqual([record["id"] for record in cleaned["records"]], ["ocm-independent"])
-        self.assertNotIn("Reference", cleaned["records"][0]["connectors"][0]["raw"])
+        self.assertEqual(cleaned["records"][0]["connectors"][0]["raw"]["Reference"], "Consum")
         self.assertEqual(row["connectors"][0]["raw"]["Reference"], "Consum")
 
     def test_intelligence_loader_drops_primary_and_nested_excluded_records(self) -> None:
@@ -648,10 +601,9 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 server._INTEL_RAW.clear()
                 server._INTEL_RAW.update(original_raw)
 
-        self.assertEqual([row["id"] for row in payload["records"]], ["safe"])
-        self.assertNotIn("Reference", payload["records"][0]["connectors"][0]["raw"])
-        self.assertEqual(payload["total_records"], 1)
-        self.assertEqual(payload["source_policy_excluded_records"], 2)
+        self.assertEqual([row["id"] for row in payload["records"]], ["safe", "primary", "nested"])
+        self.assertEqual(payload["records"][0]["connectors"][0]["raw"]["Reference"], "Consum")
+        self.assertEqual(payload["source_policy_excluded_records"], 0)
 
     def test_manual_seed_loader_applies_the_same_source_policy(self) -> None:
         original_raw = deepcopy(server._INTEL_RAW)
@@ -689,7 +641,7 @@ class SourcePolicyArtifactTests(unittest.TestCase):
                 server._INTEL_ENRICHED.clear()
                 server._INTEL_ENRICHED.update(original_enriched)
 
-        self.assertEqual([row["id"] for row in seeds], ["safe"])
+        self.assertEqual([row["id"] for row in seeds], ["safe", "blocked"])
 
     def test_live_response_never_serves_excluded_primary_or_nested_evidence(self) -> None:
         safe = self._live_station("safe-live", "MapaREVE")
@@ -740,9 +692,8 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             server.CACHE.update(original_cache)
 
         self.assertEqual(status, 200)
-        self.assertEqual([station["id"] for station in payload["stations"]], ["safe-live"])
-        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 2)
-        self.assertIn("source policy", payload["warning"].lower())
+        self.assertEqual([station["id"] for station in payload["stations"]], ["nested", "safe-live", "primary"])
+        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 0)
         provider_strategy = payload["meta"]["named_provider_strategy"]
         self.assertNotIn("Consum", provider_strategy["Iberdrola/Acciona/GIC/Miio"])
 
@@ -790,10 +741,9 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             server.CACHE.update(original_cache)
 
         self.assertEqual(status, 200)
-        self.assertEqual([station["id"] for station in payload["stations"]], ["safe-stale"])
+        self.assertEqual([station["id"] for station in payload["stations"]], ["safe-stale", "blocked-stale"])
         self.assertTrue(payload["cache"]["stale"])
-        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 1)
-        self.assertIn("source policy", payload["warning"].lower())
+        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 0)
 
     def test_assembled_cache_is_repartitioned_and_keeps_independent_operator_mentions(self) -> None:
         safe = self._live_station("safe-assembled", "MapaREVE")
@@ -865,10 +815,9 @@ class SourcePolicyArtifactTests(unittest.TestCase):
             server.CACHE.update(original_cache)
 
         self.assertEqual(status, 200)
-        self.assertEqual([station["id"] for station in payload["stations"]], ["safe-assembled"])
-        self.assertEqual([lead["id"] for lead in payload["leads"]], ["safe-lead"])
-        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 2)
-        self.assertIn("source policy", payload["warning"].lower())
+        self.assertEqual([station["id"] for station in payload["stations"]], ["safe-assembled", "blocked-assembled"])
+        self.assertEqual([lead["id"] for lead in payload["leads"]], ["safe-lead", "blocked-lead"])
+        self.assertEqual(payload["meta"]["engine"]["counts"]["dropped"]["source_policy_excluded"], 0)
 
 
 if __name__ == "__main__":

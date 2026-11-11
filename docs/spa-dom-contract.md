@@ -218,7 +218,7 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   (`Clear search` when a query is set).
 
 ## Footer
-- `button.agent-connect`, named `Copy AI prompt` with `Paste into your AI chat`
+- `button.agent-connect`, named `Copy AI prompt`
   underneath, stays pinned beside Data honesty outside the result scroller. One click
   writes the shared `contracts/agent_connection_prompt.txt` to the clipboard without
   opening a modal. The footer respects the mobile bottom safe area.

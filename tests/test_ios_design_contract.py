@@ -26,7 +26,6 @@ PAYWALL_LOCALIZATION_KEYS = {
     "Checking App Store access…",
     "Checks this Apple ID for a verified Volta Plus subscription",
     "Choose a plan to start a new subscription, or restore if you renewed on another device.",
-    "Choose chargers with evidence, not guesswork.",
     "Choose your plan",
     "City searches are relayed by the Volta service to Nominatim. The service may cache requests and results, and logs the client IP address for security and rate limiting.",
     "Configured Volta service",
@@ -47,7 +46,6 @@ PAYWALL_LOCALIZATION_KEYS = {
     "Nothing was charged.",
     "Older StoreKit versions cannot distinguish every revocation reason. This subscription no longer grants access; restore purchases or choose a plan.",
     "On-device preferences",
-    "One subscription unlocks the cleaned national database and the complete decision experience. Charger safety labels and warnings always stay honest.",
     "Payment needs attention",
     "Contact and control",
     "Using Volta",
@@ -677,7 +675,7 @@ class IOSDesignContractTests(unittest.TestCase):
                 self.assertTrue(values, f"{key!r}[{locale}] has no translated values")
                 self.assertTrue(all(value.strip() for value in values), f"{key!r}[{locale}] has an empty value")
 
-        self.assertEqual(len(PAYWALL_LOCALIZATION_KEYS), 89)
+        self.assertEqual(len(PAYWALL_LOCALIZATION_KEYS), 87)
         self.assertTrue(PAYWALL_LOCALIZATION_KEYS.issubset(strings))
         self.assertTrue(TRUST_SOURCE_LOCALIZATION_KEYS.issubset(strings))
         self.assertTrue(PRICE_EVIDENCE_LOCALIZATION_KEYS.issubset(strings))

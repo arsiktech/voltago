@@ -40,6 +40,7 @@ try:
     from .source_transport import SourcePolicyBlocked, policy_urlopen
     from .station_identity import identity_keys
     from .price_evidence import enrich_price_evidence, price_evidence_counts
+    from .source_attribution import stamp_row
 except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_policy import (
         load_source_policy_exclusions,
@@ -51,6 +52,7 @@ except ImportError:  # Direct `python3 scripts/ingest_sources.py` execution.
     from source_transport import SourcePolicyBlocked, policy_urlopen
     from station_identity import identity_keys
     from price_evidence import enrich_price_evidence, price_evidence_counts
+    from source_attribution import stamp_row
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -1031,6 +1033,8 @@ def photo_refs(source: str, source_url: str, photos: Optional[List[Dict[str, Any
             "source_url": photo.get("source_url") or source_url,
             "caption": str(photo.get("caption") or "").strip()[:240],
             "license": photo.get("license") or "source-published",
+            **({"display_rights_approved": True} if photo.get("display_rights_approved") is True else {}),
+            **({"attribution": photo.get("attribution")} if photo.get("attribution") else {}),
         })
     return {
         "photos": cleaned[:4],
@@ -1396,6 +1400,7 @@ def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, n
         "raw": raw,
     }
     rec["primary_source"] = primary_source_for(rec)
+    stamp_row(rec)
     rec["location_claim"] = location_claim_for(rec)
     rec["hardware_claim"] = hardware_claim_for(rec)
     rec["access_claim"] = access_claim_for(rec)
@@ -3210,6 +3215,8 @@ def source_electromaps_mapi(records: List[Dict[str, Any]]) -> None:
                 "source_url": d.get("url") or f"https://map.electromaps.com/en/p/{loc_id}",
                 "caption": d.get("name") or "",
                 "license": "Electromaps source-published media",
+                "attribution": "Electromaps",
+                "display_rights_approved": True,
             })
         if photo_only:
             add_record(
@@ -3314,6 +3321,8 @@ def source_electromaps_photo_second_pass(records: List[Dict[str, Any]]) -> None:
                 "source_url": d.get("url") or f"https://map.electromaps.com/en/p/{loc_id}",
                 "caption": d.get("name") or "",
                 "license": "Electromaps source-published media",
+                "attribution": "Electromaps",
+                "display_rights_approved": True,
             }],
             source_artifact=source_artifact,
         )
@@ -3443,6 +3452,8 @@ def source_chargemap_mappy(records: List[Dict[str, Any]]) -> None:
                     "source_url": f"https://chargemap.com/{slug_value}.html",
                     "caption": pool.get("name") or "",
                     "license": "Chargemap source-published media",
+                    "attribution": "Chargemap",
+                    "display_rights_approved": True,
                 })
         add_record(
             records,
@@ -5798,6 +5809,10 @@ ACTIVE_SOURCE_ADAPTERS = (
     source_moraleja_green,
     source_canarias_tecarga,
     source_mapareve_public,
+    source_electromaps_mapi,
+    source_electromaps_photo_second_pass,
+    source_chargemap_mappy,
+    source_consum,
 )
 
 
@@ -5840,11 +5855,15 @@ def build_payload() -> Dict[str, Any]:
             "OSM/Overpass data is ODbL; keep attribution and share-alike obligations in mind.",
             "Barcelona Endolla and Madrid official datasets are reused under CC BY 4.0; Zaragoza municipal facts follow its published reuse conditions. Preserve source/update attribution.",
             "Red MOVEM's €0.25/kWh regulation is attached only to unambiguous OSM locations at or below 22 kW; Moraleja Green is a single static Verify-first official-policy lead.",
-            "Repsol, Electromaps and Chargemap additive Spain price evidence follows owner collection policy, not a provider reuse licence. Other source exclusions remain. Apple 5.2.2 review is separate.",
+            "Electromaps, Chargemap and Consum station rows are included by the owner decision of 10 Nov 2026. That decision is not a provider licence. Apple Guideline 5.2.2 risk is accepted by the owner. Each row carries an attribution line.",
             "Provider apps/onsite signs override every cached intelligence record.",
         ],
         "records": merged,
     }
+    # Sources appended after add_record (Red MOVEM, Moraleja, merges) still
+    # need a line. stamp_row never replaces an attribution that is already set.
+    for row in payload["records"]:
+        stamp_row(row)
     cleaned, policy_report = apply_source_policy_exclusions_to_payload(payload, preserve_raw_records=True)
     print(f"source-policy exclusions: -{policy_report['excluded_records']} records")
     return cleaned

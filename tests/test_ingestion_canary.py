@@ -144,7 +144,7 @@ class IngestionCanaryTests(unittest.TestCase):
 
             self.assertEqual(
                 dict(qa_ingestion_canary.source_evidence_counts(path)),
-                {"OpenChargeMap public snapshot": 1},
+                {"Consum store locator": 1, "OpenChargeMap public snapshot": 1},
             )
 
     def test_source_family_threshold_ignores_explicit_policy_exclusions(self):
@@ -157,10 +157,10 @@ class IngestionCanaryTests(unittest.TestCase):
             label="baseline",
         )
 
-        self.assertEqual(failures, [])
-        self.assertNotIn("Consum store locator", checked)
-        self.assertNotIn("Electromaps web-map API", checked)
-        self.assertNotIn("Chargemap public map API", checked)
+        self.assertEqual(len(failures), 3)
+        self.assertIn("Consum store locator", checked)
+        self.assertIn("Electromaps web-map API", checked)
+        self.assertIn("Chargemap public map API", checked)
         self.assertIn("OpenChargeMap public snapshot", checked)
 
     def test_explicit_empty_policy_is_not_replaced_by_the_default_policy(self):
@@ -216,7 +216,11 @@ class IngestionCanaryTests(unittest.TestCase):
                 {"source": "Electromaps web-map API", "price_evidence": claims},
                 {"source": "Chargemap public map API", "price_evidence": claims},
             ]}), encoding="utf-8")
-            self.assertEqual(dict(qa_ingestion_canary.source_evidence_counts(path)), {"Official registry": 1})
+            self.assertEqual(dict(qa_ingestion_canary.source_evidence_counts(path)), {
+                "Official registry": 1,
+                "Electromaps web-map API": 1,
+                "Chargemap public map API": 1,
+            })
 
     def test_existing_candidate_skips_rebuild_and_audits_exact_path(self):
         candidate = pathlib.Path("/tmp/exact-candidate.json")

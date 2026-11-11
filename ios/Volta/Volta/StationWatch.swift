@@ -274,6 +274,8 @@ struct StationWatchSection: View {
                         Task { await watches.start(station, connectorTypes: state.watchConnectorTypes, api: state.api) }
                     } label: {
                         Label(String(localized: "Alert me when a connector is free"), systemImage: "bell")
+                            .frame(minHeight: 44)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .accessibilityIdentifier("watchChargerButton")
                 case .working:
@@ -285,9 +287,27 @@ struct StationWatchSection: View {
                     Button(String(localized: "Stop watching")) {
                         Task { await watches.stop(stationID: station.id, api: state.api) }
                     }
+                    .frame(minHeight: 44)
                     .accessibilityIdentifier("stopWatchButton")
                 case .message(let text):
-                    Text(text).foregroundStyle(.secondary).accessibilityIdentifier("watchMessage")
+                    Text(text)
+                        .foregroundStyle(Theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("watchMessage")
+                    if text.localizedCaseInsensitiveContains("Settings") {
+                        Button(String(localized: "Open Settings")) {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                        .frame(minHeight: 44)
+                    } else {
+                        Button(String(localized: "Try again")) {
+                            Task { await watches.start(station, connectorTypes: state.watchConnectorTypes, api: state.api) }
+                        }
+                        .frame(minHeight: 44)
+                        .accessibilityIdentifier("watchRetryButton")
+                    }
                 }
                 Text(String(localized: "An alert never reserves a connector. It may be taken before you arrive."))
                     .font(.footnote)

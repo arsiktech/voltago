@@ -48,8 +48,7 @@ final class DiscoveryHeaderUITests: XCTestCase {
         let app = launch(style: style, category: category)
         let search = app.textFields["discoverySearchField"]
         let prompt = app.buttons["copyAIPromptButton"]
-        // Speed is intentionally offscreen in the horizontal filter scroller at
-        // large text sizes. The first visible chip bounds the whole filter row.
+        // Filter chips wrap, so the free chip stays in the header at large text sizes.
         let filter = app.buttons["freeFilterChip"]
         XCTAssertTrue(prompt.waitForExistence(timeout: 5))
         attachScreenshot(named: "prompt-header-\(style.lowercased())-\(category)-before-copy")
@@ -59,9 +58,9 @@ final class DiscoveryHeaderUITests: XCTestCase {
         var frames = ["search": search.frame.debugDescription,
                       "prompt": prompt.frame.debugDescription,
                       "firstFilter": filter.frame.debugDescription]
-        for title in ["Copy AI prompt", "Paste into your AI chat"] {
+        for title in ["Copy AI prompt"] {
             let text = app.staticTexts[title]
-            XCTAssertTrue(text.exists, "The prompt must retain both visible lines")
+            XCTAssertTrue(text.exists, "The prompt button must show its title")
             frames[title] = text.frame.debugDescription
             XCTAssertLessThanOrEqual(search.frame.maxY, text.frame.minY, "Prompt text overlaps search")
             XCTAssertLessThanOrEqual(text.frame.maxY, filter.frame.minY, "Prompt text overlaps filters")
