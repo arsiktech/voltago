@@ -15,6 +15,7 @@ import {
   isRouteReady,
   mapsUrl,
   passesFilters,
+  resultReadout,
   resultScopeLabel,
   responseHasMixedLiveAuthority,
   responseHasNoLiveAuthority,
@@ -607,6 +608,14 @@ export default function App() {
     containsCoordinate({ south: 35.0, west: -6.0, north: 36.1, east: -2.0 }, regionCenter)
   const regionShortcuts = inSpain ? REGIONS : [{ ...REGIONS[0], label: 'Spain' }]
   const scopeLabel = resultScopeLabel(filters)
+  const readout = resultReadout({
+    data: effectiveData,
+    shown: panelRows.length,
+    scopeLabel,
+    overview,
+    badge: trustStatus.badge,
+  })
+  const countPending = readout.headingCount == null && (query.isLoading || query.isFetching)
   const firstRouteReady = routeReadyRows[0]
   const areaMotionKey = overview ? 'overview' : committedBbox ? bboxKey(committedBbox) : 'nearby'
   const flowHint: FlowHintProps | null = overview && geo.status === 'locating'
@@ -1020,11 +1029,17 @@ export default function App() {
           <div ref={headingRef} className="results-heading" data-scrolled={scrolled || undefined}>
             <div className="min-w-0">
               <p className="text-xs text-muted" data-search-area>{showSaved ? 'Saved chargers' : placeLabel}</p>
-              <h1 className="mt-0.5 text-lg font-semibold">
-                {showSaved && !signedIn ? 'Saved' : (
+              <h1 className="mt-0.5 text-lg font-semibold" aria-busy={!showSaved && countPending ? true : undefined}>
+                {showSaved && !signedIn ? 'Saved' : showSaved ? (
                   <>
-                    <CountSwap value={showSaved ? saved.length : panelRows.length} className="tabular-nums" />{' '}
-                    {showSaved ? 'saved' : overview ? scopeLabel : 'nearby'}
+                    <CountSwap value={saved.length} className="tabular-nums" /> saved
+                  </>
+                ) : readout.headingCount == null ? (
+                  countPending ? <span className="skeleton inline-block h-[1.05em] w-40 rounded-md align-middle" aria-hidden="true" /> : null
+                ) : (
+                  <>
+                    <CountSwap value={readout.headingCount} className="tabular-nums" />{' '}
+                    {readout.scope}
                   </>
                 )}
               </h1>
@@ -1070,13 +1085,15 @@ export default function App() {
               </AnimatePresence>
               <span className={`live-dot ${trustIsNotLive ? 'live-dot-muted' : ''}`} />
               <span className="text-muted">{trustStatus.label}</span>
-              <span className="sr-only badge tabular-nums" aria-label={trustStatus.badge}>
-                {trustIsNotLive || responseMixedLive ? (
-                  trustStatus.badge
-                ) : (
-                  <><CountSwap value={liveReady} /> live · <CountSwap value={leadCount} /> leads</>
-                )}
-              </span>
+              {readout.badge != null && (
+                <span className="sr-only badge tabular-nums" aria-label={readout.badge}>
+                  {trustIsNotLive || responseMixedLive ? (
+                    readout.badge
+                  ) : (
+                    <><CountSwap value={liveReady} /> live · <CountSwap value={leadCount} /> leads</>
+                  )}
+                </span>
+              )}
             </motion.div>
             <AnimatePresence initial={false}>
               {query.isFetching && (
