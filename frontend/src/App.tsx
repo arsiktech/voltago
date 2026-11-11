@@ -42,6 +42,7 @@ import { FlowHint, type FlowHintProps } from './components/FlowHint'
 import { AgentConnection } from './components/AgentConnection'
 import { EmptyStateVisual } from './components/VisualMoment'
 import { VehicleControl } from './components/VehicleControl'
+import { FeedbackButton } from './components/FeedbackButton'
 import type { FlyTarget } from './components/MapView'
 import {
   countSwap,
@@ -911,6 +912,7 @@ export default function App() {
         <p className="hidden text-sm text-muted md:block">Good stops. Less guesswork.</p>
         <div className="ml-auto flex items-center gap-2">
           <VehicleControl />
+          <FeedbackButton theme={theme} />
           <IconButton label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'} onClick={toggle}>
             <ThemeIcon theme={theme} />
           </IconButton>

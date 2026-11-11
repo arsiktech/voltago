@@ -7,6 +7,7 @@
   min-height: 100vh;
 }
 
+.matrix-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .matrix-page h1 {
   font-size: 1.6rem;
   margin: 0 0 6px;

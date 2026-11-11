@@ -12,7 +12,10 @@ this file in the same change.
   width controlled by `--discovery-width`. `.discovery-map` occupies its own adjacent
   canvas area; camera fitting never includes area hidden under the results.
 - Header: `header.app-header`, brand home link `a[aria-label="Volta Go home"]`, decorative
-  `img[src="/volta-icon.svg"]` with empty `alt`, and the theme button.
+  `img[src="/volta-icon.svg"]` with empty `alt`, and the theme button. When feedback is
+  enabled, `button.feedback-button` (visible name Feedback) sits beside Your EV, and on
+  the source-coverage page header. Its popover is `[data-fb-self]`. A screenshot is
+  included only when the service's capture list includes the current page.
 - Mobile list/map switch: `button.mobile-view-toggle`, named `Show full charger list` /
   `Show map and chargers`, sits in the sticky results heading before refresh. A decorative
   grabber (`.sheet-grabber-zone`, `aria-hidden`) at the top of the sheet does the same on
