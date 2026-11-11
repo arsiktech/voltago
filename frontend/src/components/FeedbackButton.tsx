@@ -194,14 +194,17 @@ function FeedbackComposer({
               })}
             </div>
             <div className="feedback-end">
-              {shot && (
+              <button type="submit" className="feedback-send" disabled={sending || !draft.trim()}>Send</button>
+            </div>
+            {shot && (
+              <span className="feedback-shot-wrap">
                 <span className="feedback-shot">
                   <img src={shot.dataUrl} alt="" />
                   <button type="button" aria-label="Remove screenshot" onClick={() => { setShot(null); setDropped(true) }}>×</button>
                 </span>
-              )}
-              <button type="submit" className="feedback-send" disabled={sending || !draft.trim()}>Send</button>
-            </div>
+                <p className="feedback-shot-note">Others on the team can see this screenshot.</p>
+              </span>
+            )}
           </div>
         </form>
       )}

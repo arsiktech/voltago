@@ -593,14 +593,16 @@
   display: block; width: 100%; min-height: 96px; resize: none; border: 0; margin: 0;
   padding: 4px; background: transparent; color: var(--fg); font: inherit; font-size: 14px; line-height: 1.45;
 }
-.feedback-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.feedback-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .feedback-moods { display: flex; }
 .feedback-mood {
   display: grid; width: 40px; height: 44px; place-items: center; border-radius: 10px; color: var(--muted);
 }
 .feedback-mood[aria-pressed='true'] { background: var(--surface-3); color: var(--fg); }
 .feedback-end { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.feedback-shot-wrap { display: flex; align-items: center; gap: 8px; flex: 1 0 100%; min-width: 0; }
 .feedback-shot { position: relative; width: 44px; height: 32px; flex: none; }
+.feedback-shot-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; font-weight: 500; }
 .feedback-shot img { display: block; width: 44px; height: 32px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
 .feedback-shot button {
   position: absolute; top: -8px; right: -8px; width: 22px; height: 22px; border-radius: 999px;

@@ -43,7 +43,6 @@ export function AgentConnection() {
       <p role="status" id={id + '-error'} className="mb-2">Couldn’t copy automatically. Select the prompt below and copy it.</p>
       <textarea
         readOnly
-        data-fb-private
         aria-label="AI setup prompt"
         aria-describedby={id + '-error'}
         value={setupPrompt}

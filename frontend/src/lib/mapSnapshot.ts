@@ -62,39 +62,6 @@ function onceEvent(map: SnapshotMap, type: 'render' | 'idle', timeoutMs: number)
   })
 }
 
-type Hideable = {
-  parentElement: Hideable | null
-  getAttribute(name: string): string | null
-  setAttribute(name: string, value: string): void
-  removeAttribute(name: string): void
-  hasAttribute(name: string): boolean
-}
-
-/** The capture filter drops script, noscript, template and hidden nodes, and may
- * skip an aria-hidden subtree. The still image stays visible and not hidden.
- * Ancestors are revealed only until the capture returns. */
-export function unhideAncestors(start: Hideable | null): () => void {
-  const restore: Array<() => void> = []
-  let current = start
-  while (current) {
-    const aria = current.getAttribute('aria-hidden')
-    const hidden = current.hasAttribute('hidden')
-    if (aria === 'true' || hidden) {
-      const node = current
-      if (aria === 'true') node.removeAttribute('aria-hidden')
-      if (hidden) node.removeAttribute('hidden')
-      restore.push(() => {
-        if (aria === 'true') node.setAttribute('aria-hidden', 'true')
-        if (hidden) node.setAttribute('hidden', '')
-      })
-    }
-    current = current.parentElement
-  }
-  return () => {
-    for (const undo of restore) undo()
-  }
-}
-
 export function mountMapShot(canvas: HTMLCanvasElement, image: HTMLElement): () => void {
   const previous = canvas.style.visibility
   image.setAttribute('data-fb-map-shot', '')
@@ -108,9 +75,8 @@ export function mountMapShot(canvas: HTMLCanvasElement, image: HTMLElement): () 
   image.style.pointerEvents = 'none'
   image.style.visibility = 'visible'
   canvas.insertAdjacentElement('afterend', image)
-  // Hide the WebGL canvas for the still, without the hidden attribute: that
-  // attribute would also drop a child, and it changes layout. The still itself
-  // stays visible so a filter that skips hidden elements keeps the map.
+  // Keep the live canvas in layout. Visibility, not display:none, so the still
+  // stays in the picture while the cleared WebGL canvas does not cover it.
   canvas.style.visibility = 'hidden'
   let removed = false
   return () => {
@@ -172,12 +138,9 @@ export async function holdMapSnapshot(
   const image = options.createImage?.() ?? defaultImage()
   if (typeof HTMLImageElement !== 'undefined' && image instanceof HTMLImageElement) image.src = url
   else image.setAttribute('src', url)
-  const host = canvas.parentElement ?? null
-  const restoreAncestors = unhideAncestors(host)
   const unmount = mountMapShot(canvas, image)
   return () => {
     unmount()
-    restoreAncestors()
     map.triggerRepaint()
   }
 }

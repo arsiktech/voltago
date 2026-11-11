@@ -3,13 +3,10 @@
  * holds no hostnames or keys; the endpoint comes from the app's environment). Framework-free: each
  * app draws its own button and popover in its own design system and calls these functions.
  *
- * An app may add its own private selectors to the built-in ones. The page is
- * cloned, the clone is masked, and only the masked clone is drawn, so unmasked pixels never exist.
- * A field is hidden when:
- *  - it or a parent carries `data-fb-private` (add it to every name, address, balance you want hidden);
- *  - it matches the app's extra private selectors, an open dialog, or is a form field's value;
- *  - its text looks like an IBAN, email, international phone, card, long number or wallet address.
- * The clone never draws noscript, script, template, a hidden element, or anything that is not displayed.
+ * The screenshot is the page as the user sees it. Nothing is painted over: names, typed text and
+ * figures stay. The clone leaves out noscript, script, template, hidden elements, and anything
+ * that is not displayed (a browser hides noscript while JavaScript is on, but a clone would draw it).
+ * Mark the feedback popover with `data-fb-self` so the form itself stays out of the picture.
  * Requires the `modern-screenshot` package (loaded on first capture only).
  */
 
@@ -23,112 +20,12 @@ export const FEEDBACK_MOODS: readonly FeedbackMood[] = ["happy", "neutral", "unh
 export const FEEDBACK_NOTE_MAX = 2_000;
 export const FEEDBACK_IMAGE_MAX_BYTES = 1_000_000;
 
-const MASK_COLOR = "#8a8f98";
 const CAPTURE_TIMEOUT_MS = 8_000;
 const MAX_NODES = 40_000;
 const MAX_WIDTH = 1600;
 
-const PRIVATE_SELECTOR = "[data-fb-private], [role='dialog']:not([data-fb-self]), [role='alertdialog'], [aria-modal='true']:not([data-fb-self])";
-const EXCLUDED_SELECTOR = "[data-fb-self], video, audio, iframe, embed, object";
+const EXCLUDED_SELECTOR = "[data-fb-self]";
 const SKIP_TAGS = new Set(["NOSCRIPT", "SCRIPT", "TEMPLATE"]);
-const BLANK_PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
-const MEDIA_SELECTOR = "img, svg, canvas, picture";
-const VALUE_KEPT_INPUT_TYPES = new Set(["checkbox", "radio", "range", "button", "submit", "reset", "color"]);
-
-const TEXT_PATTERNS: readonly RegExp[] = [
-  /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]{2,4}){3,8}\b/g, // IBAN
-  /[^\s@<>()]+@[^\s@<>()]+\.[^\s@<>()]{2,}/g, // email
-  /\+\d[\d\s().-]{7,}\d/g, // international phone
-  /\b\d{4}[ -]\d{4}[ -]\d{4}[ -]\d{1,7}\b/g, // card
-  /\b\d{9,}\b/g, // account number, UID, order number
-  /\b0x[a-fA-F0-9]{16,}\b/g, // EVM address or hash
-  /\b(?:T[1-9A-HJ-NP-Za-km-z]{33}|bc1[a-z0-9]{20,}|[13][1-9A-HJ-NP-Za-km-z]{25,34})\b/g, // TRON, Bitcoin address
-];
-
-function paintOver(element: Element) {
-  for (const node of [element, ...Array.from(element.querySelectorAll("*"))]) {
-    const style = (node as HTMLElement).style;
-    if (!style) continue;
-    style.setProperty("color", "transparent", "important");
-    style.setProperty("-webkit-text-fill-color", "transparent", "important");
-    style.setProperty("background", MASK_COLOR, "important");
-    style.setProperty("border-color", MASK_COLOR, "important");
-    style.setProperty("box-shadow", "none", "important");
-    style.setProperty("text-shadow", "none", "important");
-  }
-}
-
-function blankText(root: Node) {
-  const walker = root.ownerDocument!.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) (node as Text).data = (node as Text).data.replace(/\S/g, "x");
-}
-
-function maskField(field: Element) {
-  const view = field.ownerDocument.defaultView!;
-  if (field instanceof view.HTMLInputElement) {
-    if (VALUE_KEPT_INPUT_TYPES.has(field.type)) return;
-    field.value = "";
-    field.setAttribute("value", "");
-    field.removeAttribute("placeholder");
-  } else if (field instanceof view.HTMLTextAreaElement) {
-    field.value = "";
-    field.textContent = "";
-    field.removeAttribute("placeholder");
-  } else {
-    return;
-  }
-  paintOver(field);
-}
-
-function maskSubtree(element: Element) {
-  const view = element.ownerDocument.defaultView!;
-  element.querySelectorAll(MEDIA_SELECTOR).forEach(node => node.remove());
-  element.querySelectorAll("input, textarea, select").forEach(maskField);
-  blankText(element);
-  paintOver(element);
-  if (element instanceof view.HTMLImageElement) {
-    const blank = element.cloneNode(false) as HTMLImageElement;
-    blank.removeAttribute("srcset");
-    blank.removeAttribute("alt");
-    blank.src = BLANK_PIXEL;
-    element.replaceWith(blank);
-  } else if (element.matches(MEDIA_SELECTOR)) {
-    element.replaceChildren();
-  }
-}
-
-function firstMatch(text: string): { start: number; end: number } | null {
-  let best: { start: number; end: number } | null = null;
-  for (const pattern of TEXT_PATTERNS) {
-    pattern.lastIndex = 0;
-    const found = pattern.exec(text);
-    if (found && (!best || found.index < best.start)) best = { start: found.index, end: found.index + found[0].length };
-  }
-  return best;
-}
-
-function maskPatterns(root: Element) {
-  const walker = root.ownerDocument.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
-  const nodes: Text[] = [];
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) nodes.push(node as Text);
-  for (const node of nodes) {
-    let current: Text = node;
-    for (let match = firstMatch(current.data); match; match = firstMatch(current.data)) {
-      if (current.parentElement?.namespaceURI === "http://www.w3.org/2000/svg") {
-        current.data = `${current.data.slice(0, match.start)}${"x".repeat(match.end - match.start)}${current.data.slice(match.end)}`;
-        if (current.parentElement) paintOver(current.parentElement);
-        break;
-      }
-      const hit = current.splitText(match.start);
-      const rest = hit.splitText(match.end - match.start);
-      const span = root.ownerDocument.createElement("span");
-      span.textContent = hit.data.replace(/\S/g, "x");
-      paintOver(span);
-      hit.replaceWith(span);
-      current = rest;
-    }
-  }
-}
 
 /**
  * True when the screenshot clone must not draw this node: noscript, script, template, anything
@@ -160,18 +57,13 @@ function dropUndrawn(root: Element) {
   }
 }
 
-/** Masks a finished clone in place. Runs before anything is drawn. */
-export function maskFeedbackClone(root: Element, extraPrivateSelector?: string) {
+/** Drops elements the user is not shown. Does not paint over or rewrite anything that stays. */
+export function maskFeedbackClone(root: Element) {
   if (feedbackCloneSkips(root)) {
     root.remove();
     return;
   }
   dropUndrawn(root);
-  const selector = extraPrivateSelector ? `${PRIVATE_SELECTOR}, ${extraPrivateSelector}` : PRIVATE_SELECTOR;
-  if (root.matches(selector)) maskSubtree(root);
-  root.querySelectorAll(selector).forEach(maskSubtree);
-  root.querySelectorAll("input, textarea").forEach(maskField);
-  maskPatterns(root);
 }
 
 /** True when the path is on the app's capture list (exact path, or a prefix ending in "/*"). */
@@ -195,10 +87,10 @@ export async function fetchFeedbackConfig(endpoint: FeedbackEndpoint): Promise<F
 }
 
 /**
- * A masked JPEG of the visible view, or null when it could not be made in time. Never throws.
+ * A JPEG of the visible view, or null when it could not be made in time. Never throws.
  * Mark the app's own feedback popover with `data-fb-self` so it stays out of the picture.
  */
-export async function captureFeedbackView(options: { privateSelector?: string } = {}): Promise<FeedbackCapture | null> {
+export async function captureFeedbackView(): Promise<FeedbackCapture | null> {
   if (document.querySelectorAll("*").length > MAX_NODES) return null;
   const { domToJpeg } = await import("modern-screenshot");
   const viewport = { width: window.innerWidth, height: window.innerHeight };
@@ -214,7 +106,7 @@ export async function captureFeedbackView(options: { privateSelector?: string } 
     backgroundColor: background && background !== "rgba(0, 0, 0, 0)" ? background : "#ffffff",
     style: { margin: "0", marginTop: `-${scrollY}px` },
     filter: (node: Node) => !feedbackCloneSkips(node),
-    onCloneNode: (cloned: Node) => { if (cloned instanceof Element) maskFeedbackClone(cloned, options.privateSelector); },
+    onCloneNode: (cloned: Node) => { if (cloned instanceof Element) maskFeedbackClone(cloned); },
   });
   try {
     for (const [scale, quality] of [[widthScale, 0.8], [widthScale, 0.6], [1, 0.5]] as const) {

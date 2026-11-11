@@ -10,7 +10,7 @@ class VehicleBoundary extends Component<{ children: ReactNode; onClose: () => vo
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   render() {
-    return this.state.failed ? <aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-label="Your EV" data-fb-private>
+    return this.state.failed ? <aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-label="Your EV">
       <header className="ev-panel-header"><h2>Your EV</h2><button className="ev-button" onClick={this.props.onClose}>Close</button></header>
       <div className="ev-panel-content"><p className="ev-notice" role="status">Your EV could not load. Reload the page to try again.</p>
         <button className="ev-button" onClick={() => window.location.reload()}>Reload</button></div>
@@ -44,10 +44,10 @@ export function VehicleControl() {
     <button ref={opener} type="button" className="ev-header-control" aria-expanded={open}
       aria-controls="vehicle-panel" aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
       <CarFront size={18} aria-hidden="true" /><span>Your EV</span>
-      {summary && <span className="ev-header-percent" data-fb-private title={vehicle?.source.mode === 'manual' ? 'Manual battery reading' : undefined}>{summary}</span>}
+      {summary && <span className="ev-header-percent" title={vehicle?.source.mode === 'manual' ? 'Manual battery reading' : undefined}>{summary}</span>}
     </button>
     <AnimatePresence>
-      {open && <VehicleBoundary onClose={close}><Suspense fallback={<aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-label="Your EV" data-fb-private>
+      {open && <VehicleBoundary onClose={close}><Suspense fallback={<aside id="vehicle-panel" className="vehicle-panel" role="dialog" aria-label="Your EV">
         <div className="ev-panel-header"><h2>Your EV</h2><button className="ev-button" onClick={close}>Close</button></div>
         <p role="status" className="ev-muted">Loading your EV…</p>
       </aside>}><VehiclePanel onClose={close} callbackError={callbackResult === 'error'} /></Suspense></VehicleBoundary>}

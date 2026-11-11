@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { frameHasMapDetail, holdMapSnapshot, mountMapShot, unhideAncestors, type SnapshotMap } from './mapSnapshot'
+import { frameHasMapDetail, holdMapSnapshot, mountMapShot, type SnapshotMap } from './mapSnapshot'
 
 function pixels(colors: Array<[number, number, number, number]>): Uint8ClampedArray {
   const data = new Uint8ClampedArray(colors.length * 4)
@@ -86,23 +86,6 @@ describe('map snapshot', () => {
     expect(fake.canvas.style.visibility).toBe('')
     expect(fake.map.repaints).toBe(during + 1)
     expect(fake.listeners.render ?? []).toHaveLength(0)
-  })
-
-  it('reveals a hidden map ancestor only while the still is up', () => {
-    const ancestor = {
-      parentElement: null,
-      attrs: { 'aria-hidden': 'true', hidden: '' } as Record<string, string>,
-      getAttribute(name: string) { return this.attrs[name] ?? null },
-      setAttribute(name: string, value: string) { this.attrs[name] = value },
-      removeAttribute(name: string) { delete this.attrs[name] },
-      hasAttribute(name: string) { return name in this.attrs },
-    }
-    const restore = unhideAncestors(ancestor)
-    expect(ancestor.attrs['aria-hidden']).toBeUndefined()
-    expect(ancestor.attrs.hidden).toBeUndefined()
-    restore()
-    expect(ancestor.attrs['aria-hidden']).toBe('true')
-    expect(ancestor.attrs.hidden).toBe('')
   })
 
   it('leaves the canvas alone when the frame has no detail', async () => {

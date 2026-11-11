@@ -38,17 +38,17 @@ export function VehicleEditor({ vehicle, onDone }: { vehicle: Vehicle | null; on
     <h3>{live ? 'Your car’s specifications' : 'Add your EV'}</h3>
     <p className="ev-muted">{live ? 'Add any details your car doesn’t share. These stay in this browser.' : 'Use the readings on your dashboard. You can update them any time.'}</p>
     {!live && <>
-      <label>Car name<input name="name" maxLength={80} defaultValue={initial?.model || ''} placeholder="e.g. My Ioniq 5" autoComplete="off" data-fb-private /></label>
+      <label>Car name<input name="name" maxLength={80} defaultValue={initial?.model || ''} placeholder="e.g. My Ioniq 5" autoComplete="off" /></label>
       <div className="ev-form-row">
-        <label>Battery (%)<input name="battery" type="number" inputMode="decimal" required min="0" max="100" step="0.1" defaultValue={initial?.batteryPercent ?? ''} placeholder="62" data-fb-private /></label>
-        <label>Range (km)<input name="range" type="number" inputMode="decimal" min="0" max="1500" step="1" defaultValue={initial?.rangeKm ?? ''} placeholder="Optional" data-fb-private /></label>
+        <label>Battery (%)<input name="battery" type="number" inputMode="decimal" required min="0" max="100" step="0.1" defaultValue={initial?.batteryPercent ?? ''} placeholder="62" /></label>
+        <label>Range (km)<input name="range" type="number" inputMode="decimal" min="0" max="1500" step="1" defaultValue={initial?.rangeKm ?? ''} placeholder="Optional" /></label>
       </div>
     </>}
-    <label>Usable battery capacity (kWh)<input name="capacity" type="number" inputMode="decimal" min="1" max="300" step="0.1" defaultValue={initial?.batteryCapacityKwh ?? ''} placeholder="Optional, e.g. 75" data-fb-private /></label>
+    <label>Usable battery capacity (kWh)<input name="capacity" type="number" inputMode="decimal" min="1" max="300" step="0.1" defaultValue={initial?.batteryCapacityKwh ?? ''} placeholder="Optional, e.g. 75" /></label>
     <p className="ev-field-help">Use the usable capacity in your car’s specifications. This lets us estimate energy and charging cost.</p>
     <div className="ev-form-row">
-      <label>Max AC (kW)<input name="ac" type="number" inputMode="decimal" min="0.1" max="100" step="0.1" defaultValue={initial?.maxAcKw ?? ''} placeholder="Optional" data-fb-private /></label>
-      <label>Max DC (kW)<input name="dc" type="number" inputMode="decimal" min="0.1" max="1000" step="0.1" defaultValue={initial?.maxDcKw ?? ''} placeholder="Optional" data-fb-private /></label>
+      <label>Max AC (kW)<input name="ac" type="number" inputMode="decimal" min="0.1" max="100" step="0.1" defaultValue={initial?.maxAcKw ?? ''} placeholder="Optional" /></label>
+      <label>Max DC (kW)<input name="dc" type="number" inputMode="decimal" min="0.1" max="1000" step="0.1" defaultValue={initial?.maxDcKw ?? ''} placeholder="Optional" /></label>
     </div>
     <fieldset>
       <legend>Charging connectors</legend>

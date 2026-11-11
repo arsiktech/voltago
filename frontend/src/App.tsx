@@ -1021,7 +1021,7 @@ export default function App() {
         >
           <div ref={headingRef} className="results-heading" data-scrolled={scrolled || undefined}>
             <div className="min-w-0">
-              <p className="text-xs text-muted" data-search-area {...(!showSaved && origin?.kind === 'place' ? { 'data-fb-private': '' } : {})}>{showSaved ? 'Saved chargers' : placeLabel}</p>
+              <p className="text-xs text-muted" data-search-area>{showSaved ? 'Saved chargers' : placeLabel}</p>
               <h1 className="mt-0.5 text-lg font-semibold">
                 {showSaved && !signedIn ? 'Saved' : (
                   <>

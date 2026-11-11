@@ -184,10 +184,9 @@ export default function SourceMatrix() {
           }}
           placeholder="Calle Mayor 1, Madrid"
           autoComplete="off"
-          data-fb-private
         />
         {!place && (geocode.data?.results?.length ?? 0) > 0 && (
-          <ul className="matrix-suggestions" data-fb-private>
+          <ul className="matrix-suggestions">
             {geocode.data!.results.slice(0, 5).map((result) => (
               <li key={`${result.lat},${result.lon}`}>
                 <button type="button" onClick={() => choosePlace(result)}>

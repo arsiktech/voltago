@@ -108,7 +108,6 @@ export function SearchBar({
         aria-activedescendant={showDrop && activeIndex >= 0 ? `${listId}-option-${activeIndex}` : undefined}
         inputMode="search"
         autoComplete="off"
-        data-fb-private
         className="search-input h-12 w-full rounded-xl border border-border-strong bg-surface py-3 pl-10 pr-10 text-sm text-fg outline-none transition placeholder:text-muted focus:border-brand focus-visible:ring-2 focus-visible:ring-brand"
       />
       <AnimatePresence initial={false}>
@@ -135,7 +134,6 @@ export function SearchBar({
             id={listId}
             role="listbox"
             aria-label="Home area suggestions"
-            data-fb-private
             variants={fadeSlide(Boolean(reduceMotion), 6)}
             initial="hidden"
             animate="show"
