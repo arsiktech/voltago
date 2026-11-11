@@ -29,8 +29,7 @@
  * Usage: node scripts/qa_near_home_first_use.js <baseUrl>
  */
 const { chromium } = require("playwright");
-const { openFilters, closeFilters, setFilter } = require("./qa_browser_harness");
-const { installDeterministicBasemap } = require("./qa_browser_harness");
+const { openFilters, closeFilters, setFilter, installDeterministicBasemap } = require("./qa_browser_harness");
 
 const baseUrl = (process.argv[2] || process.env.VOLTA_QA_BASE_URL || "http://127.0.0.1:8773").replace(/\/$/, "");
 const chromePath = process.env.VOLTA_QA_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -75,7 +74,7 @@ function baseStation({ id, name, lat, lon, lead, reliability, decision, availabl
     max_power_kw: 22,
     status: lead ? "UNKNOWN" : available > 0 ? "AVAILABLE" : "CHARGING",
     available,
-    total_evse: lead ? 2 : 2,
+    total_evse: 2,
     connector_summary: lead
       ? { total: 2, max_power_kw: 22 }
       : { available, busy: Math.max(0, 2 - available), out_of_service: 0, total: 2, max_power_kw: 22 },

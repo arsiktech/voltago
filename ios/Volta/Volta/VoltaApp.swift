@@ -64,9 +64,12 @@ private struct VoltaContentRoot: View {
             .task { state.start() }
             .task(id: state.api.baseURL.absoluteString + String(describing: scenePhase)) {
                 guard scenePhase == .active else { return }
+                // An unreachable watches endpoint must not delay the first vehicle load.
+                let baseURL = state.api.baseURL
+                async let vehicles: Void = garage.run(baseURL: baseURL)
                 await watches.loadConfig(api: state.api)
                 await watches.refresh(api: state.api)
-                await garage.run(baseURL: state.api.baseURL)
+                await vehicles
             }
             .onReceive(NotificationCenter.default.publisher(for: .voltaWatchAlertOpened)) { note in
                 // Re-read current facts around the charger; never trust the alert text.

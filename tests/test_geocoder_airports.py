@@ -11,6 +11,11 @@ from unittest.mock import patch
 
 import agent_mcp
 import server
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures/geocoder_airports.json").read_text())

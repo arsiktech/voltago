@@ -59,13 +59,13 @@ final class AppState: NSObject, ObservableObject {
     @Published var routeMoment: RouteMoment?
 
     // Filters. The iOS product surface intentionally exposes verified station rows only.
-    @Published var freeOnly = false { didSet { objectWillChange.send() } }
+    @Published var freeOnly = false
     /// 5.0 is the public-view ceiling (matches the API). Cheap/free remain optional filters.
     @Published var maxPrice = 5.0 { didSet { refetch() } }
     /// Empty means every connector. Multiple selected values use OR semantics: a station stays
     /// visible when it offers at least one connector the driver selected.
     @Published var connectorTypes: Set<String> = []
-    @Published var minimumPowerKW = 0.0 { didSet { objectWillChange.send() } }
+    @Published var minimumPowerKW = 0.0
 
     /// Compatibility seam for existing tests and callers that set one connector at a time.
     var connectorType: String {
@@ -403,10 +403,6 @@ final class AppState: NSObject, ObservableObject {
         if mode == .live { loadNearby(reason: "focus") }
     }
 
-    func clearFocus() {
-        focusedStationID = nil
-    }
-
     /// Opens a station from the map or the list. The map moves only when the charger is
     /// outside the visible part of the map (`visibleRegion` excludes the area under the
     /// sheet), and `moveMap` is false when the full-height sheet hides the map anyway.
@@ -423,11 +419,6 @@ final class AppState: NSObject, ObservableObject {
             withAnimation(VoltaMotion.spatial) { camera = .region(next) }
         }
         if mode == .live { loadNearby(reason: "selection") }
-    }
-
-    var focusedStation: Station? {
-        guard let id = focusedStationID else { return nil }
-        return (stations + leads).first(where: { $0.id == id })
     }
 
     func dismissRouteMoment() {
@@ -619,6 +610,13 @@ final class AppState: NSObject, ObservableObject {
         nearbyOverviewTask?.cancel()
         fetchLive(reason: reason)
         guard mode == .live else { return }
+        nearbyOverviewTask = Task { await loadOverview() }
+    }
+
+    /// Overview-mode map pans supersede each other: cancel the previous area's download
+    /// (up to `OfflineStationCache.maxAreaBytes`) instead of letting it finish unused.
+    func reloadOverviewForMapArea() {
+        nearbyOverviewTask?.cancel()
         nearbyOverviewTask = Task { await loadOverview() }
     }
 

@@ -7,6 +7,8 @@ vi.mock('../components/VehicleEstimate', () => ({ VehicleEstimate: () => null })
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { DecisionLevel, Filters, Station } from '../types'
 import StationDetails from '../components/StationDetails'
+import { chargingEstimate, exampleVehicle } from './vehicles'
+import { stationPrice } from './stationPresentation'
 import stationTruthCasesRaw from '../../../contracts/station_truth_cases.json?raw'
 import {
   DECISION_META,
@@ -73,7 +75,7 @@ describe('source tariff presentation', () => {
     expect(priceText(station)).toBe('€2.00')
     expect(priceUnit(station)).toBe('/hour')
     expect(tariffNotes(station)).toEqual(['First hour free'])
-    expect(passesFilters(station, filters({ maxPrice: 0.25 }), '')).toBe(false)
+    expect(passesFilters(station, filters({ maxPrice: 0.25 }))).toBe(false)
   })
 
   it('keeps an energy price, minimum charge and extra time component together', () => {
@@ -487,7 +489,12 @@ const stationTruthCorpus = JSON.parse(stationTruthCasesRaw) as StationTruthCorpu
 describe('language-neutral station truth corpus', () => {
   it.each(stationTruthCorpus.current_prices)('$id price authority', ({ station, expected_verified, expected_current_price }) => {
     expect(hasVerifiedPrice(station)).toBe(expected_verified)
-    expect(station.current_price_min).toBe(expected_current_price)
+    expect(stationPrice(station).label).toBe(expected_verified ? 'Charging price' : 'Source price')
+    // The charge plan is the web's one consumer of a current price: it may price a charge
+    // only from the corpus's verified current price, never from a listed claim.
+    const plan = chargingEstimate(exampleVehicle('2026-10-19T19:00:00Z'), 80, station, Date.parse('2026-10-19T19:00:00Z'))
+    if (expected_current_price === null) expect(plan.cost).toBeNull()
+    else expect(plan.cost).toBeCloseTo(plan.gridEnergyKwh! * expected_current_price, 10)
     if (!expected_verified) {
       expect(isRouteReady(station)).toBe(false)
     }
@@ -1027,29 +1034,29 @@ describe('availability (honesty-critical)', () => {
 describe('passesFilters', () => {
   const freeLive = mk({ is_free: true, is_cheap: true, tesla_ok: true, lead: false })
   it('a free live station passes the defaults', () => {
-    expect(passesFilters(freeLive, DEFAULT_FILTERS, '')).toBe(true)
+    expect(passesFilters(freeLive, DEFAULT_FILTERS)).toBe(true)
   })
   it('off-cap station is visible until a cheap/free chip is on', () => {
     const pricey = mk({ is_free: false, is_cheap: false, tesla_ok: true, lead: false })
-    expect(passesFilters(pricey, DEFAULT_FILTERS, '')).toBe(true)
-    expect(passesFilters(pricey, filters({ maxPrice: 0.25 }), '')).toBe(false)
+    expect(passesFilters(pricey, DEFAULT_FILTERS)).toBe(true)
+    expect(passesFilters(pricey, filters({ maxPrice: 0.25 }))).toBe(false)
   })
   it('Tesla filter drops non-Tesla connectors only when Tesla is on', () => {
     const notTesla = mk({ is_free: true, is_cheap: true, tesla_ok: false, lead: false })
-    expect(passesFilters(notTesla, DEFAULT_FILTERS, '')).toBe(true)
-    expect(passesFilters(notTesla, filters({ tesla: true }), '')).toBe(false)
+    expect(passesFilters(notTesla, DEFAULT_FILTERS)).toBe(true)
+    expect(passesFilters(notTesla, filters({ tesla: true }))).toBe(false)
   })
   it('leads hidden when the Leads filter is off', () => {
     const lead = mk({ is_free: true, is_cheap: true, tesla_ok: true, lead: true, reliability: 'official-free' })
-    expect(passesFilters(lead, filters({ leads: true }), '')).toBe(true)
-    expect(passesFilters(lead, filters({ leads: false }), '')).toBe(false)
+    expect(passesFilters(lead, filters({ leads: true }))).toBe(true)
+    expect(passesFilters(lead, filters({ leads: false }))).toBe(false)
   })
   it('Open now excludes every lead (fail-closed) until availability is cleared', () => {
     const lead = mk({ is_free: true, is_cheap: true, tesla_ok: true, lead: true, reliability: 'official-free' })
-    expect(passesFilters(lead, filters({ available: true, leads: true }), '')).toBe(false)
+    expect(passesFilters(lead, filters({ available: true, leads: true }))).toBe(false)
     // The empty-state "Show all leads" recovery must clear `available` too (D-081) —
     // leads may only render once Open now is off.
-    expect(passesFilters(lead, filters({ available: false, verified: false, parking: false }), '')).toBe(true)
+    expect(passesFilters(lead, filters({ available: false, verified: false, parking: false }))).toBe(true)
   })
   it('Open now excludes an available live row that is still check-first', () => {
     const checkFirst = mk({
@@ -1060,7 +1067,7 @@ describe('passesFilters', () => {
       available: 2,
       decision: { level: 'check', label: 'Check first', reason: 'Status needs confirmation.' },
     })
-    expect(passesFilters(checkFirst, filters({ available: true }), '')).toBe(false)
+    expect(passesFilters(checkFirst, filters({ available: true }))).toBe(false)
   })
   it('Open now accepts only route-ready rows across backend availability shapes', () => {
     const base = {
@@ -1080,7 +1087,6 @@ describe('passesFilters', () => {
           decision: { level: 'go', label: 'Go now', reason: 'Live and available.' },
         }),
         openNow,
-        '',
       ),
     ).toBe(true)
     expect(
@@ -1092,7 +1098,6 @@ describe('passesFilters', () => {
           decision: { level: 'verify', label: 'Verify first', reason: 'Cached status is stale.' },
         }),
         openNow,
-        '',
       ),
     ).toBe(false)
     expect(
@@ -1104,7 +1109,6 @@ describe('passesFilters', () => {
           decision: { level: 'go', label: 'Go now', reason: 'No connector is free.' },
         }),
         openNow,
-        '',
       ),
     ).toBe(false)
     expect(
@@ -1116,7 +1120,6 @@ describe('passesFilters', () => {
           decision: { level: 'go', label: 'Go now', reason: 'A lead must never route.' },
         }),
         openNow,
-        '',
       ),
     ).toBe(false)
   })
@@ -1124,15 +1127,10 @@ describe('passesFilters', () => {
     const paidCheap = mk({ is_free: false, is_cheap: true, tesla_ok: true, lead: false })
     const offCap = mk({ is_free: false, is_cheap: false, tesla_ok: true, lead: false })
     // A free-only cap excludes paid rows. Clearing the cap must restore them.
-    expect(passesFilters(paidCheap, filters({ maxPrice: 0 }), '')).toBe(false)
+    expect(passesFilters(paidCheap, filters({ maxPrice: 0 }))).toBe(false)
     // "Broaden price" clears the numeric cap and restores unknown/paid tariffs.
-    expect(passesFilters(paidCheap, filters({ maxPrice: null }), '')).toBe(true)
-    expect(passesFilters(offCap, filters({ maxPrice: null }), '')).toBe(true)
-  })
-  it('search matches name/city', () => {
-    const st = mk({ is_free: true, is_cheap: true, tesla_ok: true, lead: false, name: 'Gaia Alboraia' })
-    expect(passesFilters(st, DEFAULT_FILTERS, 'gaia')).toBe(true)
-    expect(passesFilters(st, DEFAULT_FILTERS, 'lidl')).toBe(false)
+    expect(passesFilters(paidCheap, filters({ maxPrice: null }))).toBe(true)
+    expect(passesFilters(offCap, filters({ maxPrice: null }))).toBe(true)
   })
   it('price chips OFF surface price-unknown official leads (the lead-crash repro path)', () => {
     const priceLead = mk({
@@ -1143,8 +1141,8 @@ describe('passesFilters', () => {
       reliability: 'official-charger-location-price-unknown',
       decision: { level: 'lead', label: 'Price lead', reason: '' },
     })
-    expect(passesFilters(priceLead, DEFAULT_FILTERS, '')).toBe(true)
-    expect(passesFilters(priceLead, filters({ maxPrice: 0.25 }), '')).toBe(false)
+    expect(passesFilters(priceLead, DEFAULT_FILTERS)).toBe(true)
+    expect(passesFilters(priceLead, filters({ maxPrice: 0.25 }))).toBe(false)
   })
 })
 
@@ -1153,28 +1151,28 @@ describe('numeric charging price filter', () => {
     const below = mk({ price_min: cap - 0.01, is_cheap: false })
     const boundary = mk({ price_min: cap, is_cheap: false })
     const above = mk({ price_min: cap + 0.01, is_cheap: true })
-    expect(passesFilters(below, filters({ maxPrice: cap }), '')).toBe(true)
-    expect(passesFilters(boundary, filters({ maxPrice: cap }), '')).toBe(true)
-    expect(passesFilters(above, filters({ maxPrice: cap }), '')).toBe(false)
+    expect(passesFilters(below, filters({ maxPrice: cap }))).toBe(true)
+    expect(passesFilters(boundary, filters({ maxPrice: cap }))).toBe(true)
+    expect(passesFilters(above, filters({ maxPrice: cap }))).toBe(false)
   })
 
   it.each([null, undefined, NaN, Infinity, -0.1])('rejects an unknown or invalid tariff %s under a chosen cap', (price_min) => {
     const station = mk({ price_min, is_cheap: true })
-    expect(passesFilters(station, filters({ maxPrice: 0.4 }), '')).toBe(false)
-    expect(passesFilters(station, DEFAULT_FILTERS, '')).toBe(true)
+    expect(passesFilters(station, filters({ maxPrice: 0.4 }))).toBe(false)
+    expect(passesFilters(station, DEFAULT_FILTERS)).toBe(true)
   })
 
   it('keeps explicit reported-free evidence but rejects contradictory paid tariffs at zero', () => {
-    expect(passesFilters(mk({ is_free: true }), filters({ maxPrice: 0 }), '')).toBe(true)
-    expect(passesFilters(mk({ is_free: true, price_min: 0.4 }), filters({ maxPrice: 0 }), '')).toBe(false)
-    expect(passesFilters(mk({ price_min: 0 }), filters({ maxPrice: 0 }), '')).toBe(true)
+    expect(passesFilters(mk({ is_free: true }), filters({ maxPrice: 0 }))).toBe(true)
+    expect(passesFilters(mk({ is_free: true, price_min: 0.4 }), filters({ maxPrice: 0 }))).toBe(false)
+    expect(passesFilters(mk({ price_min: 0 }), filters({ maxPrice: 0 }))).toBe(true)
   })
 
   it('changes neither live authority nor parking facts when increasing the cap', () => {
     const station = mk({ price_min: 0.4, lead: true, decision: { level: 'check', label: 'Verify first', reason: 'No live evidence' } })
     const before = JSON.stringify(station)
-    expect(passesFilters(station, filters({ maxPrice: 0.65 }), '')).toBe(true)
-    expect(passesFilters(station, filters({ maxPrice: 0.65, available: true }), '')).toBe(false)
+    expect(passesFilters(station, filters({ maxPrice: 0.65 }))).toBe(true)
+    expect(passesFilters(station, filters({ maxPrice: 0.65, available: true }))).toBe(false)
     expect(JSON.stringify(station)).toBe(before)
   })
 })

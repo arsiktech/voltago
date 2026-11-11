@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic revision binding for the durable regression report.
 
-The 30-check report is only current when its tested source/configuration, canonical
+The full report is only current when its tested source/configuration, canonical
 data, and QA ledgers still match the workspace. Generated evidence and mutable
 network caches are intentionally excluded because the suite itself updates them.
 """

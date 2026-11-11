@@ -86,6 +86,13 @@ class EtecnicIngestTests(unittest.TestCase):
         self.assertEqual(grant["status"], "permitted")
         self.assertIn("aviso legal reserves redistribution", grant["basis"])
 
+    def test_a_non_numeric_post_id_does_not_fail_the_source(self) -> None:
+        odd = {**ITEMS[1], "id": "abc", "lat": "41.064720", "charger_sockets": []}
+        rows = ing.parse_etecnic_chargers([odd, *ITEMS])
+        site = next(row for row in rows if row["raw"]["etecnic_charger_id"] == "7")
+        self.assertEqual(site["raw"]["etecnic_charger_ids"], ["7", "8", "abc"])
+        self.assertEqual(len(rows), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

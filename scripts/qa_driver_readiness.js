@@ -38,24 +38,6 @@ function isSourceUrl(url) {
   return !/google\.[^/]+\/maps|maps\.apple\.com/i.test(url);
 }
 
-/* Mirror of frontend/src/lib/format.ts sourceTier()/passesFilters() so the rendered
- * card ids can be cross-checked against the dataset the page fetched. */
-function reliabilityTier(item) {
-  if (!item.lead) return "live";
-  const r = (item.reliability || "").toLowerCase();
-  if (r.startsWith("official")) return "official";
-  if (/directory|map|locator/.test(r)) return "directory";
-  return "community";
-}
-function verifiedPass(item) {
-  const tier = reliabilityTier(item);
-  return tier !== "community" || (item.verification && item.verification.route_checked === true);
-}
-function parkingRisk(item) {
-  const p = item.parking || {};
-  return p.paid === true || ["paid_or_metered", "time_limited_or_validated"].includes(p.kind || "");
-}
-
 /** Snapshot the panel: chips, status row, coverage banners, rendered cards, empty state. */
 function collect(page) {
   return page.evaluate(() => {
@@ -278,7 +260,7 @@ async function main() {
 
   expect(defaultState.cards.length > 0, "default: view rendered no cards");
   expect(/^\d+ public chargers$/.test(defaultState.h1), `default: header is not the broad overview count: "${defaultState.h1}"`);
-  expect(defaultState.modeLabel === "Explore Spain", `default: mode label is not "Explore Spain": "${defaultState.modeLabel}"`);
+  expect(defaultState.modeLabel === "Explore chargers", `default: mode label is not "Explore chargers": "${defaultState.modeLabel}"`);
   expect(/^\d+ leads · not live$/.test(defaultState.badgeText), "default: source-backed/not-live count badge is missing");
   for (const [label, want] of [
     ["Open now", false],

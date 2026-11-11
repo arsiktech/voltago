@@ -1,6 +1,7 @@
 """Bounded local socket tests for MCP body framing and elapsed time."""
 import json
 from pathlib import Path
+import select
 import socket
 import sys
 import threading
@@ -11,23 +12,25 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import agent_mcp
 import server
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class McpBodyDeadlineTests(unittest.TestCase):
     def setUp(self):
-        self.deadline = patch.object(server, "MCP_BODY_READ_TIMEOUT_SECONDS", 0.15, create=True)
+        self.deadline = patch.object(server, "MCP_BODY_READ_TIMEOUT_SECONDS", 0.15)
         self.deadline.start()
         self.httpd = server.VoltaHTTPServer(("127.0.0.1", 0), server.Handler)
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-        self.thread.start()
+        self.stop_server = _support.serve_in_thread(self.httpd)
         self.sockets = []
 
     def tearDown(self):
         for connection in self.sockets:
             connection.close()
-        self.httpd.shutdown()
-        self.httpd.server_close()
-        self.thread.join(timeout=1)
+        self.stop_server()
         self.deadline.stop()
 
     def connect(self, length):
@@ -55,7 +58,12 @@ class McpBodyDeadlineTests(unittest.TestCase):
         stopped = threading.Event()
 
         def trickle():
-            while not stopped.wait(0.03):
+            while not stopped.is_set():
+                readable, _, _ = select.select([connection], [], [], 0.03)
+                if readable:
+                    # The server has answered. A further write would reach a closed
+                    # socket and the reset would discard the unread response.
+                    return
                 try:
                     connection.sendall(b" ")
                 except OSError:

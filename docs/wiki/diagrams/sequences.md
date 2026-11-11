@@ -159,4 +159,4 @@ sequenceDiagram
 1. **Check list** - `suite_checks()` in
    [scripts/qa_regression_suite.py](../../../scripts/qa_regression_suite.py).
 2. **Execution** - `run_check()` captures subprocess evidence and timeouts.
-3. **Report** - [qa/regression-suite-latest.json](../../../qa/regression-suite-latest.json).
+3. **Report** - `qa/regression-suite-latest.json` (generated locally, not tracked).

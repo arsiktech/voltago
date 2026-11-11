@@ -53,5 +53,3 @@ device builds default to `http://your-mac.local:8773` and can be changed in Sett
 - Simulator loopback and real-device networking differ; the iOS README calls out
   Tailscale/LAN paths.
 - iOS VoiceOver manual evidence remains a completion gate.
-- The current working tree has unrelated iOS asset/project changes; this wiki
-  did not modify them.

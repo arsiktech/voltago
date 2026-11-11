@@ -4,7 +4,7 @@
  * IN PLACE by the live charger refresh — no empty flash, honest labels throughout.
  *
  * Ported from the retired static-shell script. Old surface -> SPA surface:
- *   - "Fast source-backed preview" banner  -> national overview state ("Explore Spain" mode
+ *   - "Fast source-backed preview" banner  -> national overview state ("Explore chargers" mode
  *     label, "N leads · not live" badge, every visible card marked "Not live").
  *   - preview -> live banner swap          -> geolocation-mocked "Use my location" flow:
  *     transitional "Refreshing…" signal (and optional role=status "live status is loading…"
@@ -220,7 +220,7 @@ async function main() {
   if (previewMs > previewBudgetMs) failures.push(`preview took ${previewMs}ms > ${previewBudgetMs}ms`);
   if (preview.cards <= 0) failures.push("preview rendered no station cards");
   const previewBadge = parseBadge(preview.badge);
-  if (preview.modeLabel !== "Explore Spain" || !/public chargers/.test(preview.h1)) {
+  if (preview.modeLabel !== "Explore chargers" || !/public chargers/.test(preview.h1)) {
     failures.push(
       `initial render did not expose the source-backed national overview state (mode="${preview.modeLabel}", h1="${preview.h1}")`,
     );

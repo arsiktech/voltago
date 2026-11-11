@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -162,6 +163,53 @@ class IngestionCanaryTests(unittest.TestCase):
         self.assertIn("Electromaps web-map API", checked)
         self.assertIn("Chargemap public map API", checked)
         self.assertIn("OpenChargeMap public snapshot", checked)
+
+    def test_explicit_empty_policy_is_not_replaced_by_the_default_policy(self):
+        failures, checked = qa_ingestion_canary.source_family_threshold_failures(
+            [],
+            [["Electromaps web-map API", 233]],
+            min_ratio=0.85,
+            min_count=5,
+            label="baseline",
+            policy={},
+        )
+        self.assertIn("Electromaps web-map API", checked)
+        self.assertEqual(len(failures), 1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "candidate.json"
+            path.write_text(json.dumps({"records": [
+                {"id": "a", "source": "Electromaps web-map API",
+                 "source_url": "https://map.electromaps.com/es/charging-stations/1"},
+            ]}), encoding="utf-8")
+            self.assertEqual(qa_ingestion_canary.source_evidence_counts(path, {}),
+                             [["Electromaps web-map API", 1]])
+            # The shipped policy may exclude nothing, so give the default one exclusion:
+            # only the default path (policy=None) may apply it.
+            excluding = {"exclusions": [{
+                "id": "electromaps-test", "family": "Electromaps",
+                "source_family_terms": ["electromaps"], "origin_hosts": ["electromaps.com"],
+            }]}
+            with mock.patch.object(qa_ingestion_canary, "SOURCE_POLICY_EXCLUSIONS", excluding):
+                self.assertEqual(qa_ingestion_canary.source_evidence_counts(path), [])
+                self.assertEqual(qa_ingestion_canary.source_evidence_counts(path, {}),
+                                 [["Electromaps web-map API", 1]])
+
+    def test_trim_history_replaces_the_file_instead_of_rewriting_it_in_place(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / "history.jsonl"
+            path.write_text("".join(json.dumps({"records": i}) + "\n" for i in range(4)), encoding="utf-8")
+            original = path.read_text(encoding="utf-8")
+            reader_view = pathlib.Path(tmp) / "reader-view.jsonl"
+            reader_view.hardlink_to(path)
+
+            qa_ingestion_canary.trim_history(path, 2)
+
+            self.assertEqual([json.loads(line)["records"] for line in path.read_text().splitlines()], [2, 3])
+            # A reader holding the old file sees it whole, never a truncated half-write.
+            self.assertEqual(reader_view.read_text(encoding="utf-8"), original)
+            self.assertEqual(sorted(p.name for p in pathlib.Path(tmp).iterdir()),
+                             ["history.jsonl", "reader-view.jsonl"])
 
     def test_typed_price_annotations_cannot_supply_station_family_coverage(self):
         claims = [

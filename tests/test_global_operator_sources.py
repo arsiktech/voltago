@@ -7,6 +7,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 from scripts import operator_sources as op, global_sources as gs
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 def artifact():
@@ -60,6 +65,15 @@ ZUNDER_PAGE = """
    xmlhttp.open("GET", "/wp-content/plugins/easycharger/location.php?id=5");
  });
  var marker6 = new google.maps.Marker({ map: map });
+ var marker7 = new google.maps.Marker({
+   position: { lat: 40.41650000, lng: -3.70380000},
+   map: map,
+   title: 'Madrid - En construcción',
+   icon: { url: '/wp-content/plugins/easycharger/icons/icono-celeste.png' }
+ });
+ marker7.addListener('click', function() {
+   xmlhttp.open("GET", "/wp-content/plugins/easycharger/location.php?id=7");
+ });
 </script>
 """
 
@@ -99,6 +113,30 @@ class OperatorSourceTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["id"], "global_zunder_4")
         self.assertEqual(rows[0]["connector_labels"], [])
+
+    def test_zunder_keeps_only_markers_with_the_active_icon(self):
+        # The Spain parser keeps only `icono-marino` ("Activo"); a Spanish site under
+        # construction (`icono-celeste`) is not a charger yet.
+        ids = [row["id"] for row in op.parse_zunder_map_page(ZUNDER_PAGE, source_artifact=artifact())]
+        self.assertEqual(ids, ["global_zunder_4"])
+
+    def test_revoked_reuse_grant_refuses_collection_without_fetching(self):
+        for source_id in ("etecnic", "zunder"):
+            with self.subTest(source=source_id), tempfile.TemporaryDirectory() as tmp:
+                # The real policy holds the grant: the adapter goes on to fetch as before.
+                with patch.object(op.gs, "fetch_cached_file", side_effect=OSError) as fetch:
+                    report = op.run_source(source_id, Path(tmp), {"ES"}, True, lambda row: "added")
+                self.assertTrue(fetch.called)
+                self.assertEqual(report["status"], "failed")
+                revoked = deepcopy(op.gs.SOURCE_POLICY)
+                revoked["granted_reuse"] = [grant for grant in revoked.get("granted_reuse", [])
+                                            if grant.get("id") != f"{source_id}-owner-policy-reuse"]
+                with patch.object(op.gs, "SOURCE_POLICY", revoked), \
+                        patch.object(op.gs, "fetch_cached_file", side_effect=AssertionError("fetched")) as fetch:
+                    report = op.run_source(source_id, Path(tmp), {"ES"}, False, lambda row: "added")
+                self.assertFalse(fetch.called)
+                self.assertEqual(report["status"], "not_permitted")
+                self.assertEqual((report["accepted"], report["fetches"]), (0, []))
 
     def test_interparking_flag_and_parking_price_never_become_charge_tariff(self):
         park = {"externalId": "es-123", "name": "Parking", "location": {"lat": 40.4, "lng": -3.7},

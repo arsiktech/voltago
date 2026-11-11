@@ -2,7 +2,7 @@
 """Volta Go QA smoke checks.
 
 Requires a running local server, for example:
-  PORT=8767 PYTHONPYCACHEPREFIX=/tmp/volta-pycache python3 -u server.py
+  PORT=8773 PYTHONPYCACHEPREFIX=/tmp/volta-pycache python3 -u server.py
 """
 from __future__ import annotations
 
@@ -38,12 +38,7 @@ def main() -> int:
     try:
         home = fetch("/", timeout=10).decode("utf-8", "replace")
         check("Volta" in home, "home page does not contain app title", failures)
-        # New SPA shell mounts into #root; legacy vanilla shell used a station template.
-        check(
-            'id="root"' in home or "stationTemplate" in home,
-            "home page missing SPA root / station template",
-            failures,
-        )
+        check('id="root"' in home, "home page missing SPA root", failures)
 
         health = fetch_json("/api/health", timeout=10)
         check(health.get("ok") is True, "/api/health ok is not true", failures)

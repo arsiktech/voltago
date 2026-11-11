@@ -52,6 +52,19 @@ class FranceIRVETests(unittest.TestCase):
         self.assertEqual(row["sources"][0]["license"], "Licence Ouverte 2.0")
         self.assertIn("transport.data.gouv.fr", row["sources"][0]["attribution"])
 
+    def test_power_in_watts_is_read_by_the_osm_rule_or_left_unknown(self) -> None:
+        # docs/osm-socket-power.md: no connector rates above 1200 kW, so a larger value
+        # is watts only when that is a real rating for the connector.
+        cases = (("22000", "true", "false", 22.0, False), ("50000", "false", "true", 50.0, True),
+                 ("50000", "true", "false", None, False), ("22", "true", "false", 22.0, False))
+        for value, type2, ccs, expected, fast in cases:
+            with self.subTest(value=value, type2=type2):
+                row = next(national.parse_france_irve(
+                    [french_row(puissance_nominale=value, prise_type_2=type2, prise_type_combo_ccs=ccs)], artifact()))
+                self.assertEqual([c["power_kw"] for c in row["connectors"]], [expected])
+                self.assertEqual(row["max_power_kw"], expected)
+                self.assertEqual(row["fast"], fast)
+
     def test_missing_invalid_and_zero_coordinates_are_not_pins(self) -> None:
         for value in ("", "[]", "[0,0]", "[2,95]", "[NaN,45]", "[null,45]", "[2,45,4]", "bad"):
             with self.subTest(value=value):

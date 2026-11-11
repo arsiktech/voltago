@@ -341,6 +341,7 @@ final class AppStateAdverseTrustTests: XCTestCase {
     override func tearDown() {
         AdverseURLProtocol.handler = nil
         AdverseURLProtocol.delay = nil
+        AdverseURLProtocol.resetCancelledRequests()
         super.tearDown()
     }
 
@@ -749,6 +750,39 @@ final class AppStateAdverseTrustTests: XCTestCase {
       "reliability":"official_directory","verification":{"location_verified":true}}],
      "cache":{"overview":true},"meta":{"coverage":{"mode":"overview"}}}
     """
+
+    /// Each overview-mode map pan supersedes the previous area; its download must stop.
+    func testMapPanCancelsTheSupersededOverviewDownload() async throws {
+        let firstStarted = expectation(description: "First area's overview reached the service")
+        let isFirstArea: (URLRequest) -> Bool = { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?.queryItems?
+                .first(where: { $0.name == "bbox" })?.value?.hasPrefix("39.") == true
+        }
+        AdverseURLProtocol.delay = { isFirstArea($0) ? 3 : 0 }
+        let state = makeState { request in
+            if isFirstArea(request) {
+                firstStarted.fulfill()
+                return Self.response(request, status: 200, body: Self.lateOverviewJSON)
+            }
+            return Self.response(request, status: 200, body: Self.emptyFreshJSON)
+        }
+        state.mode = .overview
+        state.reloadOverviewForMapArea()
+        await fulfillment(of: [firstStarted], timeout: 2)
+
+        state.visibleRegion = MKCoordinateRegion(center: .init(latitude: 41.39, longitude: 2.17),
+                                                span: .init(latitudeDelta: 0.16, longitudeDelta: 0.16))
+        state.reloadOverviewForMapArea()
+        for _ in 0 ..< 50 where AdverseURLProtocol.cancelledRequests().isEmpty {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        await waitForOverview(state, expected: .loaded)
+
+        XCTAssertEqual(AdverseURLProtocol.cancelledRequests().filter(isFirstArea).count, 1,
+                       "The superseded pan's overview download must be cancelled")
+        XCTAssertEqual(state.overviewState, .loaded)
+        XCTAssertTrue(state.leads.isEmpty, "The superseded area must not publish its rows")
+    }
 
     func testLatestOverviewOwnsRowsWhenEarlierOverviewFinishesLast() async throws {
         await assertLatestOverviewWins(earlierStatus: 200)
@@ -1522,6 +1556,14 @@ private final class AdverseURLProtocol: URLProtocol {
     override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
+    private static let lock = NSLock()
+    private static var cancelled: [URLRequest] = []
+    private var finished = false
+
+    /// Requests whose client stopped them before a response was delivered.
+    static func cancelledRequests() -> [URLRequest] { lock.withLock { cancelled } }
+    static func resetCancelledRequests() { lock.withLock { cancelled = [] } }
+
     override func startLoading() {
         do {
             let handler = try XCTUnwrap(Self.handler)
@@ -1539,9 +1581,19 @@ private final class AdverseURLProtocol: URLProtocol {
         }
     }
 
-    override func stopLoading() {}
+    override func stopLoading() {
+        Self.lock.withLock {
+            if !finished { Self.cancelled.append(request) }
+            finished = true
+        }
+    }
 
     private func deliver(response: HTTPURLResponse, data: Data) {
+        let alreadyStopped = Self.lock.withLock {
+            defer { finished = true }
+            return finished
+        }
+        guard !alreadyStopped else { return }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
         client?.urlProtocolDidFinishLoading(self)

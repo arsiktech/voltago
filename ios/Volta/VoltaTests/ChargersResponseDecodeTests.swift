@@ -70,4 +70,25 @@ final class ChargersResponseDecodeTests: XCTestCase {
         let resp = try TestDecode.chargersResponse(json)
         XCTAssertEqual(resp.stations.count, 0)
     }
+
+    /// OCPI 2.2 defines `BusinessDetails.logo` as an Image object, and server.py passes
+    /// MapaREVE's `owner` through unchanged. A real logo must not make the station undecodable.
+    func testStationWithOCPIImageObjectOwnerLogoStillDecodes() throws {
+        let json = """
+        {
+          "stations": [
+            {"id": "s1", "name": "Station One", "lat": 39.47, "lon": -0.38,
+             "owner": {"name": "ENDESA X WAY, S.L.", "website": "www.endesaxway.com", "phone": "800760255",
+                       "logo": {"url": "https://example.com/logo.png", "category": "OPERATOR", "type": "png",
+                                "width": 64, "height": 64}}}
+          ],
+          "leads": []
+        }
+        """
+        let resp = try TestDecode.chargersResponse(json)
+        let s1 = try XCTUnwrap(resp.stations.first { $0.id == "s1" })
+        XCTAssertEqual(s1.owner?.name, "ENDESA X WAY, S.L.")
+        XCTAssertEqual(s1.owner?.website, "www.endesaxway.com")
+        XCTAssertEqual(s1.owner?.phone, "800760255")
+    }
 }

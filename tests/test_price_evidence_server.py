@@ -11,6 +11,12 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from scripts.price_evidence import parse_electromaps_price, price_evidence_counts, sanitize_electromaps
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 def evidence(kind="electromaps_community", price=0.0):

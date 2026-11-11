@@ -335,8 +335,6 @@ export interface ChargersResponse {
   meta?: ChargersMeta
   cache?: CacheInfo
   warning?: string
-  gaia?: Record<string, unknown>
-  intel?: Record<string, unknown>
 }
 
 export interface Coords {

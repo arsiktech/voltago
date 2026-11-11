@@ -1,5 +1,4 @@
 """Summary transport must preserve decisions and bind disclosures to their catalogue."""
-from copy import deepcopy
 import json
 from pathlib import Path
 import sys
@@ -10,6 +9,11 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 from scripts.build_intelligence_index import build_index
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 def directory_row(identifier="osm_node_1", **updates):
@@ -258,6 +262,12 @@ class StationSummaryTests(unittest.TestCase):
         handler.send_json.assert_not_called()
         self.assertEqual(server._sanitize_log_line('"GET ' + handler.path + ' HTTP/1.1" 200 -'),
                          '"GET /api/station HTTP/1.1" 200 -')
+
+    def test_directory_mode_passes_a_changed_snapshot_through(self):
+        bbox = {"latitude_sw": 28.4, "longitude_sw": -16.4, "latitude_ne": 28.6, "longitude_ne": -16.2}
+        with patch.object(server, "overview_response", return_value=(409, {"error": "snapshot_changed"})):
+            result = server.directory_response({"summary": ["true"]}, bbox, "explicit", False, 5.0, False, True, False)
+        self.assertEqual(result, (409, {"error": "snapshot_changed"}))
 
 
 if __name__ == "__main__":

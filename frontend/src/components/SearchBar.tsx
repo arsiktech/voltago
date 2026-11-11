@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { MapPin, Search, X } from 'lucide-react'
 import { useGeocode } from '../lib/api'
+import { useSettledQuery } from '../hooks/useSettledQuery'
 import type { GeocodeResult } from '../types'
 import { chosenPlaceText } from '../lib/chosenPlaceText'
 import { fadeSlide, popIn, quickEase } from '../lib/motion'
@@ -32,15 +33,10 @@ export function SearchBar({
   }, [])
   const listId = `home-place-results-${useId().replace(/:/g, '')}`
   const query = value.trim()
-  const [settledQuery, setSettledQuery] = useState('')
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSettledQuery(query), 250)
-    return () => window.clearTimeout(timer)
-  }, [query])
-  const waitingForInput = query.length >= 3 && query !== settledQuery
   // Switch away from the previous query immediately: its request is cancelled and
   // its suggestions cannot be selected while the next city is still being typed.
-  const geo = useGeocode(waitingForInput ? '' : query)
+  const { query: settledQuery, waiting: waitingForInput } = useSettledQuery(query)
+  const geo = useGeocode(settledQuery)
   const results = geo.data?.results ?? []
   const [activeOption, setActiveOption] = useState({ value, resultCount: results.length, index: results.length ? 0 : -1 })
   const optionScopeChanged = activeOption.value !== value || activeOption.resultCount !== results.length
@@ -96,6 +92,7 @@ export function SearchBar({
             e.preventDefault()
             pick(results[activeIndex >= 0 ? activeIndex : 0])
           } else if (e.key === 'Escape') {
+            if (showDrop) e.preventDefault()
             setFocused(false)
           }
         }}

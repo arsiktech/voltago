@@ -69,6 +69,25 @@ class FenieAdapterTests(unittest.TestCase):
         self.assertEqual(record["raw"]["fenie_gratuito"], 1)
         self.assertEqual(record["sources"][0]["attribution"], "Feníe Energía — Red de recarga (public map)")
 
+    def test_marker_outside_spain_does_not_change_the_previous_station(self) -> None:
+        paris = {**MARKERS[1], "code": "0900", "id": 900, "lat": 48.8566, "lon": 2.3522}  # free, estado 4
+        records = ing.fenie_records_from_markers([MARKERS[0], paris])
+        self.assertEqual([r["raw"]["fenie_code"] for r in records], ["0459"])
+        self.assertNotIn("source_reported_unavailable", records[0])
+
+    def test_malformed_flags_affect_only_their_own_marker(self) -> None:
+        markers = [
+            {**MARKERS[0], "code": "0601", "id": 601, "gratuito": "si"},  # not a number: not free
+            {**MARKERS[1], "code": "0602", "id": 602, "gratuito": "1.0", "estado": "4.0"},
+            {**MARKERS[0], "code": "0603", "id": 603, "lat": 42.9, "estado": "fuera"},  # not that state
+            MARKERS[0],
+        ]
+        records = ing.fenie_records_from_markers(markers)
+        self.assertEqual([r["raw"]["fenie_code"] for r in records], ["0602", "0603", "0459"])
+        self.assertIn("source_reported_unavailable", records[0])
+        self.assertNotIn("source_reported_unavailable", records[1])
+        self.assertNotIn("source_reported_unavailable", records[2])
+
     def test_population_shrink_guard(self) -> None:
         with self.assertRaises(RuntimeError):
             ing.parse_fenie_markers(MARKERS, minimum_markers=100)

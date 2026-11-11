@@ -37,14 +37,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from tests import _support  # noqa: E402
 
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class AgeMinutesNaiveTimestampTests(unittest.TestCase):
@@ -75,8 +74,7 @@ class Handler500GuardTests(unittest.TestCase):
     def test_do_get_exception_returns_500_json_without_exception_detail(self) -> None:
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         port = httpd.server_address[1]
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
+        stop_server = _support.serve_in_thread(httpd)
         try:
             with patch("server.live_response", side_effect=RuntimeError("boom - must never reach the client")):
                 try:
@@ -94,15 +92,12 @@ class Handler500GuardTests(unittest.TestCase):
                     self.assertNotIn("Traceback", body)
                     self.assertNotIn("RuntimeError", body)
         finally:
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(timeout=5)
+            stop_server()
 
     def test_do_head_exception_falls_back_to_bare_500(self) -> None:
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         port = httpd.server_address[1]
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
+        stop_server = _support.serve_in_thread(httpd)
         try:
             # web_root() is called unconditionally by do_HEAD for any non-/api/
             # path; forcing it to raise exercises do_HEAD's own guard without
@@ -115,9 +110,7 @@ class Handler500GuardTests(unittest.TestCase):
                 except urllib.error.HTTPError as exc:
                     self.assertEqual(exc.code, 500)
         finally:
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(timeout=5)
+            stop_server()
 
 
 def _empty_live_payload() -> dict:

@@ -19,6 +19,14 @@ describe('SourceProvenance source-rights disclosure', () => {
     expect(markup).toContain('Minimum charge €2.00')
   })
 
+  it('keeps an unlinked license name at informational contrast', () => {
+    const station: Station = { id: 'unlinked-license', name: 'Unlinked license', lat: 41.39, lon: 2.17,
+      sources: [{ name: 'Municipal open data', license: 'CC BY 4.0', license_url: 'javascript:alert(1)' }] }
+    const markup = renderToStaticMarkup(<SourceProvenance st={station} />)
+    expect(markup).toContain('<span class="text-muted">CC BY 4.0</span>')
+    expect(markup).not.toContain('text-faint')
+  })
+
   it('renders attribution, linked license, transformation, and source update metadata', () => {
     const station: Station = {
       id: 'endolla-license',

@@ -5,8 +5,8 @@ Updated 2 October 2026 after the owner's annotated dev-browser review.
 ## Direction
 
 A calm, practical map workspace: warm off-white surroundings, opaque white result
-surfaces, dark readable text, and one restrained forest-green accent. Inter stays
-local and keeps the existing typography/toolchain. Search leads the panel; charger
+surfaces, dark readable text, and one restrained forest-green accent. Manrope is
+bundled locally and keeps the existing typography/toolchain. Search leads the panel; charger
 name and charging price lead each result. Borders separate content, with elevation
 reserved for floating map controls and the filter dialog. Avoid repeated badges,
 status-colored price promises, decorative halos, and an ocean-sized initial map.
@@ -69,8 +69,8 @@ These are adaptations of interaction patterns, not copied assets or interfaces.
 - `format.ts`: returning from a live query to overview cannot retain live placeholder
   rows. Only the separate overview inventory may bridge that transition.
 
-The map remains optional. Location permission is never requested automatically;
-city search and region selection work without it. Source tier, live availability,
+The map remains optional. The app requests location once when it opens; if that is
+pending, denied or unavailable, city search and region selection work without it. Source tier, live availability,
 charging cost, parking cost, conflicts and access restrictions remain distinct.
 
 ## Verification paths

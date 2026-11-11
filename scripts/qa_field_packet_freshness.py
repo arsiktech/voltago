@@ -7,7 +7,6 @@ import hashlib
 import importlib.util
 import json
 import re
-import sys
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
@@ -263,15 +262,15 @@ def main(argv: List[str] | None = None) -> int:
         try:
             current = current_state(base_url, args.timeout)
             failures = compare(packet, current, canonical_sha)
-        except ValueError:
-            current_error = "current deployment does not expose recordset_sha256"
+        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+            current_error = "current deployment state is unavailable"
             current = {
                 "deployed_recordset_sha256": None,
                 "error": current_error,
             }
             failures = [current_error]
-        except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError):
-            current_error = "current deployment state is unavailable"
+        except ValueError:
+            current_error = "current deployment does not expose recordset_sha256"
             current = {
                 "deployed_recordset_sha256": None,
                 "error": current_error,

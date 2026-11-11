@@ -10,7 +10,6 @@ import json
 import shutil
 import sys
 import tempfile
-import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -26,6 +25,7 @@ sys.path.insert(0, str(ROOT))
 import agent_mcp  # noqa: E402
 import community  # noqa: E402
 import server  # noqa: E402
+from tests import _support  # noqa: E402
 
 MODERN = "2026-07-28"
 LEGACY = "2025-06-18"
@@ -85,10 +85,8 @@ def empty_live_payload() -> Dict[str, Any]:
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class AgentMcpHttpTests(unittest.TestCase):
@@ -98,13 +96,11 @@ class AgentMcpHttpTests(unittest.TestCase):
         community.configure(db_path=cls.tmp / "community.db", photos_dir=cls.tmp / "photos")
         cls.httpd = server.VoltaHTTPServer(("127.0.0.1", 0), server.Handler)
         cls.port = cls.httpd.server_address[1]
-        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
-        cls.thread.start()
+        cls.stop_server = staticmethod(_support.serve_in_thread(cls.httpd))
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.httpd.shutdown()
-        cls.httpd.server_close()
+        cls.stop_server()
         shutil.rmtree(cls.tmp, ignore_errors=True)
         community.configure(cls.tmp / "gone.db", cls.tmp / "gone")
 
@@ -667,6 +663,52 @@ class AgentMcpUnitTests(unittest.TestCase):
         self.assertEqual(agent_mcp._connector_key("CCS2"), "ccs2")
         self.assertEqual(agent_mcp._connector_key("Type 2 (Socket Only)"), "type 2")
         self.assertEqual(agent_mcp._connector_key("Wall outlet (connector unspecified)"), None)
+
+    def test_seed_edits_never_return_a_stale_indexed_row(self) -> None:
+        class FakeBackend:
+            class IndexedRecords(list):
+                pass
+
+            def __init__(self) -> None:
+                self.intel = [{"id": "intel-a", "merged_ids": ["intel-a-old"]}]
+                self.seeds = [{"id": "seed-1"}, {"id": "seed-2"}]
+
+            def load_intelligence_meta(self) -> Dict[str, Any]:
+                return {"records": self.intel}
+
+            def load_seed_leads(self) -> List[Dict[str, Any]]:
+                return self.seeds
+
+            def _normalize_lead(self, row: Dict[str, Any], _source: str) -> Dict[str, Any]:
+                return row
+
+            def apply_corroboration(self, _row: Dict[str, Any]) -> None:
+                pass
+
+            def attach_community_rows(self, _rows: List[Dict[str, Any]]) -> None:
+                pass
+
+            def _refresh_time_derived_fields(self, _rows: List[Dict[str, Any]]) -> None:
+                pass
+
+            def retained_station(self, _charger_id: str) -> None:
+                return None
+
+        def found(charger_id: str) -> Optional[str]:
+            row = agent_mcp._stored_row(charger_id, backend)
+            return None if row is None else row["id"]
+
+        backend = FakeBackend()
+        with patch.dict(agent_mcp._ID_INDEX, {"pool": None, "index": {}}):
+            self.assertEqual(found("seed-2"), "seed-2")
+            # data/seed_leads.json changed; the main dataset object did not.
+            backend.seeds = [{"id": "seed-2"}, {"id": "seed-3"}]
+            self.assertEqual(found("seed-2"), "seed-2")
+            self.assertEqual(found("seed-3"), "seed-3")
+            self.assertIsNone(found("seed-1"))
+            backend.seeds = []
+            self.assertIsNone(found("seed-2"))
+            self.assertEqual(found("intel-a-old"), "intel-a")
 
     def test_module_is_in_the_runtime_closure(self) -> None:
         sys.path.insert(0, str(ROOT / "scripts"))

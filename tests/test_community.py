@@ -16,6 +16,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import community
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 def iso(dt: datetime) -> str:

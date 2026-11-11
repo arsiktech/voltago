@@ -27,8 +27,8 @@ The matrix is a view over them, not a second database.
 | Listed (green) | The source lists this location. | A listing matched under the identity rules. |
 | Not listed (grey) | The source covers this area, and its latest complete snapshot omits the location. | Scope includes the point, the snapshot is complete and inside its freshness window. |
 | Unknown (hatched) | Absence is not proven. | Out of scope, stale, partial or failed snapshot, or the source was refused (MapaREVE today). |
-| Uncertain match (amber) | A nearby candidate exists but failed the identity checks. | Within 250 m with no stable code, or several candidates. |
-| Restricted (outlined) | Rights allow only a link or a price annotation. | Consum (link only); Electromaps, Chargemap, Repsol (price only). |
+| Uncertain match (amber) | A nearby candidate exists but failed the identity checks. | Within 80 m with no stable code, or several candidates. |
+| Restricted (outlined) | Rights allow only a link or a price annotation. | Electromaps, Chargemap, Repsol (price only). Consum has no column, so it is not shown. |
 
 Grey must never stand in for "unknown". Stale data must never read as live.
 

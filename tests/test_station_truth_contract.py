@@ -14,6 +14,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import ingest_sources as ingestion  # noqa: E402
 import server  # noqa: E402
 import station_truth  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 CORPUS = json.loads((ROOT / "contracts" / "station_truth_cases.json").read_text(encoding="utf-8"))

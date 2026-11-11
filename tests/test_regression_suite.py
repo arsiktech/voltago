@@ -1,4 +1,6 @@
+import contextlib
 import importlib.util
+import io
 import pathlib
 import subprocess
 import sys
@@ -161,8 +163,41 @@ class RegressionSuiteTests(unittest.TestCase):
         )
         self.assertIn("scripts/qa_near_home_first_use.js", qa_regression_suite.JS_FILES)
 
+    def test_js_compile_covers_every_node_script_the_suite_runs(self):
+        checks = qa_regression_suite.suite_checks(
+            "http://127.0.0.1:8773",
+            "node",
+            include_browser=True,
+            include_external=True,
+        )
+        run_scripts = {
+            str(argument)
+            for check in checks
+            for argument in check.command
+            if str(argument).startswith("scripts/") and str(argument).endswith(".js")
+        }
+
+        self.assertIn("scripts/qa_price_slider.js", run_scripts)
+        self.assertEqual(set(), run_scripts - set(qa_regression_suite.JS_FILES))
+
+    def test_smoke_requires_the_spa_root_not_the_retired_station_template(self):
+        smoke_spec = importlib.util.spec_from_file_location("qa_smoke", ROOT / "scripts" / "qa_smoke.py")
+        smoke = importlib.util.module_from_spec(smoke_spec)
+        assert smoke_spec.loader is not None
+        smoke_spec.loader.exec_module(smoke)
+        legacy_home = b'<html><title>Volta</title><template id="stationTemplate"></template></html>'
+        stdout = io.StringIO()
+        with patch.object(smoke, "fetch", return_value=legacy_home), \
+             patch.object(smoke, "fetch_json", side_effect=AssertionError("stop after home checks")), \
+             contextlib.redirect_stdout(stdout):
+            self.assertEqual(smoke.main(), 1)
+        self.assertIn("home page missing SPA root", stdout.getvalue())
+
     def test_qa_script_defaults_target_current_local_server(self):
-        stale_ports = ("127.0.0.1:8767", "127.0.0.1:8768", "127.0.0.1:8770", "127.0.0.1:8772")
+        stale_ports = (
+            "127.0.0.1:8767", "127.0.0.1:8768", "127.0.0.1:8770", "127.0.0.1:8772",
+            "PORT=8767", "PORT=8768", "PORT=8770", "PORT=8772",
+        )
         offenders = []
         for path in (ROOT / "scripts").glob("qa_*"):
             if path.suffix not in {".py", ".js"}:

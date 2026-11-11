@@ -1,6 +1,7 @@
 # Spec: availability alerts (one page, 2026-10-24)
 
-Status: spec only. No code, Apple capability change or credential until the owner
+Status: server and iOS watch flow built, off by default; no push delivery yet (see
+"Implementation status"). No Apple capability change or credential until the owner
 approves it. Covers Notion VG-19 (watch) and VG-20 (deliver).
 
 ## Goal
@@ -53,8 +54,8 @@ on every other row. Cached or stale rows never start or trigger a watch.
   request per feed per minute, and none when no watch is active.
 - Limits: 3 active watches per device, 500 in total; tokens are deleted when a watch
   ends; rows older than 24 h are purged.
-- Endpoints: `POST /api/watches`, `DELETE /api/watches/{id}`, `GET /api/watches?token=…`
-  (rate limited like the other write routes).
+- Endpoints: `POST /api/watches`, `GET /api/watches/{id}`, `DELETE /api/watches/{id}`
+  (rate limited like the other write routes). The device token never appears in a URL.
 
 ## Delivery (VG-20)
 
@@ -95,8 +96,10 @@ iPhone push once the prerequisites exist.
   phone until APNs is configured.
 - Tests: [`tests/test_watches.py`](../tests/test_watches.py) covers the transition
   matrix, the store, the watcher pass and the endpoints.
-- Not built yet: the iOS **Watch** button, notification permission and token
-  registration, and the APNs `curl` sender.
+- iOS: [`StationWatch.swift`](../ios/Volta/Volta/StationWatch.swift) implements the
+  **Watch** button, the notification permission request and device token registration.
+- Not built yet: the APNs `curl` sender, and the app's Push Notifications entitlement
+  (`aps-environment`), which the app does not have yet.
 
 ## Out of scope
 

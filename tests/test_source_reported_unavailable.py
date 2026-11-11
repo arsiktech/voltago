@@ -14,6 +14,12 @@ import ingest_sources as ing  # noqa: E402
 import qa_ingestion_delta as delta  # noqa: E402
 import server  # noqa: E402
 from station_identity import identity_keys  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 FENIE = {
     "nombre_punto": "Casa de Cultura", "direccion": "Calle Mayor, 1, Mutilva, Navarra",

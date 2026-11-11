@@ -63,7 +63,6 @@ export interface ChargersQuery {
   coords?: Coords | null
   bbox?: Bbox | null
   overview?: boolean
-  force?: boolean
   /** Compact overview requests card summaries; full evidence loads when Details opens. */
   compact?: boolean
   /** Set false to keep the hook mounted but idle (e.g. the instant-leads layer in overview mode). */
@@ -72,7 +71,7 @@ export interface ChargersQuery {
 
 const bboxParam = (b: Bbox): string => `${b.south},${b.west},${b.north},${b.east}`
 
-export function chargersUrl({ filters, coords, bbox, overview, force, compact }: ChargersQuery): string {
+export function chargersUrl({ filters, coords, bbox, overview, compact }: ChargersQuery): string {
   const params = new URLSearchParams()
   params.set('include_leads', 'true')
   const maxPrice = filters.maxPrice === null ? '5.0' : filters.maxPrice.toFixed(2)
@@ -89,7 +88,6 @@ export function chargersUrl({ filters, coords, bbox, overview, force, compact }:
       params.set('lon', String(coords.lon))
     }
   }
-  if (force) params.set('force', 'true')
   if (compact) params.set('compact', 'true')
   if (compact && overview) params.set('summary', 'true')
   return `/api/chargers?${params.toString()}`
@@ -185,7 +183,3 @@ export function geocodeQueryOptions(query: string) {
 export function useGeocode(query: string) {
   return useQuery(geocodeQueryOptions(query))
 }
-
-// NOTE: the old useIntel() hook was removed — it was never called. Intelligence-first render
-// is delivered by the instant overview=true chargers query in App.tsx (bbox-scoped leads paint
-// while the live fetch runs). The /api/intel endpoint itself remains for debugging/QA.

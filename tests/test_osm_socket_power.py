@@ -16,6 +16,12 @@ import global_sources  # noqa: E402
 import ingest_sources as ingestion  # noqa: E402
 import server  # noqa: E402
 from station_truth import parse_osm_socket_output, repair_osm_connector_power  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 LAS_PALMERAS_ID = "intel_openstreetmap-public-tags_avenida-las-palmeras_28.48046_-16.43325"
 

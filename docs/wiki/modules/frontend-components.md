@@ -43,7 +43,7 @@ cards, filters, source provenance, and warning states.
 - `<SearchBar />`
 - `<FilterRail />`
 - `<CoverageBanner />`
-- `<DecisionPill />`, `<Badge />`, `<ConnectorChips />`
+- `<DecisionPill />`, `<ConnectorChips />`
 
 ## Internal Structure
 

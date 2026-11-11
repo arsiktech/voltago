@@ -60,11 +60,9 @@ if str(ROOT) not in sys.path:
 from station_truth import (  # noqa: E402
     classify_source_resource,
     normalize_connector_label as connector_label_from_token,
-    normalize_public_source_url,
     OSM_SOCKET_LABELS,
     parse_osm_socket_output,
     primary_source_for,
-    source_candidates,
 )
 DATA = ROOT / "data"
 CACHE = DATA / "cache"
@@ -73,8 +71,10 @@ SOURCE_POLICY_EXCLUSIONS = load_source_policy_exclusions(DATA / "source_policy_e
 CACHE.mkdir(parents=True, exist_ok=True)
 
 UA = "Mozilla/5.0 (Volta public-source EV charger research; contact via app owner)"
+# Read cap per response. The largest feeds (OpenChargeMap gzip, ~85 MB DGT XML) fit with
+# wide margin; a caller may pass a higher max_bytes for a source that outgrows it.
+FETCH_MAX_BYTES = 256 * 1024 * 1024
 VALENCIA_BBOX = (38.65, -1.60, 40.20, 0.05)  # south, west, north, east
-VALENCIA_CITY_BBOX = (39.30, -0.55, 39.60, -0.20)
 SPAIN_BBOX = (27.0, -18.5, 44.5, 5.0)  # south, west, north, east — mainland, Balearics, Canaries, Ceuta, Melilla
 # Tight mainland/Balearic tiles keep the existing Overpass cache. Island tiles are extra.
 MAINLAND_TILE_BBOX = (35.85, -9.45, 43.95, 4.45)
@@ -361,7 +361,7 @@ def raw_last_seen(raw: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 35) -> bytes:
+def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str, str]] = None, timeout: int = 35, max_bytes: int = FETCH_MAX_BYTES) -> bytes:
     h = {"User-Agent": UA, "Accept": "*/*"}
     if headers:
         h.update(headers)
@@ -371,11 +371,10 @@ def fetch(url: str, *, data: Optional[bytes] = None, headers: Optional[Dict[str,
     # before a socket opens, and exception POSTs never follow redirects.
     req = urllib.request.Request(url, data=data, headers=h, method="POST" if data is not None else "GET")
     with policy_urlopen(req, timeout=timeout) as r:
-        return r.read()
-
-
-def fetch_json(url: str, *, headers: Optional[Dict[str, str]] = None, timeout: int = 35) -> Any:
-    return json.loads(fetch(url, headers=headers or {"Accept": "application/json"}, timeout=timeout).decode("utf-8", "replace"))
+        body = r.read(max_bytes + 1)
+    if len(body) > max_bytes:
+        raise RuntimeError(f"Response from {url} is larger than {max_bytes} bytes; pass a higher max_bytes if this source has grown")
+    return body
 
 
 def cached_fetch(url: str, cache_name: str, ttl_hours: float = 24, **kw: Any) -> FetchArtifact:
@@ -1088,7 +1087,7 @@ def panoramax_photos_from_tags(tags: Dict[str, Any], source_url: str) -> List[Di
                 break
         props = item.get("properties") or {}
         captured = str(props.get("datetime") or props.get("created") or "").strip()
-        caption = f"Panoramax street-level image for OSM-tagged charger"
+        caption = "Panoramax street-level image for OSM-tagged charger"
         if captured:
             caption = f"{caption} ({captured[:10]})"
         photos.append({
@@ -1313,8 +1312,8 @@ def price_claim_type_for(price_min: Optional[float]) -> str:
 
 def add_record(records: List[Dict[str, Any]], *, source: str, source_url: str, name: str, lat: Optional[float], lon: Optional[float], address: str = "", city: str = "Valencia province", price_min: Optional[float] = None, free_condition: str = "", connector_labels: Optional[List[str]] = None, max_power_kw: Optional[float] = None, status: str = "VERIFY", reliability: str = "medium", evidence: str = "", parking_kind: str = "unknown", parking_note: str = "Parking details not published by this source; verify onsite signs.", raw: Optional[Dict[str, Any]] = None, google_url: Optional[str] = None, connectors: Optional[List[Dict[str, Any]]] = None, photos: Optional[List[Dict[str, Any]]] = None, port_count: Optional[int] = None, source_artifact: Optional[FetchArtifact] = None) -> None:
     raw = raw or {}
-    # National gate (all Spain). Per-source functions that should stay regional still pre-filter
-    # with likely_valencia_province before calling here, so widening this does not un-scope them.
+    # National gate (all Spain). Only the dormant regional adapters still pre-filter with
+    # likely_valencia_province before calling here; active sources rely on this gate alone.
     if not in_bbox(lat, lon, SPAIN_BBOX):
         return
     # Honest city label nationwide. A caller may leave the Valencia default, pass nothing, or
@@ -1685,9 +1684,10 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
     out: List[Dict[str, Any]] = []
     for marker in markers:
         # FREE-first: only the operator's own gratuito flag (tarifa 0 corroborates it).
-        if int(marker.get("gratuito") or 0) != 1:
+        # fnum: a malformed flag reads as "not free" / "not that state" for this marker only.
+        if fnum(marker.get("gratuito")) != 1:
             continue
-        out_of_service = int(marker.get("estado") or 0) == FENIE_OUT_OF_SERVICE_ESTADO
+        out_of_service = fnum(marker.get("estado")) == FENIE_OUT_OF_SERVICE_ESTADO
         if FENIE_TEST_STATION_RE.search(str(marker.get("nombre_punto") or "")):
             continue  # internal Feníe test/QA unit, not a real public free charger
         lat, lon = fnum(marker.get("lat")), fnum(marker.get("lon"))
@@ -1711,6 +1711,7 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
             connectors.append(connector_ref(label, count=count_int(connector.get("count"), default=1), power_kw=power_kw, source_url=station_url))
         address = str(marker.get("direccion") or "").strip()
         name = str(marker.get("nombre_punto") or "Punto de recarga").strip()
+        before_add = len(out)
         add_record(
             out,
             source="Feníe Energía public map (Gratuitos)",
@@ -1741,7 +1742,7 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
             port_count=len(connectors) or None,
             source_artifact=source_artifact,
         )
-        if out:
+        if len(out) > before_add:
             out[-1]["sources"][0]["attribution"] = "Feníe Energía — Red de recarga (public map)"
             out[-1]["sources"][0]["transformation"] = "Volta ingests only Feníe's own gratuito=1 stations from its public map; out-of-service markers stay listed as unavailable and no live status is inferred from this weekly snapshot."
             if out_of_service:
@@ -1847,7 +1848,9 @@ out center meta;
             # ES-area filter so the bbox-only (France/Portugal-contaminated) tiles cannot be
             # served from cache.
             body = cached_overpass(query, f"osm_es_area_chargers_{label}.json", ttl_hours=12)
-            time.sleep(OVERPASS_TILE_PAUSE_SECONDS)
+            artifact = fetch_artifact_or_none(body)
+            if artifact is None or not artifact.hit or artifact.fallback:  # only a pure cache hit skips the pause
+                time.sleep(OVERPASS_TILE_PAUSE_SECONDS)
             payload = json.loads(body.decode())
             # HTTP 200 with a remark means Overpass gave up partway, so the elements are partial.
             # Drop the cached copy, or the retries would read the same partial answer.
@@ -2185,7 +2188,6 @@ def source_openchargemap(records: List[Dict[str, Any]]) -> None:
     url = "https://raw.githubusercontent.com/openchargemap/ocm-data/master/poi.json.gz"
     gz_path = CACHE / "ocm_poi.json.gz"
     source_artifact = cached_fetch(url, "ocm_poi.json.gz", ttl_hours=7 * 24, timeout=180)
-    count = 0
     with gzip.open(gz_path, "rt", encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
@@ -2280,7 +2282,6 @@ def source_openchargemap(records: List[Dict[str, Any]]) -> None:
             source_last_updated = raw_last_seen(records[-1].get("raw") or {})
             if source_last_updated:
                 records[-1]["sources"][0]["source_last_updated"] = source_last_updated
-            count += 1
 
 
 def _payload_rows(payload: Any, key: str) -> List[Dict[str, Any]]:
@@ -2661,6 +2662,7 @@ def parse_madrid_official_csv(
         hardware = str(source_row.get("CARACTERÍ") or source_row.get("CARACTERÍSTICAS_EQUIPO") or "")
         labels, connectors, max_power = _official_hardware(hardware, MADRID_CHARGERS_CSV_URL)
         evidence = "Madrid CC BY 4.0 monthly dataset publishes location, operator and hardware only; it contains no tariff or live availability."
+        before_add = len(out)
         add_record(
             out,
             source="Madrid public charger open data",
@@ -2690,7 +2692,7 @@ def parse_madrid_official_csv(
             port_count=count_int(source_row.get("Nº_EQUIPO"), default=0),
             source_artifact=source_artifact,
         )
-        if out:
+        if len(out) > before_add:
             out[-1]["sources"][0]["license"] = "CC BY 4.0"
             out[-1]["sources"][0]["license_url"] = "https://creativecommons.org/licenses/by/4.0/"
             out[-1]["sources"][0]["attribution"] = "Ayuntamiento de Madrid"
@@ -2742,6 +2744,7 @@ def parse_zaragoza_official_page(
         metadata = metadata_by_title.get(normalized_identity_text(title)) or {}
         last_updated = metadata.get("lastUpdated")
         evidence = "Zaragoza's official reusable municipal page publishes location, operator and hardware; missing payment text is never a free-price claim."
+        before_add = len(parsed)
         add_record(
             parsed,
             source="Zaragoza municipal open data",
@@ -2773,7 +2776,7 @@ def parse_zaragoza_official_page(
             port_count=count_int(port_match.group(1) if port_match else None, default=0),
             source_artifact=source_artifact,
         )
-        if parsed:
+        if len(parsed) > before_add:
             parsed[-1]["sources"][0]["license"] = "Zaragoza municipal open-data reuse conditions"
             parsed[-1]["sources"][0]["license_url"] = ZARAGOZA_REUSE_URL
             parsed[-1]["sources"][0]["attribution"] = "Ayuntamiento de Zaragoza"
@@ -2843,6 +2846,7 @@ def parse_moraleja_green(
         "ACCIONA states Green Smart Charge is free but requires its RFID process and information-desk assistance; "
         "Moraleja Green lists three chargers in Parking Norte, level -2. Confirm access at the information desk before relying on it."
     )
+    before_add = len(records)
     add_record(
         records,
         source="ACCIONA Green Smart Charge official policy",
@@ -2871,6 +2875,8 @@ def parse_moraleja_green(
         port_count=None,
         source_artifact=acciona_artifact,
     )
+    if len(records) == before_add:
+        return
     row = records[-1]
     row["is_free"] = False
     row["price_claim_type"] = "access_limited_free"
@@ -3267,7 +3273,6 @@ def source_electromaps_mapi(records: List[Dict[str, Any]]) -> None:
 
 def source_electromaps_photo_second_pass(records: List[Dict[str, Any]]) -> None:
     """Attach cached Electromaps public photos to sources loaded after Electromaps."""
-    added = 0
     for path in sorted(CACHE.glob("electromaps_location_*.json")):
         cached_loc_id = re.sub(r"\D+", "", path.stem)
         source_artifact = cache_file_artifact(
@@ -3321,7 +3326,6 @@ def source_electromaps_photo_second_pass(records: List[Dict[str, Any]]) -> None:
             }],
             source_artifact=source_artifact,
         )
-        added += 1
 def source_chargemap_mappy(records: List[Dict[str, Any]]) -> None:
     headers = {
         "Accept": "application/json",
@@ -3889,7 +3893,13 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 
 
 def record_source_family(r: Dict[str, Any]) -> str:
-    """Independent-source family for a record (mirrors server.py source_family semantics)."""
+    """Independent-source family for a record, used by the ingest merge.
+
+    Same idea as server.py source_family, but a different, older family list: no mapareve,
+    gaia, gic or tesla families; "opendata" here versus "municipal" (with more needles)
+    there; no "ocm-" needle; and an unmatched record falls back to the first 16 characters
+    of its source text instead of "". The two can classify the same record differently.
+    """
     blob = " ".join(str(x or "") for x in [r.get("source"), r.get("source_url")]).lower()
     for family, needles in [
         ("openchargemap", ("openchargemap",)),
@@ -4520,8 +4530,8 @@ def apply_source_policy_exclusions_to_payload(
 # DATEX II v3 EnergyInfrastructureTablePublication, CC BY, no registration, refreshed
 # daily by DGT/MITECO. Verified 2026-07-17: 12,331 sites / 151 operators, but NO tariff
 # and NO live status fields — so every row is corroboration-only (location, operator,
-# connectors, power). Rows that do not match existing cheap/free evidence are dropped by
-# the same gate Madrid/Zaragoza use; a missing price is never treated as free.
+# connectors, power). A row that matches no other source's station stays as its own
+# price-unknown station; a missing price is never treated as free.
 # The resource URL listed on the official NAP dataset page. The same file on
 # infocar.dgt.es has answered HTTP 502 since 2026-10-21; the cache name is unchanged.
 DGT_NAP_FEED_URL = "https://nap.dgt.es/datex2/v3/miterd/EnergyInfrastructureTablePublication/electrolineras.xml"
@@ -4863,6 +4873,7 @@ def regional_open_data_records(
         powers = [power for (_label, power) in station["connectors"] if power] + station.get("untyped_powers", [])
         operator = station["operator"] or "Public charger"
         place = station["address"] or station["city"] or "charging point"
+        before_add = len(out)
         add_record(
             out,
             source=meta["source"],
@@ -4897,7 +4908,7 @@ def regional_open_data_records(
             port_count=station["posts"],
             source_artifact=source_artifact,
         )
-        if out:
+        if len(out) > before_add:
             source_entry = out[-1]["sources"][0]
             source_entry.update(license=meta["license"], license_url=meta["license_url"], attribution=meta["attribution"],
                                 catalog_url=meta["page"],
@@ -5030,6 +5041,14 @@ def _etecnic_stations(items: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]
     return stations
 
 
+def _etecnic_post_order(post: Dict[str, Any]) -> Tuple[int, int, str]:
+    """Numeric post IDs sort first, as before; a non-numeric ID sorts after them."""
+    try:
+        return (0, int(post.get("id") or 0), "")
+    except (TypeError, ValueError):
+        return (1, 0, str(post.get("id")))
+
+
 def parse_etecnic_chargers(items: List[Dict[str, Any]], *, source_artifact: Optional[FetchArtifact] = None) -> List[Dict[str, Any]]:
     try:
         from .spain_geography import point_in_spain
@@ -5041,7 +5060,7 @@ def parse_etecnic_chargers(items: List[Dict[str, Any]], *, source_artifact: Opti
         # Etecnic also runs chargers in Portugal, Andorra and France, inside Volta's Spain box.
         if not point_in_spain(fnum(posts[0].get("lat")), fnum(posts[0].get("lon"))):
             continue
-        posts.sort(key=lambda post: int(post.get("id") or 0))
+        posts.sort(key=_etecnic_post_order)
         item = posts[0]
         sockets = [(post, socket) for post in posts for socket in post.get("charger_sockets") or [] if isinstance(socket, dict)]
         powers = [etecnic_power_kw(post.get("power"), post.get("phases")) for post in posts]
@@ -5430,6 +5449,7 @@ def parse_canarias_tecarga_geojson(
         if bay_match:
             evidence += f" Source popup also printed '{bay_match.group(0)}' when fetched; that text is a page-render snapshot, not live telemetry."
         evidence += " Confirm the current tariff and bay status onsite."
+        before_add = len(parsed)
         add_record(
             parsed,
             source=CANARIAS_TE_RECARGA_SOURCE,
@@ -5484,7 +5504,7 @@ def parse_canarias_tecarga_geojson(
             port_count=port_count,
             source_artifact=source_artifact,
         )
-        if connectors and any(c.get("count") is None for c in connectors):
+        if len(parsed) > before_add and connectors and any(c.get("count") is None for c in connectors):
             parsed[-1]["connector_count"] = parsed[-1]["total_evse"] = None
             parsed[-1]["hardware_claim"]["port_count"] = None
     if seen_points < minimum_features:
@@ -5517,8 +5537,8 @@ def source_canarias_tecarga(records: List[Dict[str, Any]]) -> None:
 # Official Spanish charger map (MITECO + Red Eléctrica). Volta already serves this source
 # live at request time; this adapter keeps a bounded cached snapshot of the Tenerife slice in
 # the intelligence DB so the free/cheap tier has coverage when the live fetch is unavailable.
-# Only rows whose published ENERGY components are genuinely free or ≤ €0.25/kWh are emitted;
-# pricier rows stay live-only (an intelligence row must never invent a cheaper tariff).
+# Every located row is emitted with its published ENERGY price (or none); pricier rows are
+# labelled paid, never cheaper (an intelligence row must never invent a cheaper tariff).
 MAPAREVE_PUBLIC_SOURCE = "MapaREVE public OCPI snapshot"
 
 
@@ -5869,7 +5889,13 @@ def main() -> None:
     out_path = args.out.expanduser()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Compact JSON: the all-charger national DB is ~100 MB indented, at GitHub's file limit.
-    out_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # Write beside the target, then rename, so a crash mid-write never truncates the dataset.
+    temp_path = out_path.with_name(f".{out_path.name}.{os.getpid()}.tmp")
+    try:
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        os.replace(temp_path, out_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
     print(f"Wrote {out_path}: {len(payload['records'])} merged records from {payload['raw_records']} raw records; errors={len(payload['errors'])}")
 
 

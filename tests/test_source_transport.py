@@ -11,7 +11,6 @@ import http.cookiejar
 import json
 import sys
 import tempfile
-import threading
 import unittest
 import urllib.error
 import urllib.request
@@ -27,6 +26,12 @@ import server  # noqa: E402
 import ingest_sources as ing  # noqa: E402
 from scripts import source_transport as transport  # noqa: E402
 import source_transport as ingest_transport  # noqa: E402  (module instance ingest_sources uses)
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 MAPAREVE_URL = "https://www.mapareve.es/api/public/v1/locations?page=1&per_page=20"
 FENIE_URL = "https://recarga.fenieenergia.es/punto-recarga/todos"
@@ -78,6 +83,12 @@ class MapareveExceptionTests(unittest.TestCase):
             "https://www.mapareve.es/api/public/v1/locations?page=1&per_page=500",
             "https://www.mapareve.es/api/public/v1/locations?page=9999",
         ):
+            with self.subTest(url=url), self.assertRaises(transport.SourcePolicyBlocked):
+                transport.classify_post_exception(_post(url, _mapareve_body()))
+
+    def test_malformed_query_string_is_blocked_not_a_parse_error(self) -> None:
+        for url in (MAPAREVE_URL + "&per_page", "https://www.mapareve.es/api/public/v1/locations?page",
+                    FENIE_URL + "?x"):
             with self.subTest(url=url), self.assertRaises(transport.SourcePolicyBlocked):
                 transport.classify_post_exception(_post(url, _mapareve_body()))
 
@@ -225,9 +236,7 @@ class RedirectTests(unittest.TestCase):
     def test_post_exception_opener_never_follows_redirects(self) -> None:
         _RedirectingHandler.seen = []
         httpd = HTTPServer(("127.0.0.1", 0), _RedirectingHandler)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
-        self.addCleanup(lambda: (httpd.shutdown(), httpd.server_close()))
+        self.addCleanup(_support.serve_in_thread(httpd))
         url = f"http://127.0.0.1:{httpd.server_address[1]}/api/public/v1/locations?page=1"
         opener = transport._build_post_opener(http.cookiejar.CookieJar())
         for code in (301, 302, 303, 307, 308):

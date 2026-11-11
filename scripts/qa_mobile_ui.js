@@ -31,7 +31,6 @@ const chromePath = process.env.VOLTA_QA_CHROME || "/Applications/Google Chrome.a
 const CHIP_LABELS = ["Open now", "Source checked", "Easy parking", "Tesla OK", "Fast", "Leads (Verify first)"];
 const DEFAULT_ON = ["Leads (Verify first)"];
 const DEFAULT_OFF = ["Open now", "Source checked", "Easy parking", "Tesla OK", "Fast"];
-const TIERS = ["Live", "Official", "Directory", "Community"];
 
 // Global safety valve: the whole contract must finish well under 2 minutes.
 const guard = setTimeout(() => {
@@ -101,7 +100,7 @@ const collect = () => {
     h1: txt(h1),
     count: countSpan ? parseInt(txt(countSpan), 10) : NaN,
     // NB: the label is CSS-uppercased in innerText — match the home-first copy case-insensitively.
-    modeLabel: /explore spain/i.test(panel ? panel.innerText : ""),
+    modeLabel: txt(document.querySelector("[data-search-area]")) === "Explore chargers",
     chips,
     filterRailFits: chipRow ? chipRow.scrollWidth <= chipRow.clientWidth + 1 : false,
     quickChips: chipRow ? [...chipRow.querySelectorAll("button.chip")].filter((button) => !button.closest("dialog")).map(txt) : [],
@@ -203,12 +202,19 @@ async function main() {
       // Provenance headings are CSS-uppercased; use textContent (untransformed source text).
       const card = document.querySelector("[data-station] article.card");
       const t = card ? card.textContent : "";
+      // SourceProvenance renders each source as the first new-tab link of its list item
+      // under the "Public sources (N)" heading; Maps/provider links elsewhere do not count.
+      const sourcesHeading = card
+        ? [...card.querySelectorAll("div")].find((d) => /^Public sources \(\d+\)$/.test(d.textContent.replace(/\s+/g, " ").trim()))
+        : null;
+      const sourcesList = sourcesHeading ? sourcesHeading.nextElementSibling : null;
       return /Public sources \(\d+\)/i.test(t)
         ? {
             why: /Why “/i.test(t),
             chargingClaim: /Charging claim/i.test(t),
             publicSources: /Public sources \(\d+\)/i.test(t),
-            viewSource: [...card.querySelectorAll("a")].some((a) => /view source/i.test(a.textContent)),
+            sourceLink: !!sourcesList && [...sourcesList.querySelectorAll(':scope > li > a:first-child[target="_blank"]')]
+              .some((a) => /^https?:/i.test(a.href) && a.textContent.trim().length > 0),
             expanded: [...card.querySelectorAll("button")].some((b) => b.getAttribute("aria-expanded") === "true"),
           }
         : false;
@@ -314,7 +320,7 @@ async function main() {
   }
   if (!/^\d+ public chargers$/.test(result.h1)) failures.push(`overview h1 is not "N public chargers" (got "${result.h1}")`);
   if (!(result.count > 0)) failures.push("header count is not a positive number");
-  if (!result.modeLabel) failures.push("mode label 'Explore Spain' missing on default view");
+  if (!result.modeLabel) failures.push("mode label 'Explore chargers' missing on default view");
   const chipLabels = result.chips.map((c) => c.label);
   if (CHIP_LABELS.some((l) => !chipLabels.includes(l))) failures.push(`filter chips incomplete: ${JSON.stringify(chipLabels)}`);
   if (!result.filterRailFits) failures.push("quick filters overflow the mobile panel");
@@ -341,7 +347,7 @@ async function main() {
     if (!deep.expanded) failures.push("Details button aria-expanded did not flip to true");
     if (!deep.why) failures.push("expanded Details missing decision reason (Why …)");
     if (!deep.chargingClaim) failures.push("expanded Details missing Charging claim section");
-    if (!deep.viewSource) failures.push("expanded Details missing external 'view source' link");
+    if (!deep.sourceLink) failures.push("expanded Details missing an external public-source link");
   }
   if (result.cards.some((c) => c.detailsExpanded === true)) failures.push("a card rendered with Details pre-expanded by default");
 

@@ -180,7 +180,10 @@ def classify_post_exception(request: urllib.request.Request) -> str:
     for name, _value in request.unredirected_hdrs.items():
         if name.lower() in _FORBIDDEN_POST_HEADERS:
             raise _blocked("POST exceptions never carry credentials")
-    query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True, strict_parsing=bool(parsed.query))
+    try:
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True, strict_parsing=bool(parsed.query))
+    except ValueError as exc:
+        raise _blocked("POST exception query string is malformed") from exc
     body = _body_bytes(request)
 
     if host == MAPAREVE_HOST and parsed.path == MAPAREVE_LOCATIONS_PATH:

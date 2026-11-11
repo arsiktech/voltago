@@ -8,6 +8,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import public_live_status as feeds
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 FIXTURES = Path(__file__).parent / "fixtures" / "public_live"
 
@@ -51,7 +57,6 @@ class ParserTests(unittest.TestCase):
 import concurrent.futures
 import gzip
 import threading
-import time
 import urllib.error
 import urllib.request
 from copy import deepcopy
@@ -368,9 +373,13 @@ class IdentityTests(unittest.TestCase):
         self.canonical.update(lead=False, reliability='official-live', cache_stale=False, last_seen=server.now_iso())
         self.row['live_status']['valid'] = False
         self.row['_volta_stale_live_cache'] = True
+        self.canonical['source_count'] = len(self.canonical['sources'])
         result = server.merge_public_live_stations([self.canonical], [self.row], [])[0]
         self.assertEqual(result['reliability'], 'official-live')
         self.assertNotIn('_volta_stale_live_cache', result)
+        # The feed's attribution joins the sources, and the count follows it.
+        self.assertGreater(len(result['sources']), 1)
+        self.assertEqual(result['source_count'], len(result['sources']))
 
     def test_fresh_overlay_replaces_stale_primary_without_inheriting_staleness(self):
         self.canonical.update(lead=False, reliability='official-live', cache_stale=True, _volta_stale_live_cache=True)
@@ -674,8 +683,7 @@ class HttpMcpParityTests(unittest.TestCase):
         row = self.rows[0]
         lat, lon = row['lat'], row['lon']
         httpd = server.VoltaHTTPServer(('127.0.0.1', 0), server.Handler)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
+        stop_server = _support.serve_in_thread(httpd)
         def request(path, payload=None, headers=None):
             req = urllib.request.Request(f'http://127.0.0.1:{httpd.server_port}{path}',
                                          data=json.dumps(payload).encode() if payload else None,
@@ -700,9 +708,7 @@ class HttpMcpParityTests(unittest.TestCase):
                 self.assertEqual(result['sources'][0]['attribution'], shared['sources'][0]['attribution'])
                 self.assertEqual(result['evidence']['live_verified'], shared['verification']['live_verified'])
         finally:
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(2)
+            stop_server()
 
 
 if __name__ == '__main__':

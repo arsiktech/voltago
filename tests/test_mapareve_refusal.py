@@ -14,6 +14,11 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 import server  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class _Response(io.BytesIO):
@@ -68,10 +73,12 @@ class MapaReveRefusalTests(unittest.TestCase):
                 self.fetch()
         self.assertTrue(server.mapareve_block_status()["refused"])
         self.reset()
-        for error in (refused(500), TimeoutError("slow")):
+        for error, raised in ((refused(500), urllib.error.HTTPError), (TimeoutError("slow"), TimeoutError)):
             with self.subTest(error=error), patch("server.public_get_urlopen", side_effect=error):
-                with self.assertRaises(Exception):
+                with self.assertRaises(raised) as caught:
                     self.fetch()
+                if raised is urllib.error.HTTPError:
+                    self.assertEqual(caught.exception.code, 500)
                 self.assertFalse(server.mapareve_block_status()["refused"])
 
     def test_after_the_pause_one_successful_probe_clears_the_refusal(self) -> None:
@@ -105,6 +112,17 @@ class MapaReveRefusalTests(unittest.TestCase):
         base = int(server.MAPAREVE_BLOCK_PAUSE_SECONDS)
         self.assertEqual(pauses[:3], [base, base * 2, base * 4])
         self.assertEqual(max(pauses), int(server.MAPAREVE_BLOCK_PAUSE_MAX_SECONDS))
+
+    def test_refusals_of_pages_already_in_flight_do_not_double_the_pause(self) -> None:
+        # Several pages admitted before the first refusal are all refused in turn. Only a
+        # refused probe doubles the pause, so this one episode keeps the base pause.
+        in_flight = [server._mapareve_block_admit() for _ in range(4)]
+        self.assertEqual(in_flight, [False] * 4)
+        for probe in in_flight:
+            server._mapareve_block_record(True, probe)
+        status = server.mapareve_block_status()
+        self.assertTrue(status["refused"])
+        self.assertEqual(status["pause_seconds"], int(server.MAPAREVE_BLOCK_PAUSE_SECONDS))
 
     def test_probe_timeout_waits_one_more_pause_without_doubling(self) -> None:
         with patch("server.public_get_urlopen", side_effect=refused()):
@@ -144,6 +162,15 @@ class MapaReveRefusalTests(unittest.TestCase):
             self.assertEqual(network.call_count, 1)
         self.assertEqual(len(results), 1)
         self.assertFalse(server.mapareve_block_status()["refused"])
+
+    def test_an_oversized_page_fails_without_counting_as_a_refusal(self) -> None:
+        body = json.dumps({"data": [], "pagination": {}}).encode()
+        with patch("server.MAPAREVE_PAGE_MAX_BYTES", len(body) - 1), patch("server.public_get_urlopen", side_effect=ok):
+            with self.assertRaises(ValueError):
+                self.fetch()
+        self.assertFalse(server.mapareve_block_status()["refused"])
+        with patch("server.MAPAREVE_PAGE_MAX_BYTES", len(body)), patch("server.public_get_urlopen", side_effect=ok):
+            self.assertEqual(self.fetch(), {"data": [], "pagination": {}})
 
     def test_a_refused_first_page_fails_the_live_fetch_and_source_health_reports_it(self) -> None:
         with patch("server.public_get_urlopen", side_effect=refused()):

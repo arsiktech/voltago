@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import server  # noqa: E402
 import ingest_sources as ingestion  # noqa: E402
 from source_policy import load_source_policy_exclusions, matching_exclusion_ids, partition_records, source_family_is_excluded  # noqa: E402
+from tests import _support  # noqa: E402
 
 
 EXCLUSION_IDS: set[str] = set()
@@ -26,10 +27,8 @@ EXCLUSION_IDS: set[str] = set()
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class SourcePolicyArtifactTests(unittest.TestCase):

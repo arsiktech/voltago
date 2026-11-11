@@ -9,7 +9,6 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 import math
 import re
-from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from source_policy import recordset_sha256

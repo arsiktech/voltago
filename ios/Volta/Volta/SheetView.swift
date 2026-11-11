@@ -26,6 +26,9 @@ struct SheetView: View {
     private var searching: Bool { searchFocused || !state.searchText.isEmpty }
 
     var body: some View {
+        // `listRows` filters and sorts every station; evaluate it once per body.
+        let rows = state.listRows
+        let overviewFailed = self.overviewFailed(rows)
         NavigationStack {
             VStack(spacing: 0) {
                 searchRow
@@ -62,12 +65,12 @@ struct SheetView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .accessibilityHint("Opens your car's battery, range and connection")
-                        resultsHeading
-                        statusRows
+                        resultsHeading(count: rows.count)
+                        statusRows(overviewFailed: overviewFailed)
                         if !state.savedStationsInView.isEmpty || state.showingSavedOnly {
                             savedRow
                         }
-                        stationRows
+                        stationRows(rows, overviewFailed: overviewFailed)
                     }
                 }
                 .listStyle(.plain)
@@ -247,7 +250,7 @@ struct SheetView: View {
 
     // MARK: - Results heading and status
 
-    private var resultsHeading: some View {
+    private func resultsHeading(count: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(state.mode == .overview ? "Explore chargers" : "Chargers nearby")
                 .font(.title3.weight(.bold))
@@ -259,14 +262,14 @@ struct SheetView: View {
                 .accessibilityIdentifier("discoveryAppearance")
                 .accessibilityValue(colorScheme == .dark ? "dark" : "light")
                 #endif
-            Text(state.listRows.count, format: .number)
+            Text(count, format: .number)
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
-                .animation(reduceMotion ? nil : VoltaMotion.state, value: state.listRows.count)
+                .animation(reduceMotion ? nil : VoltaMotion.state, value: count)
                 .accessibilityLabel("Chargers in this view")
-                .accessibilityValue(String(state.listRows.count))
+                .accessibilityValue(String(count))
             Spacer(minLength: 8)
             if state.hasActiveFilters {
                 Button("Clear filters") { state.clearFilters() }
@@ -286,7 +289,7 @@ struct SheetView: View {
 
     /// Status notes scroll away with the results. Each one offers its fix as a button.
     @ViewBuilder
-    private var statusRows: some View {
+    private func statusRows(overviewFailed: Bool) -> some View {
         if state.resultsTruncated {
             Text("Showing part of this area’s charger inventory. Zoom in or search a city to see more.")
                 .font(.footnote)
@@ -377,8 +380,8 @@ struct SheetView: View {
         }
     }
 
-    private var overviewFailed: Bool {
-        state.mode == .overview && state.overviewState == .failed && state.listRows.isEmpty
+    private func overviewFailed(_ rows: [Station]) -> Bool {
+        state.mode == .overview && state.overviewState == .failed && rows.isEmpty
     }
 
     private var savedRow: some View {
@@ -405,13 +408,13 @@ struct SheetView: View {
     // MARK: - Stations
 
     @ViewBuilder
-    private var stationRows: some View {
+    private func stationRows(_ rows: [Station], overviewFailed: Bool) -> some View {
         if overviewFailed {
             EmptyView()
-        } else if state.listRows.isEmpty {
+        } else if rows.isEmpty {
             emptyState
         } else {
-            ForEach(state.listRows) { st in
+            ForEach(rows) { st in
                 VStack(spacing: 0) {
                     Button {
                         rowTapFeedback.toggle()

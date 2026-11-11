@@ -1,14 +1,13 @@
 import SwiftUI
 
 struct MomentMark: View {
-    enum Tone { case quiet, offline, search }
+    enum Tone { case quiet, offline }
     var tone: Tone = .quiet
 
     private var accent: Color {
         switch tone {
         case .quiet: Theme.brand
         case .offline: Theme.danger
-        case .search: Theme.verify
         }
     }
 
@@ -66,8 +65,6 @@ struct MomentMark: View {
             Image(systemName: "bolt.fill")
         case .offline:
             Image(systemName: "xmark")
-        case .search:
-            Image(systemName: "magnifyingglass")
         }
     }
 }

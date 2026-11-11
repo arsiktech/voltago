@@ -103,8 +103,9 @@ from the project's embedded workspace, not from the scheme file's directory.
 
 `PaywallConfig.enabled` remains a literal `false`. In that state the app takes the original
 `RootView` path directly, starts `AppState` immediately, performs no StoreKit admission work,
-and the complete app remains free. Do not enable the flag until the P5 owner gates for App
-Store Connect products, agreements, pricing, legal hosting, and release review are complete.
+and the complete app remains free. Do not enable the flag until the owner has approved App
+Store Connect products, agreements, pricing, legal hosting, and release review
+(GOAL_CONTRACT.md §6–§7).
 
 When the owner later enables it, StoreKit entitlement resolves before charger/location work.
 Access is a one-way latch for that process: a verified subscriber enters without a paywall
@@ -116,7 +117,7 @@ metadata; catalog failure shows Retry + Restore without inventing an offer.
 DEBUG paywall flows keep native, offline-safe Terms and Privacy screens for hermetic UI tests.
 Release uses only the separately configured hosted Terms and Privacy URLs; unsafe or missing
 URLs stay visibly pending instead of falling back to the embedded pre-release drafts. Public
-hosting and owner review remain P5 owner gates.
+hosting and owner review remain owner approvals (GOAL_CONTRACT.md §7).
 
 Hermetic DEBUG UI coverage uses `-VoltaUITestPaywall` and optional
 `-VoltaPaywallDebugState <state>`. Both argument names and all override logic are compiled only
@@ -276,10 +277,9 @@ inputs remain unknown. Vehicle context never changes station route-readiness or 
 warnings. `VoltaTests/VehiclePlanningTests` covers freshness, units, incompatible/unknown
 plugs, charging limits, targets and the native callback boundary.
 
-The implementation was checked with the Python iOS design/release source contracts in the
-development environment. That environment has no Xcode, Swift compiler or Simulator, so
-native compilation, device rendering, Photos interaction, Keychain interaction and a real
-provider approval still require validation on macOS with the configured service.
+The Python iOS design/release source contracts and the `VoltaTests` unit tests above check
+this implementation. Device rendering, Photos interaction, Keychain interaction and a real
+provider approval still require validation on an iPhone with the configured service.
 
 ## Localization
 
@@ -304,7 +304,7 @@ first honesty tiers, "No en directo"/"Не в реальном времени" f
 vs freshness-on-a-live-row distinction) and correct plural handling (Spanish one/other;
 Russian one/few/many/other, verified via the compiled `.stringsdict` output for both
 `inflect: true` strings — station/port counts). Final sign-off is an owner/native-speaker
-review step, deferred to Phase P5 (GOAL_CONTRACT.md §5/§7) before shipping to the App Store.
+review step before shipping to the App Store (GOAL_CONTRACT.md §5/§7).
 Until then, treat es/ru copy as functionally correct but not idiomatically final.
 
 The catalog also pins the mixed live/cached trust banner, refresh action, and provenance
@@ -314,12 +314,12 @@ SwiftUI literals and verifies that formatted-value placeholders survive translat
 **Honesty-logic note:** `Station.tierLabel` (Live/Official/Directory/Community) and
 `Station.priceText`'s `"Free"` value used to double as both display text AND an internal
 comparison token (`tierLabel == "Official"`, `priceText == "Free"`) inside
-map-pin-verification logic (`tierIsStrong`, `hasExactDirectoryLocation`,
+map-pin-verification logic (`hasExactDirectoryLocation`,
 `isMapLocationVerified`) and a stale-warning-clear check in `AppState.loadOverview()`.
 Localizing the display value without fixing this would have silently broken that logic under
 a non-English device language (comparing a Spanish/Russian string against a hardcoded English
 literal). Fixed via a new locale-invariant `Station.tierKind` used internally instead of
 `tierLabel`, direct `isFree`/`priceMin` checks instead of `priceText == "Free"`, and a
 `warningIsServerUnreachable` flag instead of `warning?.hasPrefix(...)` — all provably
-behavior-preserving (same 56/56 `VoltaTests`/`VoltaUITests`, same `TierLabelTests`/
-`PriceTextTests` assertions, unchanged).
+behavior-preserving (`VoltaTests`/`VoltaUITests` passed unchanged, including the
+`TierLabelTests`/`PriceTextTests` assertions).

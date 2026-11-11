@@ -8,7 +8,6 @@ import os
 import sys
 import tempfile
 import unittest
-from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 from contextlib import ExitStack
@@ -17,6 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import agent_mcp
 import server
+from tests import _support  # noqa: E402
 
 
 def directory(identifier="global", lat=35.68, lon=139.76, country="JP", currency="JPY", price=25):
@@ -31,10 +31,8 @@ def directory(identifier="global", lat=35.68, lon=139.76, country="JP", currency
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class WorldViewportTests(unittest.TestCase):
@@ -290,6 +288,22 @@ class WorldScaleTests(unittest.TestCase):
         self.assertEqual(normalize.call_count, 1)
         self.assertEqual(second[0]["name"], "Public charger")
         self.assertEqual(second[0]["id"], "tokyo")
+
+    def test_bundle_caches_never_serve_a_replaced_bundle_at_a_reused_address(self):
+        # A reloaded bundle can be allocated at the address of the one it replaced.
+        old = {"records": [directory("old-tokyo")], "generated_at": "2026-11-01T00:00:00Z", "recordset_sha256": "old"}
+        new = {"records": [directory("new-tokyo"), directory("new-osaka", 34.69, 135.5)],
+               "generated_at": "2026-11-02T00:00:00Z", "recordset_sha256": "new"}
+        builtin_id = id
+        reused = lambda value: 1 if value is old or value is new else builtin_id(value)
+        bbox = server.bbox_from_center(35.68, 139.76, 1)
+        with patch.object(server, "id", side_effect=reused, create=True), patch.object(server, "_INTEL_SCOPE_THRESHOLD", 0), patch.object(server, "_INTEL_SCOPED", {}), patch.object(server, "_SOURCE_INVENTORY", {}), patch.object(server, "_raw_seed_records", return_value=[]):
+            with patch.object(server, "load_intelligence_meta", return_value=old):
+                self.assertEqual([row["id"] for row in server._scoped_intelligence_pool(bbox)[0]], ["old-tokyo"])
+                self.assertEqual(server.source_health_inventory(old)["deduped_leads"], 1)
+            with patch.object(server, "load_intelligence_meta", return_value=new):
+                self.assertEqual([row["id"] for row in server._scoped_intelligence_pool(bbox)[0]], ["new-tokyo"])
+                self.assertEqual(server.source_health_inventory(new)["deduped_leads"], 2)
 
     def test_dense_area_preserves_nearest_station_and_mcp_discloses_truncation(self):
         rows = [directory(str(i), lat=35.75) for i in range(5100)] + [directory("zzz-nearest")]

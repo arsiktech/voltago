@@ -45,18 +45,6 @@ export function staggerList(reduced: boolean, distance = 5): Variants {
   }
 }
 
-export function actionConfirm(reduced: boolean): Variants {
-  return {
-    idle: { scale: 1 },
-    active: reduced
-      ? { scale: 1 }
-      : {
-          scale: [1, 0.98, 1.015, 1],
-          transition: { duration: 0.34, ease: [0.2, 0, 0, 1] },
-        },
-  }
-}
-
 export function statusFlash(reduced: boolean): Variants {
   return {
     hidden: reduced ? { opacity: 0 } : { opacity: 0, scaleX: 0.2 },

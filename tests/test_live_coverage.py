@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from tests import _support  # noqa: E402
 
 
 def live_station(station_id: str, decision: str = "go", available: int = 1, *, lead: bool = False, live_verified: bool = True) -> dict:
@@ -62,10 +63,8 @@ def gaia_station(station_id: str = "gaia-live") -> dict:
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class LiveCoverageTests(unittest.TestCase):

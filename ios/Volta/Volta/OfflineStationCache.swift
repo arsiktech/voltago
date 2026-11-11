@@ -19,8 +19,13 @@ enum OfflineStationCache {
 
     private struct Envelope: Codable {
         var schema: Int
+        /// For saved.json, the oldest kept row's time, so the offline note never claims a
+        /// newer save than the rows it shows.
         var savedAt: Date
         var payload: Data
+        /// When each saved charger was last refreshed, by ID. Files written before this
+        /// field existed decode it as nil; their rows keep the file's `savedAt`.
+        var rowSavedAt: [String: Date]? = nil
     }
 
     struct Snapshot {
@@ -37,19 +42,28 @@ enum OfflineStationCache {
     }
 
     /// Adds or refreshes saved chargers present in a response and drops ones no longer saved.
+    /// A row keeps its own saved time until a response refreshes it.
     static func storeSaved(from responseData: Data, favoriteIDs: Set<String>, at date: Date = Date()) {
-        var rows = savedRows()
+        let previous = read("saved.json")
+        var rows = savedRows(in: previous)
         rows = rows.filter { favoriteIDs.contains($0.key) }
+        var times: [String: Date] = [:]
+        for id in rows.keys { times[id] = previous?.rowSavedAt?[id] ?? previous?.savedAt ?? date }
         if let object = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
             for key in ["leads", "stations"] {
                 for case let row as [String: Any] in object[key] as? [Any] ?? [] {
-                    if let id = row["id"] as? String, favoriteIDs.contains(id) { rows[id] = row }
+                    if let id = row["id"] as? String, favoriteIDs.contains(id) {
+                        rows[id] = row
+                        times[id] = date
+                    }
                 }
             }
         }
-        let kept = rows.sorted { $0.key < $1.key }.prefix(maxSavedStations).map(\.value)
-        guard let payload = try? JSONSerialization.data(withJSONObject: kept) else { return }
-        write(Envelope(schema: schemaVersion, savedAt: date, payload: payload), to: "saved.json")
+        let kept = rows.sorted { $0.key < $1.key }.prefix(maxSavedStations)
+        let keptTimes = Dictionary(uniqueKeysWithValues: kept.compactMap { id, _ in times[id].map { (id, $0) } })
+        guard let payload = try? JSONSerialization.data(withJSONObject: kept.map(\.value)) else { return }
+        write(Envelope(schema: schemaVersion, savedAt: keptTimes.values.min() ?? date, payload: payload,
+                       rowSavedAt: keptTimes), to: "saved.json")
     }
 
     static func clear() {
@@ -93,8 +107,8 @@ enum OfflineStationCache {
             .appendingPathComponent("OfflineStations", isDirectory: true)
     }
 
-    private static func savedRows() -> [String: [String: Any]] {
-        guard let envelope = read("saved.json"),
+    private static func savedRows(in envelope: Envelope?) -> [String: [String: Any]] {
+        guard let envelope,
               let rows = try? JSONSerialization.jsonObject(with: envelope.payload) as? [[String: Any]] else { return [:] }
         var byID: [String: [String: Any]] = [:]
         for row in rows { if let id = row["id"] as? String { byID[id] = row } }

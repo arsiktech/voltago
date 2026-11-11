@@ -3,6 +3,7 @@ import csv
 import hashlib
 import json
 import pathlib
+import sys
 import tempfile
 import unittest
 from collections import Counter
@@ -593,6 +594,22 @@ class ArtifactIntegrityTests(unittest.TestCase):
             qa_artifact_integrity.validate_regression_suite_report(path, failures)
 
         self.assertTrue(any("failed_ids does not match non-ok result rows" in item for item in failures))
+
+    def test_audit_check_id_sets_match_every_check_the_suite_runs(self):
+        suite_spec = importlib.util.spec_from_file_location(
+            "qa_regression_suite_for_integrity", ROOT / "scripts" / "qa_regression_suite.py")
+        suite = importlib.util.module_from_spec(suite_spec)
+        assert suite_spec.loader is not None
+        with mock.patch.dict(sys.modules, {suite_spec.name: suite}):  # dataclasses resolve their module
+            suite_spec.loader.exec_module(suite)
+        checks = suite.suite_checks("http://127.0.0.1:8773", "node", include_browser=True, include_external=True)
+
+        self.assertEqual({check.check_id for check in checks if check.browser},
+                         qa_artifact_integrity.BROWSER_REGRESSION_CHECK_IDS)
+        self.assertEqual({check.check_id for check in checks if check.external},
+                         qa_artifact_integrity.EXTERNAL_REGRESSION_CHECK_IDS)
+        self.assertEqual({check.check_id for check in checks if not (check.browser or check.external)},
+                         qa_artifact_integrity.REQUIRED_REGRESSION_CHECK_IDS)
 
     def test_regression_suite_report_rejects_missing_required_check_ids(self):
         with tempfile.TemporaryDirectory() as tmp:

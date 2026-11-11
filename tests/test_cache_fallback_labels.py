@@ -12,6 +12,11 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 import ingest_sources as ing  # noqa: E402
 import server  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 def artifact(*, fallback: bool) -> ing.FetchArtifact:

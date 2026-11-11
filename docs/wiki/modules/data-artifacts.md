@@ -16,8 +16,8 @@ server and QA harness rely on.
   intelligence database.
 - [data/seed_leads.json](../../../data/seed_leads.json) - hand-curated manual
   leads.
-- [data/cache](../../../data/cache) - ingestion/runtime cache files.
-- [data/source_probe](../../../data/source_probe) - saved public-surface evidence.
+- `data/cache` - ingestion/runtime cache files (local only, not tracked).
+- `data/source_probe` - saved public-surface evidence (local only, not tracked).
 - [qa/features.csv](../../../qa/features.csv) - feature inventory.
 - [qa/test-cases.csv](../../../qa/test-cases.csv) - test-case ledger.
 - [qa/defects.csv](../../../qa/defects.csv) - defect ledger.

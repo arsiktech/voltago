@@ -57,15 +57,17 @@ property last fixes the built output; the new rendered assertion protects that s
 
 ## Evidence
 
-[Machine receipt](../../qa/browser-evidence/liquid-glass-2026-09-05/material-contract.json).
+The browser evidence below was generated locally under
+`qa/browser-evidence/liquid-glass-2026-09-05/` and is not tracked in this repository.
+
+Machine receipt: `material-contract.json`.
 
 Current local overview, using the local API (not live telemetry):
 
-![Light overview](../../qa/browser-evidence/liquid-glass-2026-09-05/overview-light.png)
-![Dark overview](../../qa/browser-evidence/liquid-glass-2026-09-05/overview-dark.png)
+Light overview `overview-light.png`; dark overview `overview-dark.png`.
 
 Deterministic material states:
-[light mobile](../../qa/browser-evidence/liquid-glass-2026-09-05/light-390.png),
-[dark mobile](../../qa/browser-evidence/liquid-glass-2026-09-05/dark-390.png),
-[light desktop](../../qa/browser-evidence/liquid-glass-2026-09-05/light-1440.png),
-[dark desktop](../../qa/browser-evidence/liquid-glass-2026-09-05/dark-1440.png).
+light mobile `light-390.png`,
+dark mobile `dark-390.png`,
+light desktop `light-1440.png`,
+dark desktop `dark-1440.png`.

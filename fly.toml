@@ -23,5 +23,7 @@ primary_region = "mad"
 
 [[vm]]
   size = "shared-cpu-1x"
-  # The all-charger national DB (~14k records) settles near 300 MB RSS.
+  # Sized for a full national dataset (~14k records, near 300 MB RSS). The image
+  # built from this repository ships only the 162-record sample in
+  # data/free_intelligence.json (see data/README.md).
   memory = "512mb"

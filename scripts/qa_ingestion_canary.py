@@ -12,9 +12,11 @@ from collections import Counter
 import datetime as dt
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import math
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 from json_recordset import load_json_recordset
@@ -107,7 +109,7 @@ def source_evidence_counts(
     so one record contributes at most once to every family it actually carries.
     """
     counts: Counter[str] = Counter()
-    active_policy = policy or SOURCE_POLICY_EXCLUSIONS
+    active_policy = SOURCE_POLICY_EXCLUSIONS if policy is None else policy
 
     def consume(record: dict) -> None:
         if value_is_excluded(record, active_policy):
@@ -166,7 +168,7 @@ def source_family_threshold_failures(
     reference = source_count_map(reference_sources)
     failures: List[str] = []
     checked: Dict[str, Dict[str, Union[int, float]]] = {}
-    active_policy = policy or SOURCE_POLICY_EXCLUSIONS
+    active_policy = SOURCE_POLICY_EXCLUSIONS if policy is None else policy
     if min_ratio <= 0:
         return failures, checked
     for source, reference_count in sorted(reference.items()):
@@ -224,7 +226,16 @@ def trim_history(path: Path, keep: int) -> None:
     rows = path.read_text(encoding="utf-8").splitlines()
     if len(rows) <= keep:
         return
-    path.write_text("\n".join(rows[-keep:]) + "\n", encoding="utf-8")
+    # Replace atomically so an interrupted trim never leaves a truncated history.
+    descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(rows[-keep:]) + "\n")
+        os.chmod(temporary, path.stat().st_mode & 0o777)
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def compact_command(run: Dict[str, Any] | None, limit: int = 800) -> Dict[str, Any] | None:

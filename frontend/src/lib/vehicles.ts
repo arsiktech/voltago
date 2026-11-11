@@ -118,12 +118,12 @@ export function energyToTarget(vehicle: Vehicle, target: number, now = Date.now(
 
 function normalizeConnector(label: string): VehicleConnector | null {
   const key = label.toLowerCase().replace(/[^a-z0-9]/g, '')
-  if (['ccs2', 'ccscombo2', 'combo2', 'iec621963', 'iec62196t3combo'].includes(key)) return 'CCS2'
-  if (['type2', 'mennekes', 'iec621962', 'iec62196t2'].includes(key)) return 'Type 2'
+  if (['ccs2', 'ccscombo2', 'combo2', 'iec621963', 'iec62196t3combo', 'iec62196t2combo', 'ccs'].includes(key)) return 'CCS2'
+  if (['type2', 'mennekes', 'iec621962', 'iec62196t2', 'tipo2'].includes(key)) return 'Type 2'
   if (['chademo'].includes(key)) return 'CHAdeMO'
   if (['nacs', 'saej3400'].includes(key)) return 'NACS'
   if (['ccs1', 'ccscombo1', 'combo1', 'iec62196t1combo'].includes(key)) return 'CCS1'
-  if (['type1', 'j1772', 'saej1772', 'iec62196t1'].includes(key)) return 'Type 1'
+  if (['type1', 'j1772', 'saej1772', 'iec62196t1', 't1'].includes(key)) return 'Type 1'
   return null
 }
 
@@ -143,13 +143,13 @@ export function chargingEstimate(vehicle: Vehicle, target: number, station: Stat
   const gridEnergyKwh = energyKwh === null ? null : energyKwh / 0.9
   const owned = vehicle.connectors?.map(normalizeConnector).filter((item) => item !== null) || []
   const ports = station.connectors?.map((port) => ({
-    type: normalizeConnector(port.type || port.label || ''), power: port.power_kw, fast: port.fast,
+    type: normalizeConnector(port.label || port.type || ''), power: port.power_kw, fast: port.fast,
   })) || []
   const reportedTypes = [...ports.map((port) => port.type), ...(station.connector_labels || []).map(normalizeConnector)]
     .filter((type) => type !== null)
   const matches = reportedTypes.filter((type) => owned.includes(type))
   // An unrecognized connector can still be compatible. Do not claim incompatibility.
-  const hasUnknownType = (station.connectors || []).some((port) => !normalizeConnector(port.type || port.label || ''))
+  const hasUnknownType = (station.connectors || []).some((port) => !normalizeConnector(port.label || port.type || ''))
     || (station.connector_labels || []).some((label) => !normalizeConnector(label))
   const compatibility = !owned.length || !reportedTypes.length ? 'unknown'
     : matches.length ? 'compatible' : hasUnknownType ? 'unknown' : 'incompatible'

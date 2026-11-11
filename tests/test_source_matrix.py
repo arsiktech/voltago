@@ -14,6 +14,12 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts import source_matrix as sm  # noqa: E402
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
+
 
 LAT, LON = 41.6100, 0.6200
 METRE = 1 / 111_320
@@ -394,9 +400,7 @@ class LocationSourcesEndpointTests(unittest.TestCase):
         import server
         intel = {"records": [row("a", "DGT National Access Point charging registry")]}
         httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
-        import threading
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
+        stop_server = _support.serve_in_thread(httpd)
         base = f"http://127.0.0.1:{httpd.server_address[1]}/api/location-sources"
         try:
             with patch("server.load_intelligence_meta", return_value=intel):
@@ -409,8 +413,7 @@ class LocationSourcesEndpointTests(unittest.TestCase):
                     self.assertEqual(caught.exception.code, 400)
                     caught.exception.close()
         finally:
-            httpd.shutdown()
-            httpd.server_close()
+            stop_server()
 
 
 if __name__ == "__main__":

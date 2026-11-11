@@ -9,7 +9,6 @@ import json
 import os
 import ssl
 import sys
-import threading
 import time
 import unittest
 import urllib.parse
@@ -23,6 +22,11 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
 import vehicles
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class Clock:
@@ -425,14 +429,11 @@ class VehicleHttpTests(unittest.TestCase):
         self.store = vehicles.VehicleConnections(config(self.origin), client=self.provider, clock=self.clock)
         self.patch = patch.object(server, "VEHICLES", self.store)
         self.patch.start()
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-        self.thread.start()
+        self.stop_server = _support.serve_in_thread(self.httpd)
         self.addCleanup(self.stop)
 
     def stop(self):
-        self.httpd.shutdown()
-        self.httpd.server_close()
-        self.thread.join(timeout=3)
+        self.stop_server()
         self.patch.stop()
 
     def request(self, method, path, body=None, *, origin=None, cookie=None, content_type="application/json"):

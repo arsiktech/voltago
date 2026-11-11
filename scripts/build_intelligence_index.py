@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -75,7 +76,8 @@ def finalize_index(source: str | Path, output: str | Path, *, policy_path: str |
     temporary = Path(temporary)
     try:
         shutil.copyfile(source, temporary)
-        with sqlite3.connect(temporary) as connection:
+        # closing() releases the file; the inner block keeps commit-or-rollback.
+        with contextlib.closing(sqlite3.connect(temporary)) as connection, connection:
             connection.execute("UPDATE metadata SET value=? WHERE key='catalogue'", (json.dumps(metadata, ensure_ascii=False),))
             connection.execute("UPDATE metadata SET value=? WHERE key='summaries'", (json.dumps(summaries, ensure_ascii=False),))
         if file_sha256(policy_path) != metadata["index_manifest"]["policy_sha256"] or (file_sha256(seeds_path) if seeds_path.exists() else None) != metadata["index_manifest"]["seeds_sha256"]:

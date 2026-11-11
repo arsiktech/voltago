@@ -51,7 +51,7 @@ def health_url(base_url: str) -> str:
     try:
         parsed = urllib.parse.urlsplit(origin)
         hostname = parsed.hostname
-        parsed.port  # Force urllib's numeric/range validation at this trust boundary.
+        _ = parsed.port  # Force urllib's numeric/range validation at this trust boundary.
     except ValueError as exc:
         raise ProbeFailure(INVALID_ORIGIN_MESSAGE) from exc
     if parsed.scheme not in {"http", "https"} or not parsed.netloc or not hostname:

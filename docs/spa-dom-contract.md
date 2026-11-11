@@ -1,7 +1,7 @@
 # Volta SPA — DOM contract cheat-sheet (for QA scripts)
 
-Selector/flow map of the React SPA (frontend/src), updated 2026-10-02 for the
-discovery layout and adjustable charging-price filter. If a selector here drifts from the code, the code wins — update
+Selector/flow map of the React SPA (frontend/src), updated 2026-11-11 (mode labels, header icons and empty-state text; first written 2026-10-02 for the
+discovery layout and adjustable charging-price filter). If a selector here drifts from the code, the code wins — update
 this file in the same change.
 
 ## Shell / layout
@@ -12,7 +12,8 @@ this file in the same change.
   width controlled by `--discovery-width`. `.discovery-map` occupies its own adjacent
   canvas area; camera fitting never includes area hidden under the results.
 - Header: `header.app-header`, brand home link `a[aria-label="Volta Go home"]`, decorative
-  `img[src="/volta-icon.svg"]` with empty `alt`, and the theme button.
+  `img[src="/volta-icon-light.svg"]` and `img[src="/volta-icon-dark.svg"]` (one shown per
+  site theme) with empty `alt`, and the theme button.
 - Mobile list/map switch: `button.mobile-view-toggle`, named `Show full charger list` /
   `Show map and chargers`, sits in the sticky results heading before refresh. A decorative
   grabber (`.sheet-grabber-zone`, `aria-hidden`) at the top of the sheet does the same on
@@ -33,7 +34,7 @@ this file in the same change.
 - `h1` — `"<N> public chargers"`, `"<N> free chargers"`, or
   `"<N> chargers ≤ €0.NN/kWh"` in national overview mode; `"<N> nearby"` in live mode.
   The count is in a `span.tabular-nums`.
-- Mode label (`[data-search-area]`): `Explore Spain` | `Near you` | `Near <place>`.
+- Mode label (`[data-search-area]`): `Explore chargers` | `Explore <place>` | `Near you` | `Near <place>`.
 - Icon buttons (all `button[aria-label]`): `Use my location`, `Refresh known charger leads` (overview) / `Refresh live data` (nearby).
   Theme controls live in the app header: `Switch to dark mode` / `Switch to light mode`.
 
@@ -212,7 +213,7 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
   the selected inventory. Missing quantities stay unspecified. `Source photos`
   contains captions and user-initiated source-page links. Automatic image loading
   still requires that exact image's `display_rights_approved=true`.
-- Empty state: `.card` with `No chargers match these filters` or `Nothing in view here` +
+- Empty state: `.card` with `No chargers match these filters` or `No charger nearby yet` +
   decorative `.empty-state-visual` SVG + recovery buttons `Show all leads`, `Broaden price`,
   (`Clear search` when a query is set).
 

@@ -16,8 +16,8 @@
 //   6. no error card, no horizontal overflow at 390x844, no console noise.
 //
 // Note: the retired shell issued its FIRST fetch with force=true. The SPA never
-// sends force=true from any UI path (frontend/src/lib/api.ts plumbs `force` but
-// nothing sets it); its initial fetch is the cached national overview. We assert
+// sends force=true from any UI path (frontend/src/lib/api.ts has no `force`
+// option); its initial fetch is the cached national overview. We assert
 // the SPA equivalents instead (overview fetch on load + live fetch on locate) and
 // keep the non-forced guarantee on the background refetch.
 

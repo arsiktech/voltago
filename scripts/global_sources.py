@@ -33,18 +33,17 @@ if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
 try:
-    from .ingest_sources import FetchArtifact
+    from .ingest_sources import FetchArtifact, OPENCHARGEMAP_QUARANTINED_IDS
     from .source_policy import load_source_policy_exclusions, value_is_excluded
     from .source_transport import policy_urlopen
 except ImportError:
-    from ingest_sources import FetchArtifact
+    from ingest_sources import FetchArtifact, OPENCHARGEMAP_QUARANTINED_IDS
     from source_policy import load_source_policy_exclusions, value_is_excluded
     from source_transport import policy_urlopen
 
 from station_truth import parse_osm_socket_output  # noqa: E402  (ingest_sources puts the root on sys.path)
 
 
-OCM_URL = "https://raw.githubusercontent.com/openchargemap/ocm-data/master/poi.json.gz"
 OCM_EXPORT_REVISION = "8e3bedca48ca94807d96b2f5e7ee02cffe63ae54"
 OCM_EXPORT_URL = f"https://codeload.github.com/openchargemap/ocm-export/tar.gz/{OCM_EXPORT_REVISION}"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
@@ -143,26 +142,6 @@ def fetch_cached_file(url: str, cache_dir: Path, cache_name: str, *, ttl_hours: 
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-
-
-def iter_ocm(path: Path) -> Iterator[dict]:
-    """Read legacy OCM NDJSON for migration, never selected by the new CLI.
-
-    openchargemap/ocm-data is deprecated. Current builds use iter_ocm_export.
-    """
-    with gzip.open(path, "rt", encoding="utf-8") as handle:
-        while True:
-            line = handle.readline(2 * 1024 * 1024 + 1)
-            if not line:
-                return
-            if len(line) > 2 * 1024 * 1024:
-                raise ValueError("OCM record exceeds 2 MiB line limit")
-            if not line.strip():
-                continue
-            item = json.loads(line)
-            if not isinstance(item, dict):
-                raise ValueError("OCM snapshot must contain one object per line")
-            yield item
 
 
 # Bounds cover the complete worldwide archive, including unselected countries,
@@ -543,7 +522,7 @@ def normalize_ocm(poi: dict, artifact: FetchArtifact) -> dict | None:
     country = valid_country((addr.get("Country") or {}).get("ISOCode"))
     poi_id = poi.get("ID")
     provider = poi.get("DataProvider") or {}
-    if not isinstance(addr, dict) or not country or not isinstance(poi_id, int) or isinstance(poi_id, bool) or poi_id <= 0 or poi_id == 169683:
+    if not isinstance(addr, dict) or not country or not isinstance(poi_id, int) or isinstance(poi_id, bool) or poi_id <= 0 or str(poi_id) in OPENCHARGEMAP_QUARANTINED_IDS:
         return None
     if not provider_license_allowed(provider):
         return None
@@ -622,10 +601,11 @@ def normalize_osm(element: dict, artifact: FetchArtifact, country_code: str | No
             continue
         count = finite_number(value)
         raw_power = str(tags.get(f"{key}:output") or "")
-        power = parse_osm_socket_output(raw_power, label)["power_kw"]
+        reading = parse_osm_socket_output(raw_power, label)
         connectors.append({"connector_id": key, "label": label, "type": label, "status": "UNKNOWN",
-                           "count": int(count) if count and count > 0 else None, "power_kw": power,
-                           "source_url": source_url, "raw": {"count": value, "output": raw_power}})
+                           "count": int(count) if count and count > 0 else None, "power_kw": reading["power_kw"],
+                           "source_url": source_url,
+                           "raw": {"count": value, "output": raw_power, "output_reading": reading["basis"]}})
     if not connectors and (tags.get("bicycle") == "yes" or tags.get("scooter") == "yes") and tags.get("motorcar") != "yes":
         return None
     tariff = {"currency": tags.get("charge:currency"), "amount": tags.get("charge:amount"), "unit": tags.get("charge:unit"),

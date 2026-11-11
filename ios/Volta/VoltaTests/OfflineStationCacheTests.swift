@@ -48,6 +48,54 @@ final class OfflineStationCacheTests: XCTestCase {
         XCTAssertTrue(snapshot.stations.allSatisfy { $0.cacheStale == true })
     }
 
+    /// Freshness honesty: a response without any saved charger must not make old saved rows
+    /// look newly saved.
+    func testSavedDateStaysWhenAResponseRefreshesNoSavedCharger() throws {
+        let first = Date(timeIntervalSince1970: 1_792_874_000)
+        OfflineStationCache.storeSaved(from: response, favoriteIDs: ["lead-1"], at: first)
+        let unrelated = Data(#"{"stations": [], "leads": [{"id": "x", "name": "X", "lat": 40.0, "lon": -3.0, "lead": true}]}"#.utf8)
+        OfflineStationCache.storeSaved(from: unrelated, favoriteIDs: ["lead-1"], at: first.addingTimeInterval(86_400 * 14))
+        let snapshot = try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder))
+        XCTAssertEqual(snapshot.stations.map(\.id), ["lead-1"])
+        XCTAssertEqual(snapshot.savedAt, first)
+    }
+
+    /// With some saved rows refreshed and others not, the date is that of the oldest kept row.
+    func testSavedDateIsTheOldestKeptRowAfterAPartialRefresh() throws {
+        let first = Date(timeIntervalSince1970: 1_792_874_000)
+        let second = first.addingTimeInterval(86_400 * 7)
+        let third = first.addingTimeInterval(86_400 * 14)
+        OfflineStationCache.storeSaved(from: response, favoriteIDs: ["lead-1", "far-1"], at: first)
+        let far = Data(#"{"stations": [], "leads": [{"id": "far-1", "name": "Far", "lat": 43.0, "lon": -8.0, "lead": true}]}"#.utf8)
+        OfflineStationCache.storeSaved(from: far, favoriteIDs: ["lead-1", "far-1"], at: second)
+        XCTAssertEqual(try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder)).savedAt, first)
+        // Refreshing lead-1 leaves far-1 (saved at `second`) as the oldest row.
+        OfflineStationCache.storeSaved(from: response, favoriteIDs: ["lead-1", "far-1"], at: third)
+        XCTAssertEqual(try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder)).savedAt, second)
+        // Unsaving far-1 drops it, so only lead-1's refresh time remains.
+        OfflineStationCache.storeSaved(from: Data("{}".utf8), favoriteIDs: ["lead-1"], at: third.addingTimeInterval(60))
+        XCTAssertEqual(try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder)).savedAt, third)
+    }
+
+    /// A saved.json written before per-row times existed still loads, and its rows keep the
+    /// file's original date until a response refreshes them.
+    func testSavedFileWithoutPerRowTimesStillLoadsAndKeepsItsDate() throws {
+        struct LegacyEnvelope: Codable { var schema: Int; var savedAt: Date; var payload: Data }
+        let old = Date(timeIntervalSince1970: 1_792_874_000)
+        let rows = Data(#"[{"id": "lead-1", "name": "Lead One", "lat": 41.38, "lon": 2.16, "lead": true}]"#.utf8)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try PropertyListEncoder().encode(LegacyEnvelope(schema: OfflineStationCache.schemaVersion, savedAt: old, payload: rows))
+            .write(to: folder.appendingPathComponent("saved.json"))
+        let loaded = try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder))
+        XCTAssertEqual(loaded.savedAt, old)
+        XCTAssertEqual(loaded.stations.map(\.id), ["lead-1"])
+
+        OfflineStationCache.storeSaved(from: Data("{}".utf8), favoriteIDs: ["lead-1"], at: old.addingTimeInterval(86_400))
+        let kept = try XCTUnwrap(OfflineStationCache.loadSaved(decoder: VoltaAPI.decoder))
+        XCTAssertEqual(kept.stations.map(\.id), ["lead-1"])
+        XCTAssertEqual(kept.savedAt, old)
+    }
+
     func testOversizedAreaIsNotStored() {
         let big = Data(repeating: 0x20, count: OfflineStationCache.maxAreaBytes + 1)
         OfflineStationCache.storeArea(big)

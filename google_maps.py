@@ -99,9 +99,10 @@ def attach_google_maps_navigation(station: dict[str, Any]) -> None:
         })
     else:
         primary = station.get("primary_source") or {}
+        # Both sides must carry a value: a missing field never matches another missing field.
         curated = next((entry.get("url") for entry in _CURATED_LINKS
-                        if station.get("id") == entry.get("station_id")
-                        or station.get("source_url") == entry.get("source_url")), None)
+                        if (station.get("id") and station.get("id") == entry.get("station_id"))
+                        or (station.get("source_url") and station.get("source_url") == entry.get("source_url"))), None)
         listing = next((safe for candidate in (
             curated,
             navigation.get("google_listing"), station.get("google_maps_url"), metadata.get("url"),

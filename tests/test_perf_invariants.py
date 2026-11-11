@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import sys
-import threading
 import time
 import unittest
 import urllib.request
@@ -33,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import server  # noqa: E402
+from tests import _support  # noqa: E402
 
 # Fields whose value is derived from wall-clock "now" at the moment enrichment
 # ran (age_minutes()/pricing_window_is_current() both read datetime.now(...)).
@@ -77,10 +77,8 @@ def station(id_, name="Station", address="", lat=39.4700, lon=-0.3700, sources=N
 
 
 def setUpModule():
-    # Existing suites isolate their older feeds; keep the new runtime feeds offline too.
-    live_patch = patch("server.fetch_public_live", return_value={"stations": [], "feeds": {}})
-    live_patch.start()
-    unittest.addModuleCleanup(live_patch.stop)
+    _support.offline_public_live()
+    _support.isolate_community_store()
 
 
 class LoadAllLeadsSelfEqualityTests(unittest.TestCase):
@@ -855,8 +853,7 @@ class HealthEndpointAssembledCacheTests(unittest.TestCase):
         original_cache = deepcopy(server.CACHE)
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
         port = httpd.server_address[1]
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
+        stop_server = _support.serve_in_thread(httpd)
         try:
             server.CACHE.clear()
             server.CACHE.update({"ts": 0, "payload": None, "raw_count": 0, "error": None, "assembled": None})
@@ -887,11 +884,29 @@ class HealthEndpointAssembledCacheTests(unittest.TestCase):
             self.assertNotIn("em_info", assembled_health, "health must never dump the raw em_info (holds non-JSON-serializable sets)")
             self.assertEqual(assembled_health.get("stations_count"), 1)
         finally:
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(timeout=5)
+            stop_server()
             server.CACHE.clear()
             server.CACHE.update(original_cache)
+
+    def test_health_snapshot_reads_the_live_cache_under_its_lock(self) -> None:
+        # Other threads add CACHE keys under _CACHE_LOCKS["live"]; iterating the dict
+        # without that lock can raise "dictionary changed size during iteration".
+        unlocked_reads: List[str] = []
+
+        class LockCheckingCache(dict):
+            def items(self):
+                if not server._CACHE_LOCKS["live"].locked():
+                    unlocked_reads.append("items")
+                return super().items()
+
+        handler = object.__new__(server.Handler)
+        handler.path = "/api/health"
+        handler.send_json = lambda status, payload, *args, **kwargs: None
+        cache = LockCheckingCache({"ts": 0, "payload": None, "error": None, "assembled": None})
+        with patch.object(server, "CACHE", cache):
+            handler._route_get()
+        self.assertEqual(unlocked_reads, [])
+        self.assertFalse(server._CACHE_LOCKS["live"].locked())
 
 
 class TimeDerivedFieldsRecomputeOnReturnTests(unittest.TestCase):

@@ -8,7 +8,6 @@ here apply_free_only_filter is tested as a pure function).
 import json
 import shutil
 import tempfile
-import threading
 import unittest
 import urllib.request
 from pathlib import Path
@@ -19,6 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import community
 import server
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class FreeRegistryTestCase(unittest.TestCase):
@@ -28,15 +32,13 @@ class FreeRegistryTestCase(unittest.TestCase):
         community.configure(db_path=cls.tmp / "community.db", photos_dir=cls.tmp / "photos")
         cls.httpd = server.VoltaHTTPServer(("127.0.0.1", 0), server.Handler)
         cls.port = cls.httpd.server_address[1]
-        cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
-        cls.thread.start()
+        cls.stop_server = staticmethod(_support.serve_in_thread(cls.httpd))
         records = server.load_intelligence()["records"]
         cls.free_id = next(r["id"] for r in records if server.free_row(r))
 
     @classmethod
     def tearDownClass(cls) -> None:
-        cls.httpd.shutdown()
-        cls.httpd.server_close()
+        cls.stop_server()
         shutil.rmtree(cls.tmp, ignore_errors=True)
         community.configure(cls.tmp / "gone.db", cls.tmp / "gone")
 

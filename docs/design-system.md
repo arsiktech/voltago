@@ -277,12 +277,12 @@ Extend these before creating new ones.
 | Component | Web | iOS | Notes |
 | --- | --- | --- | --- |
 | Decision pill | `DecisionPill.tsx`, `.pill-*` | decision views in `StationViews.swift` | Icon + label, one per station; Go now solid |
-| Badge | `Badge.tsx` (`default`, `brand`, `warn`, `danger`) | inline capsule labels | Facts, not decisions |
+| Badge | — | inline capsule labels | Facts, not decisions |
 | Station card | `StationCard.tsx` | `StationCard` in `StationViews.swift` | Name, charging price, decision, one caution, availability, power and distance. Web groups identical connector types and power with published quantities; full ports, parking, conditions, provenance and photos stay in Details |
 | Provenance | `SourceProvenance.tsx` | detail trust rows | Plain source + freshness; combined for VoiceOver |
 | Filters | `FilterRail.tsx`, `.filter-chip` | `DiscoveryFilters.swift` | Free shortcut, price slider (0–100 cents, then No limit), native modal/sheet, reset |
 | Coverage and guidance | `CoverageBanner.tsx`, `FlowHint.tsx` | sheet banners | Bounded copy with a one-tap action, no transport diagnostics; coverage is one compact line ("Title. Message") |
-| Icon button | `.icon-btn` (44px) | `VoltaPressButtonStyle` | Accessible name required |
+| Icon button | — | `VoltaPressButtonStyle` | Accessible name required |
 | Action button | `bg-brand` / bordered utility buttons | `VoltaActionButtonStyle` in `StationActions.swift` | Ink primary, bordered secondary; peers share the row |
 | Wrapping row | `flex-wrap` | `FlowLayout` in `Theme.swift` | Badges and facts wrap at any width or text size |
 | Empty state | `VisualMoment.tsx` | `VisualMomentViews.swift` | Empty-state illustration |

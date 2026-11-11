@@ -8,6 +8,11 @@ from unittest import mock
 from scripts.build_intelligence_index import build_index, finalize_index
 from scripts.intelligence_index import IntelligenceIndex, file_sha256
 from scripts.source_policy import recordset_sha256
+from tests import _support  # noqa: E402
+
+
+def setUpModule():
+    _support.isolate_community_store()
 
 
 class IntelligenceIndexTests(unittest.TestCase):
@@ -148,6 +153,25 @@ class IntelligenceIndexTests(unittest.TestCase):
         self.assertEqual(final.metadata()["recordset_sha256"], receipt["recordset_sha256"])
         self.assertIn("health_code_sha256", final.metadata()["index_manifest"])
         self.assertIn("source_health_inventory", final.summaries)
+
+    def test_finalizer_closes_its_write_connection(self):
+        self.build()
+        opened = []
+        connect = sqlite3.connect
+
+        def recording(database, *args, **kwargs):
+            connection = connect(database, *args, **kwargs)
+            opened.append((str(database), connection))
+            return connection
+
+        with mock.patch.object(sqlite3, "connect", recording):
+            finalize_index(self.output, self.directory / "finalized.sqlite", seeds_path=self.seeds)
+        writers = [connection for database, connection in opened if database.endswith(".tmp")]
+        self.assertEqual(len(writers), 1)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            writers[0].execute("SELECT 1")
+        final = IntelligenceIndex(self.directory / "finalized.sqlite")
+        self.assertIn("health_code_sha256", final.metadata()["index_manifest"])
 
     def test_non_index_or_inconsistent_manifest_is_rejected(self):
         self.build()

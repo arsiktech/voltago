@@ -116,6 +116,18 @@ class CanariasTeRecargaParserTests(unittest.TestCase):
     def parse(self, features):
         return ing.parse_canarias_tecarga_geojson(ct_payload(features), minimum_features=1)
 
+    def test_a_row_add_record_skips_leaves_the_previous_row_alone(self) -> None:
+        # add_record drops a directory "free" claim on a Supercharger. Its count-less CCS2
+        # pictogram must not null the previous row's port count, nor fail when it comes first.
+        supercharger_popup = BADGE_GRATIS.replace('ev-plug-type2.svg" alt="x1"', 'ev-plug-ccs2.svg" alt=""')
+        skipped = ct_feature("9", "Tesla Supercharger La Laguna", -16.31, 28.48, "icono_free.png", supercharger_popup)
+        kept = ct_feature("4", "Intercambiador Santa Cruz de Tenerife", -16.25238, 28.459126, "icono_free.png", BADGE_GRATIS)
+        self.assertEqual([row["name"] for row in self.parse([skipped])], [])
+        (row,) = self.parse([kept, skipped])
+        self.assertEqual(row["name"], "Intercambiador Santa Cruz de Tenerife")
+        self.assertEqual(row["connector_count"], 1)
+        self.assertEqual(row["hardware_claim"]["port_count"], 1)
+
     def test_gratis_badge_row_is_a_free_directory_lead(self) -> None:
         records = self.parse([ct_feature("4", "Intercambiador Santa Cruz de Tenerife", -16.25238, 28.459126, "icono_free.png", BADGE_GRATIS)])
         self.assertEqual(len(records), 1)
