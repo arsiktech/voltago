@@ -294,14 +294,18 @@ function DataHonestyDisclosure() {
   const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
   return (
-    <div className="data-honesty flex-none border-t border-border px-6 py-1 text-xs text-muted">
+    // A container, not a viewport, query: the row is narrow both on phones and in the
+    // 380px tablet panel. Below 354px the full labels wrap to a second row, which costs
+    // the phone sheet the height of its first result.
+    <div className="data-honesty @container flex-none border-t border-border px-6 py-1 text-xs text-muted">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
         <AgentConnection />
         <a
           href="/matrix"
           className="inline-flex min-h-11 items-center gap-1 rounded-lg text-xs font-medium text-fg-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          Source coverage
+          <span className="@max-[354px]:hidden">Source coverage</span>
+          <span className="hidden @max-[354px]:inline">Coverage</span>
           <ArrowUpRight size={14} aria-hidden="true" />
         </a>
         <motion.button
