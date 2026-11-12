@@ -342,10 +342,13 @@ async function checkStartupLocation(browser) {
         if (!nearby || Number(nearby.searchParams.get("lat")) !== home.lat || Number(nearby.searchParams.get("lon")) !== home.lon) {
           throw new Error("Startup location did not query nearby chargers at the returned coordinates");
         }
+        // The location camera frames the driver with the nearest pins, never closer than
+        // street level (zoom 16): the driver and at least one charger are in view.
         await page.waitForFunction(({ lat, lon }) => {
           const map = window.__voltaStartupMap;
-          const center = map?.getCenter();
-          return center && !map.isMoving() && Math.abs(center.lat - lat) < 0.0001 && Math.abs(center.lng - lon) < 0.0001 && Math.abs(map.getZoom() - 16) < 0.0001;
+          if (!map || map.isMoving() || !map.isStyleLoaded()) return false;
+          const pins = map.queryRenderedFeatures({ layers: ["station-dot", "clusters"].filter(id => map.getLayer(id)) });
+          return map.getBounds().contains([lon, lat]) && map.getZoom() <= 16.0001 && pins.length > 0;
         }, home);
       } else {
         await page.waitForTimeout(150);

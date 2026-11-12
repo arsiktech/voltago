@@ -52,6 +52,36 @@ export function boxAround(c: Coords, d = 0.16): Bbox {
   return normalizeBbox({ south: c.lat - d, north: c.lat + d, west: c.lon - d * 1.35, east: c.lon + d * 1.35 })
 }
 
+/** Great-circle distance; Infinity when either point lacks finite coordinates. */
+export function distanceKm(a: Coords, b: Coords): number {
+  if (![a.lat, a.lon, b.lat, b.lon].every(Number.isFinite)) return Number.POSITIVE_INFINITY
+  const toRadians = (value: number) => (value * Math.PI) / 180
+  const dLat = toRadians(b.lat - a.lat)
+  const dLon = toRadians(b.lon - a.lon)
+  const h = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(a.lat)) * Math.cos(toRadians(b.lat)) * Math.sin(dLon / 2) ** 2
+  return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
+}
+
+/** Bounds holding the origin and its `count` nearest places, or null when there are none.
+ * A location request frames these so the first view shows real chargers, not just streets. */
+export function nearbyFrame(origin: Coords, places: Coords[], count = 3): Bbox | null {
+  const nearest = places
+    .filter(validCoordinates)
+    .map(place => ({ place, km: distanceKm(origin, place) }))
+    .sort((a, b) => a.km - b.km)
+    .slice(0, count)
+    .map(({ place }) => place)
+  if (!nearest.length) return null
+  const points = [origin, ...nearest]
+  return normalizeBbox({
+    south: Math.min(...points.map(p => p.lat)),
+    north: Math.max(...points.map(p => p.lat)),
+    west: Math.min(...points.map(p => p.lon)),
+    east: Math.max(...points.map(p => p.lon)),
+  })
+}
+
 export function widerBoxAround(c: Coords, current: Bbox | null): Bbox {
   const halfLat = Math.min(1.2, Math.max(0.32, current ? ((current.north - current.south) / 2) * 1.7 : 0.32))
   const halfLon = Math.min(1.6, Math.max(0.43, current ? (longitudeSpan(current) / 2) * 1.7 : 0.43))

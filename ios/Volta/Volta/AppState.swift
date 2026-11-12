@@ -127,6 +127,8 @@ final class AppState: NSObject, ObservableObject {
     private var liveTask: Task<Void, Never>?
     private var nearbyOverviewTask: Task<Void, Never>?
     private var nearbyQuery: NearbyQuery?
+    /// Set by a location fix until the camera frames the driver with the nearest pins.
+    private var pendingNearbyFrameOrigin: CLLocationCoordinate2D?
 
     private struct NearbyQuery: Equatable {
         var bbox: BBox
@@ -625,6 +627,7 @@ final class AppState: NSObject, ObservableObject {
         if reason == "area" { cancelLocationForManualNavigation() }
         // Continental/world views use stored evidence; live providers have a local budget.
         guard visibleRegion.bbox.supportsLiveLookup else {
+            pendingNearbyFrameOrigin = nil
             overviewRequestID = UUID()
             nearbyOverviewTask?.cancel()
             nearbyQuery = nil
@@ -644,6 +647,7 @@ final class AppState: NSObject, ObservableObject {
         liveTask?.cancel()
         let qualityBeforeRequest = liveQuality
         guard isServiceConfigured else {
+            pendingNearbyFrameOrigin = nil
             stations = []
             previousRouteReadyCount = 0
             dismissRouteMoment()
@@ -683,6 +687,7 @@ final class AppState: NSObject, ObservableObject {
                 if reason != "auto" || qualityBeforeRequest != quality {
                     announce(liveAnnouncement(for: quality))
                 }
+                frameNearbyIfPending()
             } catch is CancellationError {
             } catch {
                 guard !Task.isCancelled else { return }
@@ -699,6 +704,8 @@ final class AppState: NSObject, ObservableObject {
                 if reason != "auto" || qualityBeforeRequest != .unavailable {
                     announce(String(localized: "Live status is unavailable. Known chargers remain for source checking."))
                 }
+                // Keep the neighbourhood view; a later refresh must not move the camera.
+                pendingNearbyFrameOrigin = nil
             }
         }
         scheduleAutoRefresh()
@@ -1062,17 +1069,59 @@ final class AppState: NSObject, ObservableObject {
         awaitingLocationAuthorization = false
         locationState = .located
         userCoordinate = location.coordinate
+        // The visible region is also the search area, so search the neighbourhood first;
+        // `frameNearbyIfPending` then fits the camera to the driver and the nearest pins.
         let region = MKCoordinateRegion(center: location.coordinate,
-                                        latitudinalMeters: 1_200, longitudinalMeters: 1_200)
+                                        span: .init(latitudeDelta: Self.locationSearchSpan,
+                                                    longitudeDelta: Self.locationSearchSpan))
         visibleRegion = region
+        pendingNearbyFrameOrigin = location.coordinate
         withAnimation(cameraAnimation) { camera = .region(region) }
         loadNearby(reason: "locate")
         announce(String(localized: "Location found. Loading nearby chargers."))
     }
 
+    /// About 17 km: wide enough to reach the nearest chargers, inside the live lookup budget.
+    nonisolated static let locationSearchSpan = 0.16
+
+    /// The driver plus the `count` nearest places, padded so pins clear the edges, and never
+    /// closer than street level (1,200 m across). Nil when there is nothing to frame.
+    nonisolated static func nearbyFrameRegion(origin: CLLocationCoordinate2D,
+                                  places: [CLLocationCoordinate2D],
+                                  count: Int = 3) -> MKCoordinateRegion? {
+        let here = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+        let nearest = places
+            .filter(CLLocationCoordinate2DIsValid)
+            .map { (place: $0, meters: here.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude))) }
+            .sorted { $0.meters < $1.meters }
+            .prefix(count)
+            .map(\.place)
+        guard !nearest.isEmpty else { return nil }
+        let points = [origin] + nearest
+        let south = points.map(\.latitude).min()!, north = points.map(\.latitude).max()!
+        let west = points.map(\.longitude).min()!, east = points.map(\.longitude).max()!
+        let center = CLLocationCoordinate2D(latitude: (south + north) / 2, longitude: (west + east) / 2)
+        let street = MKCoordinateRegion(center: center, latitudinalMeters: 1_200, longitudinalMeters: 1_200).span
+        return MKCoordinateRegion(center: center,
+                                  span: .init(latitudeDelta: max(street.latitudeDelta, (north - south) * 1.3),
+                                              longitudeDelta: max(street.longitudeDelta, (east - west) * 1.3)))
+    }
+
+    /// Runs once after a location fix, when the first live result has arrived. Camera only:
+    /// the neighbourhood search already covers the framed region, and the map's own
+    /// camera-change handler refreshes the bounds MapKit settles on.
+    private func frameNearbyIfPending() {
+        guard let origin = pendingNearbyFrameOrigin else { return }
+        pendingNearbyFrameOrigin = nil
+        guard let region = Self.nearbyFrameRegion(origin: origin, places: mapRows.map(\.coordinate)) else { return }
+        visibleRegion = region
+        withAnimation(cameraAnimation) { camera = .region(region) }
+    }
+
     /// Manual exploration owns the camera once chosen; a late startup fix cannot reclaim it.
     func cancelLocationForManualNavigation() {
         hasManualDiscoveryIntent = true
+        pendingNearbyFrameOrigin = nil
         guard locating else { return }
         locating = false
         awaitingLocationAuthorization = false

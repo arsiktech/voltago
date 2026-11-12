@@ -60,4 +60,44 @@ final class GlobalBoundsTests: XCTestCase {
         generic.sourceUrl = "https://other.example/openchargemap.org/site/poi/details/123"
         XCTAssertFalse(generic.isMapLocationVerified)
     }
+
+    // MARK: - Location framing
+
+    private let valencia = CLLocationCoordinate2D(latitude: 39.4699, longitude: -0.3763)
+
+    func testLocationFrameHoldsTheDriverAndTheThreeNearestPlaces() throws {
+        let near = [
+            CLLocationCoordinate2D(latitude: 39.50, longitude: -0.40),
+            CLLocationCoordinate2D(latitude: 39.47, longitude: -0.38),
+            CLLocationCoordinate2D(latitude: 39.46, longitude: -0.37),
+        ]
+        let far = CLLocationCoordinate2D(latitude: 39.90, longitude: -0.10)
+        let region = try XCTUnwrap(AppState.nearbyFrameRegion(origin: valencia, places: near + [far]))
+        for point in [valencia] + near {
+            XCTAssertTrue(region.bbox.contains(latitude: point.latitude, longitude: point.longitude))
+        }
+        XCTAssertFalse(region.bbox.contains(latitude: far.latitude, longitude: far.longitude))
+        XCTAssertTrue(region.bbox.supportsLiveLookup)
+    }
+
+    func testLocationFrameIsNeverCloserThanStreetLevel() throws {
+        let nextDoor = CLLocationCoordinate2D(latitude: 39.4700, longitude: -0.3762)
+        let region = try XCTUnwrap(AppState.nearbyFrameRegion(origin: valencia, places: [nextDoor]))
+        let street = MKCoordinateRegion(center: valencia, latitudinalMeters: 1_200, longitudinalMeters: 1_200).span
+        XCTAssertGreaterThanOrEqual(region.span.latitudeDelta, street.latitudeDelta * 0.999)
+        XCTAssertGreaterThanOrEqual(region.span.longitudeDelta, street.longitudeDelta * 0.999)
+    }
+
+    func testLocationFrameIsNilWithoutValidPlaces() {
+        XCTAssertNil(AppState.nearbyFrameRegion(origin: valencia, places: []))
+        XCTAssertNil(AppState.nearbyFrameRegion(origin: valencia,
+                                                places: [CLLocationCoordinate2D(latitude: 200, longitude: 0)]))
+    }
+
+    func testLocationSearchSpanStaysInsideTheLiveLookupBudget() {
+        let region = MKCoordinateRegion(center: valencia,
+                                        span: .init(latitudeDelta: AppState.locationSearchSpan,
+                                                    longitudeDelta: AppState.locationSearchSpan))
+        XCTAssertTrue(region.bbox.supportsLiveLookup)
+    }
 }

@@ -406,6 +406,8 @@ export interface FlyTarget {
   lon: number
   bbox?: Bbox | null
   zoom?: number
+  /** Closest a bbox fit may zoom; place and region fits keep their wider defaults. */
+  maxZoom?: number
   nonce?: number
 }
 
@@ -786,7 +788,7 @@ export const MapView = memo(function MapView({
       if (target?.bbox) {
         map.fitBounds(
           mapBounds(target.bbox),
-          { padding: MAP_PADDING, maxZoom: 13, duration: 0 },
+          { padding: MAP_PADDING, maxZoom: target.maxZoom ?? 13, duration: 0 },
         )
       }
       if (target && !target.bbox) {
@@ -874,7 +876,7 @@ export const MapView = memo(function MapView({
     if (flyTarget.bbox) {
       map.fitBounds(
         mapBounds(flyTarget.bbox),
-        { padding: MAP_PADDING, maxZoom: 14, duration: reduce ? 0 : 800 },
+        { padding: MAP_PADDING, maxZoom: flyTarget.maxZoom ?? 14, duration: reduce ? 0 : 800 },
       )
     } else {
       // Same constraint as the selection fly: only spread `duration` in when reducing motion.
