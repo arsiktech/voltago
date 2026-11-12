@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { boxAround, containsCoordinate, isLiveBbox, longitudeSpan, mapBounds, normalizeBbox, validCoordinates, widerBoxAround, wrapLongitude } from './geo'
+import { boxAround, containsCoordinate, distanceKm, isLiveBbox, longitudeSpan, mapBounds, nearbyFrame, normalizeBbox, validCoordinates, widerBoxAround, wrapLongitude } from './geo'
 import { inViewport, isMapLocationVerified, hasVerifiedPrice, isRouteReady, responseHasNoLiveAuthority, statusTrustSummary } from './format'
 import { chargersUrl } from './api'
 import { DEFAULT_FILTERS } from './format'
@@ -83,5 +83,37 @@ describe('worldwide location and bounds', () => {
     expect(isMapLocationVerified({ ...station, source_url: 'https://openchargemap.org/' })).toBe(false)
     expect(isMapLocationVerified({ ...station, source_url: 'https://other.example/openchargemap.org/site/poi/details/123' })).toBe(false)
     expect(isMapLocationVerified({ ...station, verification: { location_verified: false } })).toBe(false)
+  })
+})
+
+describe('location framing', () => {
+  const valencia = { lat: 39.4699, lon: -0.3763 }
+
+  it('measures great-circle distance and refuses missing coordinates', () => {
+    expect(distanceKm(valencia, { lat: 40.4168, lon: -3.7038 })).toBeCloseTo(302.6, 1) // Madrid
+    expect(distanceKm(valencia, valencia)).toBe(0)
+    expect(distanceKm(valencia, { lat: Number.NaN, lon: 0 })).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  it('frames the origin with its three nearest places, ignoring farther and invalid ones', () => {
+    const places = [
+      { lat: 39.50, lon: -0.40 },
+      { lat: 39.47, lon: -0.38 },
+      { lat: 39.46, lon: -0.37 },
+      { lat: 39.90, lon: -0.10 }, // fourth nearest: outside the frame
+      { lat: Number.NaN, lon: -0.37 },
+    ]
+    expect(nearbyFrame(valencia, places)).toEqual({ south: 39.46, north: 39.5, west: -0.4, east: -0.37 })
+  })
+
+  it('keeps the origin inside the frame when the only place is on one side', () => {
+    const frame = nearbyFrame(valencia, [{ lat: 39.48, lon: -0.36 }])
+    expect(frame && containsCoordinate(frame, valencia)).toBe(true)
+    expect(frame && containsCoordinate(frame, { lat: 39.48, lon: -0.36 })).toBe(true)
+  })
+
+  it('returns null when nothing can be framed', () => {
+    expect(nearbyFrame(valencia, [])).toBeNull()
+    expect(nearbyFrame(valencia, [{ lat: 200, lon: 0 }])).toBeNull()
   })
 })

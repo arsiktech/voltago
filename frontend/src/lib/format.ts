@@ -1,5 +1,5 @@
 import type { Bbox, ChargersResponse, Connector, Coords, CorroborationTier, DecisionLevel, FilterKey, Filters, Station } from '../types'
-import { containsCoordinate } from './geo'
+import { containsCoordinate, distanceKm } from './geo'
 
 /** Title-case a station name with Spanish locale, preserving small connectors. */
 export function displayName(name = ''): string {
@@ -442,17 +442,7 @@ export function isRouteReady(st: Station): boolean {
 export function sortNearbyBySafetyAndDistance(rows: Station[], origin: Coords | null): Station[] {
   if (!origin) return rows
 
-  const distanceFromOrigin = (st: Station): number => {
-    if (!Number.isFinite(st.lat) || !Number.isFinite(st.lon)) return Number.POSITIVE_INFINITY
-    const earthRadiusKm = 6371
-    const toRadians = (value: number) => (value * Math.PI) / 180
-    const dLat = toRadians(st.lat - origin.lat)
-    const dLon = toRadians(st.lon - origin.lon)
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(toRadians(origin.lat)) * Math.cos(toRadians(st.lat)) * Math.sin(dLon / 2) ** 2
-    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-  }
+  const distanceFromOrigin = (st: Station): number => distanceKm(origin, st)
 
   const tier = (st: Station): number => {
     if (isRouteReady(st)) return 0

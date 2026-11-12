@@ -4,7 +4,7 @@ import { ChevronDown, LocateFixed, Moon, RefreshCw, Search, Sun, ArrowUpRight, L
 import { useQuery } from '@tanstack/react-query'
 import { chargerListingQueryOptions, publicTransportErrorMessage, useChargers } from './lib/api'
 import { discoveryRows, selectedMapRow } from './lib/discovery'
-import { boxAround, containsCoordinate, isLiveBbox, normalizeBbox, widerBoxAround } from './lib/geo'
+import { boxAround, containsCoordinate, isLiveBbox, nearbyFrame, normalizeBbox, widerBoxAround } from './lib/geo'
 import {
   DEFAULT_FILTERS,
   ageText,
@@ -294,14 +294,18 @@ function DataHonestyDisclosure() {
   const reduceMotion = useReducedMotion()
   const [open, setOpen] = useState(false)
   return (
-    <div className="data-honesty flex-none border-t border-border px-6 py-1 text-xs text-muted">
+    // A container, not a viewport, query: the row is narrow both on phones and in the
+    // 380px tablet panel. Below 354px the full labels wrap to a second row, which costs
+    // the phone sheet the height of its first result.
+    <div className="data-honesty @container flex-none border-t border-border px-6 py-1 text-xs text-muted">
       <div className="flex flex-wrap items-center justify-between gap-x-4">
         <AgentConnection />
         <a
           href="/matrix"
           className="inline-flex min-h-11 items-center gap-1 rounded-lg text-xs font-medium text-fg-soft hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
         >
-          Source coverage
+          <span className="@max-[354px]:hidden">Source coverage</span>
+          <span className="hidden @max-[354px]:inline">Coverage</span>
           <ArrowUpRight size={14} aria-hidden="true" />
         </a>
         <motion.button
@@ -369,6 +373,8 @@ export default function App() {
   const [committedBbox, setCommittedBbox] = useState<Bbox | null>(REGIONS[0].bbox)
   const [viewport, setViewport] = useState<Viewport | null>(null)
   const [flyTarget, setFlyTarget] = useState<FlyTarget | null>(null)
+  // Set by a location result until the camera frames the driver with the nearest pins.
+  const [pendingNearbyFrame, setPendingNearbyFrame] = useState<{ coords: Coords; area: Bbox; nonce: number } | null>(null)
   const [origin, setOrigin] = useState<SearchOrigin | null>(null)
   const lastAutoAreaKey = useRef<string | null>(null)
   const explicitAreaIntentAt = useRef(0)
@@ -428,6 +434,7 @@ export default function App() {
   // Later renders or a chosen place must not replay the last device location.
   const claimSearchArea = useCallback(() => {
     explicitAreaIntentAt.current = performance.now()
+    setPendingNearbyFrame(null)
     // Cancel automatic area search without discarding the current visible scope
     // while GPS is pending (or if permission is denied).
     setViewport(current => current ? { ...current, userInitiated: false } : null)
@@ -437,10 +444,14 @@ export default function App() {
     claimSearchArea()
     setSearch('')
     requestDeviceLocation((coords) => {
+      const area = boxAround(coords, 0.18)
+      const nonce = Date.now()
       setOrigin({ coords, label: 'your location', kind: 'device' })
       setOverview(false)
-      setCommittedBbox(boxAround(coords, 0.18))
-      setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 16, nonce: Date.now() })
+      setCommittedBbox(area)
+      // Move at once so the driver sees their area; the frame below then fits the nearest pins.
+      setFlyTarget({ lat: coords.lat, lon: coords.lon, zoom: 14, nonce })
+      setPendingNearbyFrame({ coords, area, nonce: nonce + 1 })
     })
   }, [claimSearchArea, requestDeviceLocation])
 
@@ -454,6 +465,11 @@ export default function App() {
   }, [requestLocation])
 
   const cancelLocation = geo.cancel
+  // A map gesture outranks both a pending GPS fix and the frame that would follow it.
+  const onMapGesture = useCallback(() => {
+    cancelLocation()
+    setPendingNearbyFrame(null)
+  }, [cancelLocation])
   const onStationSelect = useCallback((id: string | null) => {
     if (id !== null) {
       claimSearchArea()
@@ -530,6 +546,16 @@ export default function App() {
   const mapRows = useMemo(() => discoveryRows(inventory.data?.leads || [], allRows)
     .filter(st => passesFilters(st, filters) && isMapLocationVerified(st)),
     [inventory.data, allRows, filters])
+  // After "Use my location", frame the driver with the nearest three pins (at most street
+  // level), once per location result. With no pins once the search settles, the zoom-14
+  // view around the driver stays. Adjusted during render, like the stale selection below;
+  // it converges because the pending frame clears itself.
+  if (pendingNearbyFrame) {
+    const { coords, area, nonce } = pendingNearbyFrame
+    const frame = nearbyFrame(coords, mapRows.filter((st) => inViewport(st, area)))
+    if (frame) setFlyTarget({ ...coords, bbox: frame, maxZoom: 16, nonce })
+    if (frame || !query.isFetching) setPendingNearbyFrame(null)
+  }
   // Region shortcuts and location searches own their bounds independently of the map.
   // Intentional map exploration clears an overview region to follow the visible bounds;
   // camera-only changes (selection/resize) must not silently alter the chosen search area.
@@ -899,7 +925,7 @@ export default function App() {
               onSelect={onStationSelect}
               theme={theme}
               userCoords={geo.coords}
-              onUserViewportIntent={geo.cancel}
+              onUserViewportIntent={onMapGesture}
               onViewportChange={onViewportChange}
               flyTarget={flyTarget}
               initialView={SPAIN_VIEW}

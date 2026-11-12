@@ -42,9 +42,39 @@
         }
       })();
     </script>
+    <!-- First paint before the app bundle arrives: on a slow connection the page was blank
+         for seconds (9 s on Slow 3G). The shell mirrors .app-header so nothing jumps when
+         React replaces #root's content. Colors repeat the index.css tokens. -->
+    <style>
+      .boot { position: fixed; inset: 0; background: #f5f6f4; color: #0e1512;
+        font-family: 'Manrope Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+      [data-theme='dark'] .boot { background: #0b0f0d; color: #edf1ee; }
+      .boot-header { display: flex; align-items: center; height: 76px; padding: 0 24px; }
+      .boot-brand { display: inline-flex; align-items: center; gap: 10px; font-size: 23px; font-weight: 750; }
+      .boot-brand img { width: 36px; height: 36px; }
+      .boot-brand .dark { display: none; }
+      [data-theme='dark'] .boot-brand .light { display: none; }
+      [data-theme='dark'] .boot-brand .dark { display: block; }
+      .boot-go { font-weight: 400; }
+      .boot-mark { color: #0d7d40; }
+      [data-theme='dark'] .boot-mark { color: #21d277; }
+      .boot-status { margin: 0; padding: 8px 24px; font-size: 14px; color: #5a6560; }
+      [data-theme='dark'] .boot-status { color: #9aa59f; }
+      @media (max-width: 767px) {
+        .boot-header { height: 60px; padding: 0 16px; }
+        .boot-brand { font-size: 21px; }
+        .boot-brand img { width: 30px; height: 30px; }
+        .boot-status { padding: 8px 16px; }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div class="boot">
+      <div class="boot-header">
+        <span class="boot-brand"><img class="light" src="/volta-icon-light.svg" alt="" /><img class="dark" src="/volta-icon-dark.svg" alt="" /><span>Volta <span class="boot-go">Go</span><span class="boot-mark">.</span></span></span>
+      </div>
+      <p class="boot-status" role="status">Loading chargers…</p>
+    </div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
