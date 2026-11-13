@@ -26,6 +26,7 @@ DEBUG_ONLY_LOCALIZATION_KEYS = {
     "Test connection",
     "Testing connection",
     "Testing…",
+    "Can't reach the Volta server at %@ — tap Volta Go and point the app at your Mac.",
     "The Volta server must be running on the Mac:\nHOST=0.0.0.0 PORT=8773 python3 server.py",
     "http://host:8773",
     "✓ Connected — server and data reachable",
@@ -40,6 +41,19 @@ STALE_PRIVACY_KEYS = {
     "Volta does not ask you to create an account. A subscription follows the Apple ID used for App Store purchases; Volta does not receive your payment details.",
     "Volta stores your selected backend address and normal app preferences on the device. The app contains no advertising or third-party analytics SDK.",
     "With permission, your location is used to request nearby charger data from the Volta server you choose. Search text and map areas are also sent to that server to return relevant results.",
+}
+
+# Pre-release and local-backend copy that no public build may carry, even as an unused
+# catalog entry: App Review and public users must never see draft, TestFlight or
+# "point the app at your Mac" wording.
+STALE_PRERELEASE_KEYS = {
+    "Pre-release notice",
+    "These are honest draft terms for local and TestFlight evaluation. Public hosting and owner legal review are still required before App Store release.",
+    "Pending release configuration",
+    "Hosted privacy policy",
+    "Can't reach the Volta server at %@ — open Settings (gear) and point the app at your Mac.",
+    "Server unreachable at %@ — is it running on the Mac? Fix the address via the gear button on the map.",
+    "This build can't receive alerts yet. Push notifications are not set up.",
 }
 
 PRIVACY_COPY = {
@@ -133,6 +147,8 @@ class IOSReleaseContractTests(unittest.TestCase):
             "NSPrivacyCollectedDataTypePreciseLocation": True,
             "NSPrivacyCollectedDataTypeSearchHistory": False,
             "NSPrivacyCollectedDataTypeDeviceID": True,
+            # Driver check-ins ("I charged", "Couldn't charge", "Occupied") sent to the service.
+            "NSPrivacyCollectedDataTypeOtherUserContent": True,
         }
         self.assertEqual(set(collected), set(expected_linking))
         for data_type, linked in expected_linking.items():
@@ -289,8 +305,11 @@ class IOSReleaseContractTests(unittest.TestCase):
             (APP / "Localizable.xcstrings").read_text(encoding="utf-8")
         )["strings"]
         self.assertTrue(DEBUG_ONLY_LOCALIZATION_KEYS)
-        for forbidden in DEBUG_ONLY_LOCALIZATION_KEYS:
+        for forbidden in DEBUG_ONLY_LOCALIZATION_KEYS | STALE_PRERELEASE_KEYS:
             self.assertNotIn(forbidden, catalog)
+        for key in catalog:
+            self.assertNotIn("TestFlight", key)
+            self.assertFalse(key.startswith("Before release,"), key)
 
         settings = (APP / "SettingsView.swift").read_text(encoding="utf-8")
         debug_branch = settings.split("#if DEBUG", 1)[1].split("#else", 1)[0]
@@ -361,10 +380,10 @@ class IOSReleaseContractTests(unittest.TestCase):
             )
             for key, translations in PRIVACY_COPY.items():
                 self.assertEqual(localized_ui[key], translations[locale], key)
-            for forbidden in DEBUG_ONLY_LOCALIZATION_KEYS | STALE_PRIVACY_KEYS:
+            for forbidden in DEBUG_ONLY_LOCALIZATION_KEYS | STALE_PRIVACY_KEYS | STALE_PRERELEASE_KEYS:
                 self.assertNotIn(forbidden, localized_ui)
 
-        forbidden = DEBUG_ONLY_LOCALIZATION_KEYS | STALE_PRIVACY_KEYS | {
+        forbidden = DEBUG_ONLY_LOCALIZATION_KEYS | STALE_PRIVACY_KEYS | STALE_PRERELEASE_KEYS | {
             "your-mac.local",
             "192.168.1.220",
             "127.0.0.1:8773",

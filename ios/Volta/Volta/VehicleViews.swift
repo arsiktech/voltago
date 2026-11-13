@@ -221,7 +221,10 @@ struct VehicleGarageView: View {
                 Label("Reconnect to get new readings", systemImage: "link.badge.plus")
                     .font(.subheadline.weight(.medium)).foregroundStyle(Theme.check)
             }
-            if garage.connection?.connected != true || garage.connection?.connectionStatus == "reconnect" {
+            // A service without vehicle connection gets no permanently disabled button: the
+            // sentence above explains it and manual entry stays the next step.
+            if garage.connection?.configured != false,
+               garage.connection?.connected != true || garage.connection?.connectionStatus == "reconnect" {
                 Button {
                     Task { await garage.connect() }
                 } label: {

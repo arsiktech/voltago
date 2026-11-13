@@ -946,29 +946,6 @@
         }
       }
     },
-    "%lld couldn’t": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld couldn’t"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld no pudieron"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld не смогли"
-          }
-        }
-      }
-    },
     "%lld d ago": {
       "extractionState": "manual",
       "localizations": {
@@ -2102,29 +2079,6 @@
         }
       }
     },
-    "Before release, the hosted privacy policy must identify the service operator and its retention practices. Until that owner gate is complete, the hosted policy link remains unavailable.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Before release, the hosted privacy policy must identify the service operator and its retention practices. Until that owner gate is complete, the hosted policy link remains unavailable."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Antes del lanzamiento, la política de privacidad alojada debe identificar al operador del servicio y sus prácticas de conservación. Hasta completar esa revisión del propietario, el enlace a la política alojada seguirá sin estar disponible."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "До выпуска опубликованная политика конфиденциальности должна указывать оператора сервиса и правила хранения данных. Пока владелец не завершит эту проверку, ссылка на политику будет недоступна."
-          }
-        }
-      }
-    },
     "Billing grace period": {
       "extractionState": "manual",
       "localizations": {
@@ -2167,52 +2121,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Из кэша: %@"
-          }
-        }
-      }
-    },
-    "Can't reach the Volta server at %@ — open Settings (gear) and point the app at your Mac.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Can't reach the Volta server at %@ — open Settings (gear) and point the app at your Mac."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se puede contactar con el servidor de Volta en %@. Abre Ajustes (icono de engranaje) y apunta la app a tu Mac."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Не удаётся связаться с сервером Volta по адресу %@ — откройте Настройки (значок шестерёнки) и укажите приложению адрес вашего Mac."
-          }
-        }
-      }
-    },
-    "Can't reach the Volta server at %@ — tap Volta Go and point the app at your Mac.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Can't reach the Volta server at %@ — tap Volta Go and point the app at your Mac."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se puede acceder al servidor de Volta en %@. Toca Volta Go e indica la dirección de tu Mac."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сервер Volta по адресу %@ недоступен. Нажмите Volta Go и укажите адрес вашего Mac."
           }
         }
       }
@@ -2746,29 +2654,6 @@
         }
       }
     },
-    "Couldn’t charge": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn’t charge"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No pude cargar"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Не смог зарядиться"
-          }
-        }
-      }
-    },
     "Current filters were reapplied to cached results.": {
       "extractionState": "manual",
       "localizations": {
@@ -3271,29 +3156,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Честный статус в реальном времени"
-          }
-        }
-      }
-    },
-    "Hosted privacy policy": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hosted privacy policy"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Política de privacidad alojada"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Опубликованная политика конфиденциальности"
           }
         }
       }
@@ -5138,29 +5000,6 @@
         }
       }
     },
-    "Pending release configuration": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pending release configuration"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pendiente de la configuración de lanzamiento"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ожидает настройки выпуска"
-          }
-        }
-      }
-    },
     "Photo": {
       "extractionState": "manual",
       "localizations": {
@@ -5272,29 +5111,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Места"
-          }
-        }
-      }
-    },
-    "Pre-release notice": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pre-release notice"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aviso de versión preliminar"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Уведомление о предварительной версии"
           }
         }
       }
@@ -6288,29 +6104,6 @@
         }
       }
     },
-    "Server unreachable at %@ — is it running on the Mac? Fix the address via the gear button on the map.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Server unreachable at %@ — is it running on the Mac? Fix the address via the gear button on the map."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se puede conectar con el servidor en %@. ¿Está en ejecución en el Mac? Corrige la dirección desde el botón de ajustes del mapa."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Не удаётся подключиться к серверу по адресу %@. Он запущен на Mac? Исправьте адрес через кнопку настроек на карте."
-          }
-        }
-      }
-    },
     "Service": {
       "extractionState": "manual",
       "localizations": {
@@ -7273,29 +7066,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Запись источника сохранена ниже, но она не подтверждает текущий тариф или статус."
-          }
-        }
-      }
-    },
-    "These are honest draft terms for local and TestFlight evaluation. Public hosting and owner legal review are still required before App Store release.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "These are honest draft terms for local and TestFlight evaluation. Public hosting and owner legal review are still required before App Store release."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estas son unas condiciones preliminares honestas para la evaluación local y en TestFlight. El alojamiento público y la revisión legal del propietario siguen siendo necesarios antes del lanzamiento en el App Store."
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Это честный проект условий для локального тестирования и TestFlight. До выпуска в App Store ещё нужны публичная публикация и юридическая проверка владельцем."
           }
         }
       }
@@ -12587,6 +12357,558 @@
           "stringUnit": {
             "state": "translated",
             "value": "Разъём не подтверждён"
+          }
+        }
+      }
+    },
+    "Prompt copied.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prompt copied."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prompt copiado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Промпт скопирован."
+          }
+        }
+      }
+    },
+    "Offline. Showing chargers saved on this iPhone.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline. Showing chargers saved on this iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión. Mostrando cargadores guardados en este iPhone."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подключения. Показаны зарядные станции, сохранённые на этом iPhone."
+          }
+        }
+      }
+    },
+    "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión. Mostrando cargadores guardados en este iPhone el %@. La disponibilidad y los precios pueden haber cambiado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подключения. Показаны зарядные станции, сохранённые на этом iPhone %@. Доступность и цены могли измениться."
+          }
+        }
+      }
+    },
+    "Data needs refreshing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Data needs refreshing"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hay que actualizar los datos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Данные нужно обновить"
+          }
+        }
+      }
+    },
+    "Live and cached data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live and cached data"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Datos en directo y en caché"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-данные и кэш"
+          }
+        }
+      }
+    },
+    "Live coverage is limited": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live coverage is limited"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La cobertura en directo es limitada"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-покрытие ограничено"
+          }
+        }
+      }
+    },
+    "Live data is current": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live data is current"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los datos en directo están al día"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-данные актуальны"
+          }
+        }
+      }
+    },
+    "Live data is unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live data is unavailable"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los datos en directo no están disponibles"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Онлайн-данные недоступны"
+          }
+        }
+      }
+    },
+    "Refreshing data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refreshing data"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizando datos"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновление данных"
+          }
+        }
+      }
+    },
+    "Verified charger database": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verified charger database"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base de datos de cargadores verificada"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверенная база зарядных станций"
+          }
+        }
+      }
+    },
+    "A connector showed free. Check the current status before driving.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A connector showed free. Check the current status before driving."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un conector apareció libre. Comprueba el estado actual antes de conducir."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Один из разъёмов освободился. Проверьте текущий статус перед поездкой."
+          }
+        }
+      }
+    },
+    "Alert me when a connector is free": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alert me when a connector is free"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avisarme cuando haya un conector libre"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщить, когда освободится разъём"
+          }
+        }
+      }
+    },
+    "An alert never reserves a connector. It may be taken before you arrive.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An alert never reserves a connector. It may be taken before you arrive."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un aviso nunca reserva un conector. Puede ocuparse antes de que llegues."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уведомление не бронирует разъём. Его могут занять до вашего приезда."
+          }
+        }
+      }
+    },
+    "Couldn't reach Volta Go. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't reach Volta Go. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con Volta Go. Inténtalo de nuevo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось связаться с Volta Go. Повторите попытку."
+          }
+        }
+      }
+    },
+    "Couldn't start the watch. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't start the watch. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo activar la vigilancia. Inténtalo de nuevo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось включить отслеживание. Повторите попытку."
+          }
+        }
+      }
+    },
+    "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las notificaciones de Volta Go están desactivadas. Actívalas en Ajustes para recibir avisos de cargadores."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уведомления Volta Go выключены. Включите их в настройках, чтобы получать оповещения о зарядных станциях."
+          }
+        }
+      }
+    },
+    "Stop watching": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop watching"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dejar de vigilar"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перестать отслеживать"
+          }
+        }
+      }
+    },
+    "The watch ended without a free connector.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The watch ended without a free connector."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vigilancia terminó sin ningún conector libre."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание завершилось: свободный разъём не появился."
+          }
+        }
+      }
+    },
+    "The watch has ended.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The watch has ended."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La vigilancia ha terminado."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание завершено."
+          }
+        }
+      }
+    },
+    "Charger alerts aren't available yet. Check the charger again before you drive.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Charger alerts aren't available yet. Check the charger again before you drive."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los avisos de cargadores aún no están disponibles. Vuelve a comprobar el cargador antes de conducir."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оповещения о зарядных станциях пока недоступны. Проверьте станцию ещё раз перед поездкой."
+          }
+        }
+      }
+    },
+    "Watch stopped: live status unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch stopped: live status unavailable."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigilancia detenida: estado en directo no disponible."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание остановлено: онлайн-статус недоступен."
+          }
+        }
+      }
+    },
+    "Watching this charger.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching this charger."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigilando este cargador."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживаем эту станцию."
+          }
+        }
+      }
+    },
+    "Watching until %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watching until %@."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vigilando hasta las %@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отслеживание до %@."
+          }
+        }
+      }
+    },
+    "%lld couldn't": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld couldn't"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld no pudieron"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld не смогли"
           }
         }
       }

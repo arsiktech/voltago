@@ -18,10 +18,11 @@ struct StationActions: View {
             if dynamicTypeSize.isAccessibilitySize || station.isReportedOutOfService {
                 VStack(spacing: 10) { orderedActions(icons: true) }
             } else {
-                // Labels stay on one line: narrow phones drop the icons before anything wraps.
+                // Labels stay on one line: narrow phones drop the icons before anything wraps,
+                // and a label that still does not fit stacks the actions instead of truncating.
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { orderedActions(icons: true) }
-                    HStack(spacing: 10) { orderedActions(icons: false) }
+                    HStack(spacing: 10) { orderedActions(icons: true, inRow: true) }
+                    HStack(spacing: 10) { orderedActions(icons: false, inRow: true) }
                     VStack(spacing: 10) { orderedActions(icons: true) }
                 }
             }
@@ -30,28 +31,28 @@ struct StationActions: View {
     }
 
     @ViewBuilder
-    private func orderedActions(icons: Bool) -> some View {
+    private func orderedActions(icons: Bool, inRow: Bool = false) -> some View {
         // The source itself reports this charger out of service: the next step is an
         // alternative, and directions stay reachable only behind a confirmation.
         if station.isReportedOutOfService {
             nearbyAction(icons: icons)
-            mapsAction(prominent: false, icons: icons)
+            mapsAction(prominent: false, icons: icons, inRow: inRow)
         } else if station.isRouteReady {
-            mapsAction(prominent: true, icons: icons)
-            sourceAction(prominent: false, icons: icons)
+            mapsAction(prominent: true, icons: icons, inRow: inRow)
+            sourceAction(prominent: false, icons: icons, inRow: inRow)
         } else {
-            sourceAction(prominent: true, icons: icons)
-            mapsAction(prominent: false, icons: icons)
+            sourceAction(prominent: true, icons: icons, inRow: inRow)
+            mapsAction(prominent: false, icons: icons, inRow: inRow)
         }
     }
 
     @ViewBuilder
-    private func sourceAction(prominent: Bool, icons: Bool) -> some View {
+    private func sourceAction(prominent: Bool, icons: Bool, inRow: Bool) -> some View {
         if let url = station.sourceURL {
             Button { openURL(url) } label: {
                 Label(station.sourceActionLabel,
                       systemImage: "arrow.up.right.square")
-                    .labelStyle(VoltaActionLabelStyle(icons: icons))
+                    .labelStyle(VoltaActionLabelStyle(icons: icons, inRow: inRow))
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -74,7 +75,7 @@ struct StationActions: View {
     }
 
     @ViewBuilder
-    private func mapsAction(prominent: Bool, icons: Bool) -> some View {
+    private func mapsAction(prominent: Bool, icons: Bool, inRow: Bool = false) -> some View {
         if let url = station.mapsURL {
             Button {
                 if station.isReportedOutOfService {
@@ -84,7 +85,7 @@ struct StationActions: View {
                 }
             } label: {
                 Label("Open in Maps", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-                    .labelStyle(VoltaActionLabelStyle(icons: icons))
+                    .labelStyle(VoltaActionLabelStyle(icons: icons, inRow: inRow))
                     .frame(maxWidth: .infinity, minHeight: 44)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -153,9 +154,12 @@ struct VoltaActionButtonStyle: ButtonStyle {
 
 private struct VoltaActionLabelStyle: LabelStyle {
     var icons: Bool
+    /// Side-by-side actions report their full one-line width, so ViewThatFits rejects a
+    /// row that could only fit by truncating a label such as "Open Canarias te r…".
+    var inRow = false
 
     func makeBody(configuration: Configuration) -> some View {
-        ActionLabel(icon: icons ? configuration.icon : nil, title: configuration.title)
+        ActionLabel(icon: icons ? configuration.icon : nil, title: configuration.title, inRow: inRow)
     }
 }
 
@@ -164,6 +168,7 @@ private struct ActionLabel<Icon: View, Title: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let icon: Icon?
     let title: Title
+    var inRow = false
 
     var body: some View {
         HStack(spacing: 8) {
@@ -171,5 +176,6 @@ private struct ActionLabel<Icon: View, Title: View>: View {
             title
         }
         .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+        .fixedSize(horizontal: inRow && !dynamicTypeSize.isAccessibilitySize, vertical: false)
     }
 }

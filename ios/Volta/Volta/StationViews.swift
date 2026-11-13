@@ -819,11 +819,9 @@ struct StationDetailView: View {
     // MARK: - Community check-in ("did charging actually work?")
 
     private var checkinControls: some View {
-        // Three peer actions share one row and one width; at large text sizes they wrap.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { checkinButtons }
-            VStack(spacing: 8) { checkinButtons }
-        }
+        // Three full-width rows. Side by side, the labels truncated ("I char…") or collapsed
+        // to bare icons on every iPhone width, including the 6.9-inch models.
+        VStack(spacing: 8) { checkinButtons }
     }
 
     @ViewBuilder

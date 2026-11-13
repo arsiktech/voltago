@@ -188,11 +188,11 @@ final class WatchService: ObservableObject {
         guard canOffer(station), let config else { return }
         phases[station.id] = .working
         guard await authorize() else {
-            phases[station.id] = .message(String(localized: "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts."))
+            phases[station.id] = .message(Self.notificationsOffMessage)
             return
         }
         guard let token = await PushTokenBroker.shared.requestToken() else {
-            phases[station.id] = .message(String(localized: "This build can't receive alerts yet. Push notifications are not set up."))
+            phases[station.id] = .message(String(localized: "Charger alerts aren't available yet. Check the charger again before you drive."))
             return
         }
         do {
@@ -232,6 +232,12 @@ final class WatchService: ObservableObject {
             }
         }
         persist()
+    }
+
+    /// Shared with the view, which offers Open Settings only for this message. Comparing the
+    /// localized value keeps that choice correct in every language.
+    static var notificationsOffMessage: String {
+        String(localized: "Notifications are off for Volta Go. Turn them on in Settings to get charger alerts.")
     }
 
     static func endText(_ record: WatchRecord) -> String {
@@ -294,7 +300,7 @@ struct StationWatchSection: View {
                         .foregroundStyle(Theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("watchMessage")
-                    if text.localizedCaseInsensitiveContains("Settings") {
+                    if text == WatchService.notificationsOffMessage {
                         Button(String(localized: "Open Settings")) {
                             if let url = URL(string: UIApplication.openSettingsURLString) {
                                 UIApplication.shared.open(url)
