@@ -30,16 +30,20 @@
          preload would surface as an app error, while MapLibre handles its own. -->
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin="anonymous" />
     <script>
-      // Set theme before paint to avoid a flash.
+      // Set theme before paint to avoid a flash. The color-scheme meta must name the same
+      // theme as data-theme: the browser reads it for the UI it draws itself (form controls,
+      // scrollbars, the canvas behind the page). useTheme.ts repeats both steps on toggle.
       (() => {
+        let theme = 'light';
         try {
           const stored = localStorage.getItem('volta-theme');
           const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const theme = stored ? stored : prefersDark ? 'dark' : 'light';
-          document.documentElement.dataset.theme = theme;
+          theme = stored ? stored : prefersDark ? 'dark' : 'light';
         } catch (_) {
-          document.documentElement.dataset.theme = 'light';
+          // Storage is blocked: keep the light default.
         }
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="color-scheme"]').content = theme;
       })();
     </script>
   </head>
