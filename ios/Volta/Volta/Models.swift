@@ -921,7 +921,11 @@ extension Station {
         switch trustKind {
         case .stale, .unavailable: return String(localized: "Refresh first")
         case .degraded: return String(localized: "Check first")
-        case .lead, .fresh: return decision?.label ?? decisionKind.label
+        case .lead, .fresh:
+            guard let label = decision?.label, !label.isEmpty else { return decisionKind.label }
+            // The service sends English labels ("Cheap later", "Verify price"). Show the String
+            // Catalog translation when one exists, otherwise the service's own wording.
+            return Bundle.main.localizedString(forKey: label, value: label, table: nil)
         }
     }
 

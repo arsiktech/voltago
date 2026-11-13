@@ -156,14 +156,15 @@ struct MapFilterBar: View {
         title: String,
         systemImage: String,
         active: Bool,
-        accessibilityLabel: String,
+        accessibilityLabel: LocalizedStringKey,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             FilterChipLabel(title: title, systemImage: systemImage, active: active, disclosure: true)
         }
         .buttonStyle(VoltaPressButtonStyle(pressedScale: 0.96))
-        .accessibilityLabel(accessibilityLabel)
+        // A String argument would be read verbatim; the key is localized for VoiceOver.
+        .accessibilityLabel(Text(accessibilityLabel))
         .accessibilityValue(title)
     }
 }

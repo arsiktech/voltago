@@ -692,6 +692,14 @@ class IOSDesignContractTests(unittest.TestCase):
             "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed.",
         }
         self.assertTrue(interpolated_status_keys.issubset(strings))
+        # Decision labels the service sends in `decision.label` (server.py) are looked up in the
+        # catalog at runtime, and so are filter-chip VoiceOver labels passed as keys.
+        runtime_keys = {
+            "Go now", "Check first", "Verify first", "Verify price", "Cheap later",
+            "Check parking", "Price lead", "Paid", "Unavailable", "No longer listed",
+            "Not Tesla-safe", "Maximum price", "Minimum charging speed",
+        }
+        self.assertTrue(runtime_keys.issubset(strings), runtime_keys - set(strings))
         sheet_status_keys |= interpolated_status_keys
         placeholder_pattern = re.compile(r"%(?:\d+\$)?(lld|@)")
         for key in PAYWALL_LOCALIZATION_KEYS | TRUST_SOURCE_LOCALIZATION_KEYS | PRICE_EVIDENCE_LOCALIZATION_KEYS | sheet_status_keys:
