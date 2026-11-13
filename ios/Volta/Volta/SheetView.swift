@@ -160,6 +160,9 @@ struct SheetView: View {
 
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Theme.ink)
                         .frame(width: 44, height: 44)
