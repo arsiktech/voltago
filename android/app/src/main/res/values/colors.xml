@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The page's own theme-color values (frontend/index.html). -->
+    <color name="volta_bar_light">#F5F6F4</color>
+    <color name="volta_bar_dark">#0B0F0D</color>
+
+    <!-- Light mode: the splash opens on the page's light background, so first paint
+         does not flash from dark to light. values-night switches to the manifest's #07100F. -->
+    <color name="volta_splash_background">#F5F6F4</color>
+    <!-- Brand bolt gradient (frontend/public/volta-icon-light.svg), used in light and dark mode. -->
+    <color name="volta_bolt_top">#C8F03C</color>
+    <color name="volta_bolt_bottom">#3E9B36</color>
+    <color name="volta_bolt_outline">#3E9B36</color>
+    <!-- Brand theme green (#0fa755) at 30 % for the glow behind the bolt; reads on both backgrounds. -->
+    <color name="volta_halo">#4D0FA755</color>
+    <color name="volta_halo_edge">#000FA755</color>
+
+    <!-- Matches the maskable icon's own dark backdrop. -->
+    <color name="volta_icon_background">#0C120B</color>
+</resources>

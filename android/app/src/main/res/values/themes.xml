@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Volta" parent="@android:style/Theme.Material.Light.NoActionBar" />
+
+    <!-- LauncherActivity only hands over to Chrome, so its window stays invisible. -->
+    <style name="Base.Theme.Volta.Launcher" parent="Theme.Volta">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+
+    <style name="Theme.Volta.Launcher" parent="Base.Theme.Volta.Launcher" />
+</resources>

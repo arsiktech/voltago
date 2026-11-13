@@ -1,0 +1,10 @@
+# Build output and machine-local settings never enter git.
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+# Signing material lives outside the repository; these patterns stop accidents.
+*.jks
+*.keystore
+keystore.properties
