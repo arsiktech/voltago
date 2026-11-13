@@ -34,6 +34,7 @@ import {
   remoteStartAction,
   responseHasMixedLiveAuthority,
   responseHasNoLiveAuthority,
+  resultReadout,
   resultScopeLabel,
   sortNearbyBySafetyAndDistance,
   sourceTier,
@@ -200,6 +201,77 @@ describe('resultScopeLabel', () => {
     expect(resultScopeLabel(filters({ maxPrice: 0 }))).toBe('free chargers')
     expect(resultScopeLabel(filters({ maxPrice: 0.65 }))).toBe('chargers ≤ €0.65/kWh')
     expect(resultScopeLabel(filters({ maxPrice: null }))).toBe('public chargers')
+  })
+})
+
+describe('resultReadout', () => {
+  it('does not paint zero public chargers or zero leads before the guest overview arrives', () => {
+    const pending = chooseChargersData({
+      overview: true,
+      live: undefined,
+      instant: undefined,
+      isFetching: true,
+      isPlaceholder: false,
+      viewportBbox: null,
+    })
+    const failed = chooseChargersData({
+      overview: true,
+      live: undefined,
+      instant: undefined,
+      isFetching: false,
+      isPlaceholder: false,
+      isError: true,
+      viewportBbox: null,
+    })
+    const trust = statusTrustSummary({
+      overview: true,
+      sourceBackedOnly: false,
+      isFetching: true,
+      stale: false,
+      updated: '',
+      liveReady: 0,
+      leadCount: pending.data?.leads?.length || 0,
+    })
+    // The trust row still interpolates unset totals. The readout is what the heading and badge show.
+    expect(trust.badge).toBe('0 leads · not live')
+    for (const data of [pending.data, failed.data]) {
+      const readout = resultReadout({
+        data,
+        shown: 0,
+        scopeLabel: resultScopeLabel(DEFAULT_FILTERS),
+        overview: true,
+        badge: trust.badge,
+      })
+      expect(readout.heading).toBeNull()
+      expect(readout.badge).toBeNull()
+      expect(readout.headingCount).toBeNull()
+    }
+  })
+
+  it('shows a real zero only after a successful empty read', () => {
+    const readout = resultReadout({
+      data: { stations: [], leads: [] },
+      shown: 0,
+      scopeLabel: 'public chargers',
+      overview: true,
+      badge: '0 leads · not live',
+    })
+    expect(readout.heading).toBe('0 public chargers')
+    expect(readout.badge).toBe('0 leads · not live')
+    expect(readout.headingCount).toBe(0)
+  })
+
+  it('uses the listed total and the lead total after the national overview arrives', () => {
+    const readout = resultReadout({
+      data: { stations: [], leads: Array.from({ length: 2500 }, (_, i) => mk({ id: `l${i}`, lead: true })) },
+      shown: 2377,
+      scopeLabel: 'public chargers',
+      overview: true,
+      badge: '2500 leads · not live',
+    })
+    expect(readout.heading).toBe('2377 public chargers')
+    expect(readout.badge).toBe('2500 leads · not live')
+    expect(readout.headingCount).toBe(2377)
   })
 })
 
