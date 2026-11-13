@@ -341,12 +341,17 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertRegex(
             self.station_actions,
             re.compile(
-                r"if station\.isRouteReady \{\s+mapsAction\(prominent: true, icons: icons\)\s+"
-                r"sourceAction\(prominent: false, icons: icons\)\s+\} else \{\s+"
-                r"sourceAction\(prominent: true, icons: icons\)\s+mapsAction\(prominent: false, icons: icons\)",
+                r"if station\.isRouteReady \{\s+mapsAction\(prominent: true, icons: icons, inRow: inRow\)\s+"
+                r"sourceAction\(prominent: false, icons: icons, inRow: inRow\)\s+\} else \{\s+"
+                r"sourceAction\(prominent: true, icons: icons, inRow: inRow\)\s+"
+                r"mapsAction\(prominent: false, icons: icons, inRow: inRow\)",
                 re.S,
             ),
         )
+        # Side-by-side actions must not fit by truncating a label (they stack instead).
+        self.assertIn("orderedActions(icons: false, inRow: true)", self.station_actions)
+        self.assertIn(".fixedSize(horizontal: inRow && !dynamicTypeSize.isAccessibilitySize, vertical: false)",
+                      self.station_actions)
         self.assertIn("if let url = station.sourceURL", self.station_actions)
         self.assertIn("if let url = station.mapsURL", self.station_actions)
         self.assertIn("verify the station before driving", self.station_actions)
@@ -680,6 +685,22 @@ class IOSDesignContractTests(unittest.TestCase):
         self.assertTrue({"", "%lld"}.isdisjoint(strings))
         sheet_status_keys = {"%lld leads", "%lld live · %lld leads"}
         self.assertTrue(sheet_status_keys.issubset(strings))
+        # Interpolated String(localized:) keys the static-literal guard below cannot derive.
+        interpolated_status_keys = {
+            "%lld couldn't",
+            "Watching until %@.",
+            "Offline. Showing chargers saved on this iPhone on %@. Availability and prices may have changed.",
+        }
+        self.assertTrue(interpolated_status_keys.issubset(strings))
+        # Decision labels the service sends in `decision.label` (server.py) are looked up in the
+        # catalog at runtime, and so are filter-chip VoiceOver labels passed as keys.
+        runtime_keys = {
+            "Go now", "Check first", "Verify first", "Verify price", "Cheap later",
+            "Check parking", "Price lead", "Paid", "Unavailable", "No longer listed",
+            "Not Tesla-safe", "Maximum price", "Minimum charging speed",
+        }
+        self.assertTrue(runtime_keys.issubset(strings), runtime_keys - set(strings))
+        sheet_status_keys |= interpolated_status_keys
         placeholder_pattern = re.compile(r"%(?:\d+\$)?(lld|@)")
         for key in PAYWALL_LOCALIZATION_KEYS | TRUST_SOURCE_LOCALIZATION_KEYS | PRICE_EVIDENCE_LOCALIZATION_KEYS | sheet_status_keys:
             entry = strings[key]
@@ -702,10 +723,12 @@ class IOSDesignContractTests(unittest.TestCase):
         Interpolated trust/source keys are covered explicitly above because their catalog
         placeholders depend on the interpolated Swift type."""
         strings = json.loads(self.xcstrings_path.read_text(encoding="utf-8")).get("strings", {})
+        # `String(localized:` is its own alternative: it already ends at the argument label,
+        # so it must not require a second "(" the way the view initialisers do.
         call_pattern = re.compile(
-            r"(?:Text|Label|Button|Section|Link|String\(localized:|"
-            r"\.navigationTitle|\.accessibilityLabel|\.accessibilityHint)"
-            r"\(\s*\"((?:\\.|[^\"\\])*)\""
+            r"(?:(?:Text|Label|Button|Section|Link|"
+            r"\.navigationTitle|\.accessibilityLabel|\.accessibilityHint)\(|String\(localized:)"
+            r"\s*\"((?:\\.|[^\"\\])*)\""
         )
 
         def release_visible_source(source):

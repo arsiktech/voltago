@@ -207,7 +207,9 @@ final class AppState: NSObject, ObservableObject {
 
     var serviceFailureMessage: String {
         #if DEBUG
-        return String(localized: "Can't reach the Volta server at \(baseURLString) — tap Volta Go and point the app at your Mac.")
+        // Debug-only operator copy stays out of the String Catalog, so Release resources
+        // never carry local-server wording (tests/test_ios_release_contract.py).
+        return "Can't reach the Volta server at \(baseURLString) — tap Volta Go and point the app at your Mac."
         #else
         return isServiceConfigured
             ? String(localized: "Volta service is unavailable. Try again.")
@@ -601,9 +603,9 @@ final class AppState: NSObject, ObservableObject {
     func testConnection() async -> String {
         do {
             _ = try await api.overview(maxPrice: maxPrice, bbox: visibleRegion.bbox)
-            return String(localized: "✓ Connected — server and data reachable")
+            return "✓ Connected — server and data reachable"
         } catch {
-            return String(localized: "✗ Unreachable: \(error.localizedDescription)")
+            return "✗ Unreachable: \(error.localizedDescription)"
         }
     }
     #endif
