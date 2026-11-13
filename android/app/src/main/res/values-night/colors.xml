@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Manifest background_color. Only the background changes at night: android-browser-helper
+         saves the splash bitmap once and reuses it in either mode, so the bolt itself must not
+         depend on the mode or Chrome's splash would show the other mode's colours. -->
+    <color name="volta_splash_background">#07100F</color>
+</resources>
