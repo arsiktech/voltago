@@ -4,45 +4,96 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="Privacy information for Volta Go.">
-  <title>Privacy — Volta Go</title>
+  <meta name="description" content="How Volta Go handles your information in the iPhone app, the Android app and the web app.">
+  <title>Privacy Notice · Volta Go</title>
   <link rel="stylesheet" href="/legal.css">
 </head>
 <body>
 <main>
-  <nav aria-label="Legal pages"><a class="brand" href="/">Volta Go</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></nav>
+  <nav aria-label="Volta Go pages"><a class="brand" href="/">Volta Go</a><a href="/privacy" aria-current="page">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a><a href="/changelog">Changelog</a></nav>
   <article>
-    <h1>Privacy</h1>
-    <p class="meta">Effective 11 November 2026</p>
-    <p class="notice">Volta Go is an independent beta charging decision aid. No Volta Go account is required. It has no advertising SDKs or cross-app tracking.</p>
+    <h1>Privacy Notice</h1>
+    <p class="meta">Effective 13 November 2026</p>
+    <p class="notice">Volta Go needs no account. It shows no advertising, contains no advertising or analytics SDKs, does not track you across other apps or websites, and does not sell personal information. Your location is used only when you allow it, to find chargers near you.</p>
 
-    <h2>Information the app handles</h2>
+    <h2 id="who">Who is responsible</h2>
+    <p>Volta Go is provided by Arseny Ovsyannikov, who is the data controller for the information described here. Contact for privacy questions and requests: <span class="contact-email" aria-label="support at voltago dot app"><span>support</span><span class="email-at" aria-hidden="true"></span><span>voltago.app</span></span>.</p>
+    <p>This notice covers the Volta Go iPhone app from the App Store, the Volta Go Android app from Google Play, the web app at voltago.app, and the Volta Go connector for AI assistants. The Android app opens the voltago.app web app full-screen in Chrome, so what this notice says about the web app also applies to the Android app.</p>
+
+    <h2 id="what">What we process and why</h2>
     <ul>
-      <li><strong>Location:</strong> only when you grant permission, to find chargers near you and calculate distance. You can use city search instead.</li>
-      <li><strong>Search and map area:</strong> a city query or visible map bounds are sent to the Volta Go service so it can return nearby results.</li>
-      <li><strong>Your EV:</strong> on the web, battery, range and capacity are readings you type, and a car photo you choose stays in this browser. Volta Go does not upload those readings or that photo. The example car is sample data in this browser. Live connection is unavailable unless this service has vehicle connection enabled. When it is enabled, Connect your car opens Smartcar for read-only approval. The service can then receive make, model, year, battery, range, charging state and usable capacity where Smartcar supplies them. It does not receive your car-brand password, VIN or vehicle location, and it cannot unlock, drive or start charging. Charging power is not read. Provider tokens stay in service memory for that browser session and are removed on disconnect or when the service restarts. The browser keeps an HttpOnly session cookie. When vehicle connection is not enabled, none of that Smartcar exchange happens. The iPhone app uses the same switch: it stores only its Volta session in the Keychain, and only after vehicle connection is enabled.</li>
-      <li><strong>Saved chargers:</strong> on the web, Sign in is shown only when you save a charger or open Saved. That choice, plus the charger names and IDs you save, stays in this browser. Volta Go does not create an account and does not upload the list.</li>
-      <li><strong>Manual readings and car photos:</strong> details and photos you enter remain in your browser or the iPhone app's local storage. Choosing a car photo does not upload it to the Volta Go service.</li>
-      <li><strong>Network metadata:</strong> the service may receive your IP address and basic request metadata for delivery, reliability, abuse prevention, and rate limiting. Charger searches are logged without their query string, so precise coordinates and city search text are excluded from those access-log lines.</li>
-      <li><strong>AI assistants:</strong> if you connect Volta Go to an AI app such as ChatGPT or Claude, that app sends only the search it decides to make: a place name or coordinates, filters, or a charger ID. ChatGPT may also send your approximate city; Volta Go uses only the city, region and country text, never coordinates from that hint. These requests need no account, are answered from the same charger data, and are logged without their content. The AI app's own privacy terms cover your conversation.</li>
-      <li><strong>Support messages:</strong> if you email us, we receive the address, content, and attachments you choose to send.</li>
-      <li><strong>Feedback:</strong> a note you send from the web app, and a screenshot of that page when you include one.</li>
+      <li><strong>Your location, only with your permission.</strong> After you allow location access, the app uses your position when it opens and when you ask for chargers near you. It sends your coordinates, or the map area you are viewing, to the Volta Go service. The service uses them to find chargers, rank them and calculate distance. Volta Go does not keep a history of your locations. If you do not allow location, you can search for a place instead.</li>
+      <li><strong>Place searches.</strong> When you search for a city or place, the text you type goes to the Volta Go service. The service forwards it to the OpenStreetMap Nominatim geocoder and keeps the search text and the results in its memory for up to 24 hours, so repeated searches are fast. Nominatim receives the search from our server, not from your device.</li>
+      <li><strong>Map area and filters.</strong> The map area, filters such as connector type or price, and the charger you open are sent to the service to build the results.</li>
+      <li><strong>Network information.</strong> Like any website or app service, the service and our network provider receive your IP address, the time and the address of each request. We use this to deliver the service, keep it secure, prevent abuse and limit how many requests one device can make. Our request logs record your IP address but leave out the search text, coordinates and map area of charger and place searches. Two kinds of request still record their details in the log: the area looked up on the source coverage page, and the charger IDs the app sends when it refreshes your saved chargers.</li>
+      <li><strong>Charger check-ins (iPhone app).</strong> If you tap "I charged", "Couldn't charge" or "Occupied" on a charger, the app sends the charger ID and your choice. The service stores them with the time and a code made from your IP address with a secret key, which it uses to apply a daily limit. Other people see only the totals for that charger, never who reported.</li>
+      <li><strong>Charger alerts (iPhone app, where offered).</strong> If you ask to be told when a connector becomes free, the app sends the charger, its position, the connector types you chose, the alert length and an Apple push token. The push token lets Apple deliver the alert to your iPhone.</li>
+      <li><strong>Feedback (web and Android apps).</strong> When the Feedback button is shown and you send feedback, we receive your note, the page you were on, your language, the theme and screen size, any mood you picked and, if you include it, a screenshot of the page exactly as you see it. A screenshot can show places or text that are on your screen. Feedback does not include your name or email address.</li>
+      <li><strong>Support email.</strong> If you email us, we receive your email address, your message and anything you attach.</li>
+      <li><strong>Vehicle connection, only when the service offers it.</strong> Connecting a car is optional, and the "Connect your car" button on the web, or "Connect car" on iPhone, appears only while vehicle connection is enabled on the service. It opens Smartcar so you can approve read-only access. The service can then receive the make, model and year, battery level, range, charging state and usable capacity that Smartcar supplies. It does not receive your car-brand password, your VIN or your car's location, and it cannot unlock, drive or start charging your car. Access tokens stay in the service's memory, never on disk, and are removed when you disconnect, after 12 hours without renewal, or when the service restarts. The web app keeps an HttpOnly session cookie, and the iPhone app keeps its Volta Go session in the iOS Keychain.</li>
+      <li><strong>AI assistants.</strong> If you connect Volta Go to an AI app such as ChatGPT or Claude, that app sends only the search it chooses to make: a place name or coordinates, filters, or a charger ID. ChatGPT may also send your approximate city; Volta Go uses only the city, region and country text from that hint, never its coordinates. These requests need no account and are logged without their content. The AI app's own privacy terms cover your conversation.</li>
     </ul>
 
-    <h2>Public services and sources</h2>
-    <p>Apple MapKit may load map content in the iOS app. The web map loads styles, fonts and tiles directly from OpenFreeMap; those requests reveal your IP address and the map area being viewed. City search can use OpenStreetMap Nominatim through the Volta Go service. Charger facts come from attributed public sources such as MapaREVE and public operator pages. Their own privacy terms apply when your device opens an external source or map link.</p>
+    <h2 id="device">What stays on your device</h2>
+    <p>Saved chargers, battery and range readings you type, car photos you choose, your charging target, your theme and other preferences stay on your phone or in your browser. Volta Go does not upload them, with one exception: to show current details for saved chargers, the app sends their charger IDs to the service. The service does not store your saved list, but its request log records those IDs. On the web, "Sign in" only remembers in this browser that you want to save chargers; it does not create an account. The iPhone app also keeps a copy of the last area it loaded and your saved chargers so you can read them offline; that copy is not included in device backups.</p>
 
-    <h2>Use, sharing, and retention</h2>
-    <p>Information is used only to provide nearby charger results, secure and operate the beta, diagnose failures, and answer support. We do not sell personal information. Data can be handled by the infrastructure providers needed to deliver the service and email. The app keeps no account profile or location history database. Live request state is cached in memory and disappears when the service restarts; infrastructure access logs and support email remain only under the relevant host or mailbox retention controls and for as long as reasonably needed for security, troubleshooting, or the support conversation.</p>
+    <h2 id="basis">Legal basis</h2>
+    <p>Where the EU or UK General Data Protection Regulation or a similar law applies, we rely on these legal bases:</p>
+    <ul>
+      <li><strong>Providing the service you ask for:</strong> using your location, searches, map area, check-ins, alerts, vehicle connection and AI assistant requests to give you results.</li>
+      <li><strong>Legitimate interests:</strong> keeping the service secure and available, preventing abuse, limiting requests, fixing faults, keeping check-in totals reliable, and improving Volta Go from the feedback and support messages you send. We do not use these interests to profile you.</li>
+      <li><strong>Your consent:</strong> your device's permission for location and notifications, and your approval in Smartcar. You can withdraw consent at any time in your device settings or by disconnecting the car.</li>
+      <li><strong>Legal obligations:</strong> when the law requires us to keep or disclose information.</li>
+    </ul>
 
-    <h2>Your choices</h2>
-    <p>You can type vehicle readings or search for chargers without adding a car. Removing a manual EV removes its saved readings and photo. Clearing this browser's storage removes those readings, the photo and saved chargers. When vehicle connection is enabled, disconnect removes that session from the service. Revoking Smartcar or car-brand access, if a grant exists, is done in that provider’s account.</p>
-    <p>You can deny or revoke location permission in iOS Settings, use city search, stop using the beta, or delete the app. To ask about access, correction, or deletion of information you sent directly, email <span class="contact-email" aria-label="support at voltago dot app"><span>support</span><span class="email-at" aria-hidden="true"></span><span>voltago.app</span></span>. We will respond subject to applicable law and the technical limits described above.</p>
+    <h2 id="recipients">Who receives information</h2>
+    <p>We share information only with the providers that run the service for us and the services that your own actions reach:</p>
+    <ul>
+      <li><strong>Hosting:</strong> Hetzner Online provides the server that runs the Volta Go service.</li>
+      <li><strong>Cloudflare:</strong> carries traffic between your device and our server, protects the service from attacks, and routes email sent to voltago.app addresses.</li>
+      <li><strong>OpenStreetMap Foundation (Nominatim):</strong> receives place-search text from our server.</li>
+      <li><strong>Apple:</strong> in the iPhone app, Apple MapKit draws the map, the Apple Push Notification service delivers charger alerts, and Apple Maps opens when you ask for directions.</li>
+      <li><strong>Google:</strong> the Android app runs in Google Chrome, and the web app opens Google Maps when you ask for directions. Google's own privacy terms apply to Chrome and Google Maps.</li>
+      <li><strong>OpenFreeMap:</strong> in the web and Android apps, your browser loads the map style, fonts and map images directly from OpenFreeMap, which sees your IP address and the map area you view.</li>
+      <li><strong>Charger sources:</strong> a charger photo loads directly from the source that published it, and a source link opens that website. Those sites see your IP address and apply their own privacy terms.</li>
+      <li><strong>Smartcar:</strong> only when vehicle connection is enabled and you choose to connect a car.</li>
+      <li><strong>Feedback and email providers:</strong> the services that receive feedback notes and deliver and store support email for us.</li>
+      <li><strong>Authorities:</strong> only when the law requires it.</li>
+    </ul>
+    <p>Providers that process information for us may use it only to provide their service to us, under terms that require them to protect it at least as well as this notice describes. Some providers, including Cloudflare, Apple, Google and Smartcar, may process information outside your country, including in the United States. Where the GDPR applies, such transfers rely on safeguards such as the EU Standard Contractual Clauses or the EU-US Data Privacy Framework.</p>
 
-    <h2>Changes and contact</h2>
-    <p>This notice may change as the beta evolves. The effective date above will change when it does. Privacy and security questions: <span class="contact-email" aria-label="support at voltago dot app"><span>support</span><span class="email-at" aria-hidden="true"></span><span>voltago.app</span></span>.</p>
+    <h2 id="retention">How long we keep it</h2>
+    <ul>
+      <li><strong>Charger results for an area:</strong> kept in the service's memory for a short time, normally about one minute, and replaced by newer results.</li>
+      <li><strong>Place searches:</strong> kept in memory for up to 24 hours.</li>
+      <li><strong>Request limits:</strong> a counter for each IP address is kept in memory until the service restarts or trims its list of counters. All memory is cleared when the service restarts.</li>
+      <li><strong>Request logs:</strong> kept only as long as needed for security and fault finding, and then deleted when the server's logs rotate.</li>
+      <li><strong>Charger alerts:</strong> the push token is deleted as soon as the alert ends, which is at most six hours after you start it. The rest of the alert record is deleted one day after it ends.</li>
+      <li><strong>Charger check-ins:</strong> kept as part of the charger's history until we delete them. Ask us and we will delete the check-ins linked to your IP address.</li>
+      <li><strong>Vehicle connection:</strong> kept in memory only, removed on disconnect, after 12 hours without renewal, or on restart.</li>
+      <li><strong>Feedback and support email:</strong> kept as long as needed to handle your message and follow up, then deleted.</li>
+      <li><strong>Information on your device:</strong> kept until you remove it, clear your browser storage, or delete the app.</li>
+    </ul>
+
+    <h2 id="rights">Your rights and choices</h2>
+    <p>Depending on where you live, you can ask to access, correct or delete your personal information, to restrict or object to how we use it, and to receive a copy in a portable format. You can withdraw consent at any time. You can also complain to your local data protection authority; in Spain, that is the Agencia Española de Protección de Datos.</p>
+    <p>To make a request, email <span class="contact-email" aria-label="support at voltago dot app"><span>support</span><span class="email-at" aria-hidden="true"></span><span>voltago.app</span></span>. Because Volta Go has no accounts, tell us what we need to find your information, for example the date and time you used Volta Go, your IP address at that time, or the time you sent feedback. We answer within one month. The <a href="/support#data-requests">Support page</a> explains the steps.</p>
+    <ul>
+      <li>Turn location or notifications off in your iPhone settings, in Android settings, or in your browser's site settings, and search for a place instead.</li>
+      <li>Remove saved chargers, readings and photos in the app, or clear this site's data in your browser. Deleting the iPhone app removes its local data.</li>
+      <li>Disconnect a car in "Your EV". Revoke Smartcar or car-brand access in that provider's account.</li>
+    </ul>
+
+    <h2 id="security">Security</h2>
+    <p>All traffic between the apps and the service uses HTTPS. The service keeps request logs short, keeps vehicle tokens in memory only, and limits requests from each client. No system is completely secure; report a security problem to <span class="contact-email" aria-label="support at voltago dot app"><span>support</span><span class="email-at" aria-hidden="true"></span><span>voltago.app</span></span>.</p>
+
+    <h2 id="children">Children</h2>
+    <p>Volta Go is a tool for drivers. It is not directed at children under 16, and we do not knowingly collect personal information from them. If you think a child has sent us personal information, contact us and we will delete it.</p>
+
+    <h2 id="changes">Changes to this notice</h2>
+    <p>When this notice changes, we publish the new version on this page with a new effective date. If a change materially affects how we use your information, we will also say so in the app or on voltago.app before it takes effect.</p>
   </article>
-  <footer>Volta Go is not affiliated with Tesla or a charging-network operator.</footer>
+  <footer>Volta Go is not affiliated with Tesla or any charging-network operator.</footer>
 </main>
 </body>
 </html>
