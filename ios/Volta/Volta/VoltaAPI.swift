@@ -52,12 +52,17 @@ struct VoltaAPI {
     }
 
     /// The overview plus its raw bytes, which the offline cache stores unchanged.
+    ///
+    /// No `summary=true` here. The summary drops `charge_claim`, `parking_claim`,
+    /// `source_details`, `source_reported_unavailable`, `community` and the evidence fields in
+    /// `sources`. The web app restores those from `/api/station` when Details opens; this app
+    /// has no such fetch and its offline cache replays these bytes, so the native card and
+    /// sheet need the full compact row to keep their source provenance.
     func overviewWithData(maxPrice: Double, bbox: BBox, coords: CLLocationCoordinate2D? = nil) async throws -> (value: ChargersResponse, data: Data) {
         var query: [URLQueryItem] = [
             .init(name: "overview", value: "true"),
             .init(name: "include_leads", value: "true"),
             .init(name: "compact", value: "true"),
-            .init(name: "summary", value: "true"),
             .init(name: "max_price", value: String(maxPrice)),
             .init(name: "bbox", value: bbox.queryValue),
         ]
