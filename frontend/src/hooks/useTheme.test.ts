@@ -15,10 +15,18 @@ function fakeDocument() {
   return { meta, documentElement, querySelector }
 }
 
+/** The body of the one attribute-less inline script in index.html: the pre-paint theme script. */
+function prePaintScript(): string {
+  const open = '<script>'
+  const start = indexHtml.indexOf(open)
+  const end = indexHtml.indexOf('</script>', start)
+  if (start < 0 || end < 0) throw new Error('index.html has no inline pre-paint script')
+  return indexHtml.slice(start + open.length, end)
+}
+
 /** Run the pre-paint script from index.html against a fake browser. */
 function runPrePaint(options: { stored?: string | null; prefersDark?: boolean; storageBlocked?: boolean }) {
-  const script = indexHtml.match(/<script>([\s\S]*?)<\/script>/)?.[1]
-  if (!script) throw new Error('index.html has no inline pre-paint script')
+  const script = prePaintScript()
   const doc = fakeDocument()
   const localStorage = {
     getItem: () => {
