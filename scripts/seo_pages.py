@@ -162,6 +162,7 @@ def _hardware(record: Dict[str, Any]) -> str:
 
 
 STYLE = """
+:root{color-scheme:light dark}
 body{font:16px/1.55 system-ui,-apple-system,sans-serif;margin:0;color:#0e1512;background:#f5f6f4}
 main{max-width:860px;margin:0 auto;padding:24px 16px 48px}
 a{color:#0d6b37}h1{font-size:1.6rem;line-height:1.25;margin:.2em 0 .4em}
@@ -180,6 +181,9 @@ def _page(title: str, description: str, path: str, body: str, json_ld: Optional[
     return (
         '<!doctype html><html lang="es"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
+        # STYLE has light and dark colours. Tell the browser before the CSS arrives, so the UI
+        # it draws itself (scrollbars, the canvas behind the page) uses the same scheme.
+        '<meta name="color-scheme" content="light dark">'
         f"<title>{_e(title)}</title><meta name=\"description\" content=\"{_e(description)}\">"
         f'<link rel="canonical" href="{_e(SITE_URL + path)}"><style>{STYLE}</style>{ld}</head>'
         f"<body><main>{body}"

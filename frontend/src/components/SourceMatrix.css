@@ -4,7 +4,7 @@
   padding: 24px 16px 48px;
   color: var(--fg);
   background: var(--bg);
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .matrix-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }

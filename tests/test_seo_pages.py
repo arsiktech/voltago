@@ -60,6 +60,13 @@ class SeoPagesTests(unittest.TestCase):
         index = sp.SiteIndex([record], None)
         self.assertIn("Gratis según Feníe Energía public map (Gratuitos)", sp.render_station(index, sp.station_digest(record)))
 
+    def test_pages_declare_both_color_schemes_to_the_browser(self) -> None:
+        # The CSS has dark colours; without the declaration the browser keeps its own UI light.
+        index = sp.SiteIndex(city_rows(5), None)
+        for page in (sp.render_index(index), sp.route(index, "/cargadores/atlantis")[2]):
+            self.assertIn('<meta name="color-scheme" content="light dark">', page.split("<style>")[0])
+            self.assertIn(":root{color-scheme:light dark}", page)
+
     def test_a_price_says_when_its_source_was_fetched(self) -> None:
         record = station("d", price=0.51, sources=("MapaREVE public OCPI snapshot",))
         record["sources"][0]["source_fetched_at"] = "2026-10-20T19:38:36Z"
