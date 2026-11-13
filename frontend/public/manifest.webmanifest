@@ -2,6 +2,7 @@
   "name": "Volta Go — explore EV charging",
   "short_name": "Volta Go",
   "description": "Search EV charging worldwide. Source coverage varies by location.",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contracts for the distinct public pages required by TestFlight beta review."""
+"""Contracts for the public Privacy, Terms, Support and Changelog pages linked from the stores."""
 
 from __future__ import annotations
 
@@ -58,17 +58,46 @@ class PublicBetaPageSourceTests(unittest.TestCase):
             self.assertNotIn("<script", html.lower())
 
         self.assertEqual(len(set(pages.values())), 3)
-        self.assertIn("location", pages["privacy"].lower())
-        self.assertIn("search", pages["privacy"].lower())
-        self.assertIn("ip address", pages["privacy"].lower())
-        self.assertIn("retention", pages["privacy"].lower())
-        self.assertNotIn("testflight beta", pages["terms"].lower())
-        self.assertIn("do not use", pages["terms"].lower())
-        self.assertIn("build number", pages["support"].lower())
-        self.assertIn("smartcar", pages["privacy"].lower())
-        self.assertIn("vehicle connection is enabled", pages["privacy"].lower())
-        self.assertIn("saved chargers", pages["privacy"].lower())
-        self.assertNotIn("icloud", pages["privacy"].lower())
+        privacy, terms, support = (pages[name].lower() for name in ("privacy", "terms", "support"))
+        for phrase in (
+            "effective 13 november 2026", "data controller", "arseny ovsyannikov",
+            "location", "search", "ip address", "how long we keep it", "legal basis",
+            "nominatim", "cloudflare", "smartcar", "vehicle connection is enabled",
+            "saved chargers", "children", "push token", "check-ins",
+        ):
+            self.assertIn(phrase, privacy, phrase)
+        self.assertNotIn("icloud", privacy)
+        for phrase in (
+            "effective 13 november 2026", "do not use or interact with the app while driving",
+            "no charging transaction", "verify before relying", "third-party sources",
+            "law of your country of residence applies where it is mandatory",
+        ):
+            self.assertIn(phrase, terms, phrase)
+        for phrase in ("build number", "report a wrong charger", "privacy request", "no account to delete"):
+            self.assertIn(phrase, support, phrase)
+
+    def test_public_pages_describe_the_release_not_a_beta(self) -> None:
+        for route in ("privacy", "terms", "support", "changelog"):
+            html = (PUBLIC / route / "index.html").read_text(encoding="utf-8")
+            text = re.sub(r"<[^>]+>", " ", html)
+            self.assertIsNone(re.search(r"\bbeta\b", text, re.I), route)
+            self.assertNotIn("testflight", text.lower(), route)
+            self.assertNotIn("—", text, route)
+            self.assertIn('<link rel="stylesheet" href="/legal.css">', html, route)
+            self.assertIn('name="color-scheme" content="light dark"', html, route)
+            for target in ("privacy", "terms", "support", "changelog"):
+                self.assertIn(f'href="/{target}"', html, f"{route} -> {target}")
+            self.assertIn(f'href="/{route}" aria-current="page"', html, route)
+
+    def test_changelog_lists_dated_entries_newest_first(self) -> None:
+        html = (PUBLIC / "changelog" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("<script", html.lower())
+        dates = re.findall(r'<time datetime="(\d{4}-\d{2}-\d{2})">', html)
+        self.assertGreaterEqual(len(dates), 2)
+        self.assertEqual(dates, sorted(dates, reverse=True))
+        entries = re.findall(r"<li>", html)
+        self.assertGreaterEqual(len(entries), 6)
+        self.assertLessEqual(len(entries), 10)
 
     def test_support_address_matches_the_constant_everywhere(self) -> None:
         email, _, domain = support_email()
@@ -92,7 +121,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             (root / "index.html").write_text("SPA SHELL", encoding="utf-8")
-            for route in ("privacy", "terms", "support"):
+            for route in ("privacy", "terms", "support", "changelog"):
                 page_dir = root / route
                 page_dir.mkdir()
                 (page_dir / "index.html").write_text(f"PAGE {route}", encoding="utf-8")
@@ -103,7 +132,7 @@ class PublicBetaPageServingTests(unittest.TestCase):
                 thread.start()
                 try:
                     base = f"http://127.0.0.1:{httpd.server_port}"
-                    for route in ("privacy", "terms", "support"):
+                    for route in ("privacy", "terms", "support", "changelog"):
                         with urllib.request.urlopen(f"{base}/{route}", timeout=3) as response:
                             self.assertEqual(response.status, 200)
                             self.assertEqual(response.headers.get_content_type(), "text/html")

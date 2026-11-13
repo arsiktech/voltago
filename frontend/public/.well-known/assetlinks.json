@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "tech.arsik.volta",
+      "sha256_cert_fingerprints": [
+        "5B:90:7D:DF:AD:2A:57:48:D5:B1:B6:25:12:AB:04:53:4D:5A:CA:18:AD:0E:6D:25:2F:8B:90:E2:D1:D5:8D:68"
+      ]
+    }
+  }
+]

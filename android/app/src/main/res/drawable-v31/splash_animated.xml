@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ launch animation, about one second: the bolt outline draws in like a charge,
+     the fill floods in with a small overshoot, the glow swells and one pulse ring rolls out.
+     The last frame equals drawable/splash_mark, which Chrome keeps on screen until first paint. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt">
+
+    <aapt:attr name="android:drawable">
+        <vector
+            android:width="288dp"
+            android:height="288dp"
+            android:viewportWidth="288"
+            android:viewportHeight="288">
+
+            <group
+                android:name="halo"
+                android:pivotX="144"
+                android:pivotY="144"
+                android:scaleX="0.4"
+                android:scaleY="0.4">
+                <path
+                    android:name="halo_fill"
+                    android:fillAlpha="0"
+                    android:pathData="M48,144 a96,96 0 1,0 192,0 a96,96 0 1,0 -192,0">
+                    <aapt:attr name="android:fillColor">
+                        <gradient
+                            android:type="radial"
+                            android:centerX="144"
+                            android:centerY="144"
+                            android:gradientRadius="96"
+                            android:startColor="@color/volta_halo"
+                            android:endColor="@color/volta_halo_edge" />
+                    </aapt:attr>
+                </path>
+            </group>
+
+            <group
+                android:name="ring"
+                android:pivotX="144"
+                android:pivotY="144">
+                <path
+                    android:name="ring_stroke"
+                    android:pathData="M74,144 a70,70 0 1,0 140,0 a70,70 0 1,0 -140,0"
+                    android:strokeAlpha="0"
+                    android:strokeColor="@color/volta_bolt_top"
+                    android:strokeWidth="3" />
+            </group>
+
+            <group
+                android:translateX="21.12"
+                android:translateY="22.56"
+                android:scaleX="0.24"
+                android:scaleY="0.24">
+                <group
+                    android:name="bolt"
+                    android:pivotX="512"
+                    android:pivotY="506"
+                    android:scaleX="0.82"
+                    android:scaleY="0.82">
+                    <path
+                        android:name="bolt_fill"
+                        android:fillAlpha="0"
+                        android:pathData="@string/volta_bolt_path">
+                        <aapt:attr name="android:fillColor">
+                            <gradient
+                                android:type="linear"
+                                android:startX="417"
+                                android:startY="173"
+                                android:endX="607"
+                                android:endY="838"
+                                android:startColor="@color/volta_bolt_top"
+                                android:endColor="@color/volta_bolt_bottom" />
+                        </aapt:attr>
+                    </path>
+                    <path
+                        android:name="bolt_outline"
+                        android:pathData="@string/volta_bolt_path"
+                        android:strokeColor="@color/volta_bolt_outline"
+                        android:strokeLineJoin="round"
+                        android:strokeWidth="14"
+                        android:trimPathEnd="0" />
+                </group>
+            </group>
+        </vector>
+    </aapt:attr>
+
+    <target android:name="bolt_outline">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="450"
+                android:interpolator="@android:interpolator/fast_out_slow_in"
+                android:propertyName="trimPathEnd"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+
+    <target android:name="bolt_fill">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="350"
+                android:interpolator="@android:interpolator/linear_out_slow_in"
+                android:propertyName="fillAlpha"
+                android:startOffset="300"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+
+    <target android:name="bolt">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="450"
+                    android:interpolator="@android:interpolator/overshoot"
+                    android:propertyName="scaleX"
+                    android:startOffset="250"
+                    android:valueFrom="0.82"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="450"
+                    android:interpolator="@android:interpolator/overshoot"
+                    android:propertyName="scaleY"
+                    android:startOffset="250"
+                    android:valueFrom="0.82"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="halo">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="650"
+                    android:interpolator="@android:interpolator/decelerate_cubic"
+                    android:propertyName="scaleX"
+                    android:startOffset="200"
+                    android:valueFrom="0.4"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="650"
+                    android:interpolator="@android:interpolator/decelerate_cubic"
+                    android:propertyName="scaleY"
+                    android:startOffset="200"
+                    android:valueFrom="0.4"
+                    android:valueTo="1"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="halo_fill">
+        <aapt:attr name="android:animation">
+            <objectAnimator
+                android:duration="500"
+                android:propertyName="fillAlpha"
+                android:startOffset="200"
+                android:valueFrom="0"
+                android:valueTo="1"
+                android:valueType="floatType" />
+        </aapt:attr>
+    </target>
+
+    <target android:name="ring">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="400"
+                    android:interpolator="@android:interpolator/decelerate_quad"
+                    android:propertyName="scaleX"
+                    android:startOffset="600"
+                    android:valueFrom="0.8"
+                    android:valueTo="1.3"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="400"
+                    android:interpolator="@android:interpolator/decelerate_quad"
+                    android:propertyName="scaleY"
+                    android:startOffset="600"
+                    android:valueFrom="0.8"
+                    android:valueTo="1.3"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+
+    <target android:name="ring_stroke">
+        <aapt:attr name="android:animation">
+            <set>
+                <objectAnimator
+                    android:duration="60"
+                    android:propertyName="strokeAlpha"
+                    android:startOffset="600"
+                    android:valueFrom="0"
+                    android:valueTo="0.9"
+                    android:valueType="floatType" />
+                <objectAnimator
+                    android:duration="340"
+                    android:propertyName="strokeAlpha"
+                    android:startOffset="660"
+                    android:valueFrom="0.9"
+                    android:valueTo="0"
+                    android:valueType="floatType" />
+            </set>
+        </aapt:attr>
+    </target>
+</animated-vector>

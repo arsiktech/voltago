@@ -1,0 +1,11 @@
+[versions]
+agp = "9.5.1"
+androidbrowserhelper = "2.7.4"
+locationdelegation = "1.1.2"
+
+[libraries]
+androidbrowserhelper = { module = "com.google.androidbrowserhelper:androidbrowserhelper", version.ref = "androidbrowserhelper" }
+locationdelegation = { module = "com.google.androidbrowserhelper:locationdelegation", version.ref = "locationdelegation" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }

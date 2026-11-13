@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Volta Go bolt in a 1024-unit square, copied from frontend/public/volta-icon.svg.
+         Its centre is (512, 506). Every bolt drawable in this app draws this one path. -->
+    <string name="volta_bolt_path" translatable="false">M274.73,532.97 L588.42,173.31 A30,30 0 0 1 639.66,201.99 L573.71,412.84 A16,16 0 0 0 588.37,433.60 L727.80,438.90 A30,30 0 0 1 749.27,488.59 L443.93,838.69 A30,30 0 0 1 392.69,810.01 L455.58,608.93 A16,16 0 0 0 440.92,588.16 L296.20,582.67 A30,30 0 0 1 274.73,532.97 Z</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ always shows a system splash on cold start. It plays the charging bolt,
+         and Chrome's splash (drawable/splash_mark) continues from its final frame. -->
+    <style name="Theme.Volta.Launcher" parent="Base.Theme.Volta.Launcher">
+        <item name="android:windowSplashScreenBackground">@color/volta_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_animated</item>
+        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+    </style>
+</resources>

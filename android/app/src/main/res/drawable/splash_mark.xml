@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chrome's splash image: the final frame of splash_animated, at the same size and position.
+     Everything stays inside the 192 dp circle the Android 12+ splash keeps visible. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+
+    <path android:pathData="M48,144 a96,96 0 1,0 192,0 a96,96 0 1,0 -192,0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="144"
+                android:centerY="144"
+                android:gradientRadius="96"
+                android:startColor="@color/volta_halo"
+                android:endColor="@color/volta_halo_edge" />
+        </aapt:attr>
+    </path>
+
+    <!-- 1024-unit bolt scaled by 0.24 and centred: 144 - 512 * 0.24 = 21.12, 144 - 506 * 0.24 = 22.56. -->
+    <group
+        android:translateX="21.12"
+        android:translateY="22.56"
+        android:scaleX="0.24"
+        android:scaleY="0.24">
+        <path
+            android:pathData="@string/volta_bolt_path"
+            android:strokeColor="@color/volta_bolt_outline"
+            android:strokeWidth="14"
+            android:strokeLineJoin="round">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="417"
+                    android:startY="173"
+                    android:endX="607"
+                    android:endY="838"
+                    android:startColor="@color/volta_bolt_top"
+                    android:endColor="@color/volta_bolt_bottom" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>
