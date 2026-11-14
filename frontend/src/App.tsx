@@ -43,6 +43,7 @@ import { AgentConnection } from './components/AgentConnection'
 import { EmptyStateVisual } from './components/VisualMoment'
 import { VehicleControl } from './components/VehicleControl'
 import { FeedbackButton } from './components/FeedbackButton'
+import { LegalLinks } from './components/LegalLinks'
 import type { FlyTarget } from './components/MapView'
 import {
   countSwap,
@@ -319,6 +320,7 @@ function DataHonestyDisclosure() {
             <ChevronDown size={15} aria-hidden="true" />
           </motion.span>
         </motion.button>
+        <LegalLinks />
       </div>
       <AnimatePresence initial={false}>
         {open && (

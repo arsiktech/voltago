@@ -142,7 +142,7 @@ in step with the tokens below.
 - **Results panel structure (web):** search and quick filters stay pinned at the top;
   everything below is one scroller. The result count and refresh are a sticky heading,
   while status notes and banners scroll with the cards. The Data honesty footer stays
-  pinned below the list. Give
+  pinned below the list, and carries the quieter Privacy, Terms and Support links. Give
   the space to results, not fixed chrome. The marketing headline shows only before the
   driver has chosen a place.
 - **Mobile sheet (web):** a List/Map button in the pinned results heading switches
