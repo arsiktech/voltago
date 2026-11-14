@@ -79,10 +79,33 @@ console.log(JSON.stringify([
         source = (FRONTEND / "public" / "sw.js").read_text(encoding="utf-8")
 
         self.assertIn("function isCacheableShellNavigation", source)
-        self.assertIn("url.pathname.startsWith('/api/')", source)
         self.assertIn("contentType.includes('text/html')", source)
         self.assertIn("if (isCacheableShellNavigation(request, response) && cache)", source)
         self.assertNotIn("if (response.ok && cache) {\n      const navigationKey", source)
+
+    def test_static_pages_cannot_replace_the_offline_app(self):
+        """The app links to /privacy, /terms and /support. Opening one online must not make
+        the next offline launch show that page instead of the map."""
+        script = r"""
+const fs = require('node:fs');
+const vm = require('node:vm');
+const origin = 'https://volta.test';
+const scope = { URL, Request, self: { location: { origin }, addEventListener() {} } };
+vm.createContext(scope);
+vm.runInContext(fs.readFileSync('frontend/public/sw.js', 'utf8') + '\nthis.cacheable = isCacheableShellNavigation;', scope);
+const html = { ok: true, headers: new Map([['content-type', 'text/html; charset=utf-8']]) };
+const check = (path) => scope.cacheable({ url: origin + path, mode: 'navigate' }, html);
+const paths = ['/', '/?x=1', '/matrix', '/matrix/', '/privacy', '/terms', '/support',
+  '/changelog', '/coverage/', '/api/health', '//'];
+console.log(JSON.stringify(Object.fromEntries(paths.map((path) => [path, check(path)]))));
+"""
+        result = subprocess.run(["node", "-e", script], cwd=ROOT, capture_output=True, text=True,
+                                check=True, timeout=10)
+        self.assertEqual(json.loads(result.stdout), {
+            "/": True, "/?x=1": True, "/matrix": True, "/matrix/": True,
+            "/privacy": False, "/terms": False, "/support": False, "/changelog": False,
+            "/coverage/": False, "/api/health": False, "//": True,
+        })
 
     def test_first_online_visit_precaches_the_complete_build_and_default_overview(self):
         vite = (FRONTEND / "vite.config.ts").read_text(encoding="utf-8")
