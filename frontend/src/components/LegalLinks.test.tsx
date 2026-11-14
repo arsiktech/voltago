@@ -25,8 +25,8 @@ describe('in-app Privacy, Terms and Support links', () => {
     expect(markup).not.toContain('target=')
     expect(markup).not.toContain('rel=')
     for (const link of LEGAL_LINKS) expect(link.href).toMatch(/^\/[a-z]+$/)
-    // Phone tap target: at least 44 px high.
-    expect(markup.match(/min-h-11/g)).toHaveLength(LEGAL_LINKS.length)
+    // Tap target: at least 44 px high and wide, as qa_web_design_audit.js requires.
+    expect(markup.match(/min-h-11 min-w-11/g)).toHaveLength(LEGAL_LINKS.length)
   })
 
   it('sits in the pinned footer, so it is one tap from the first screen', () => {
