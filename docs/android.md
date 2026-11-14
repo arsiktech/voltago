@@ -28,7 +28,7 @@ Play App Signing is used. Two certificates matter, and `assetlinks.json` must li
 | Certificate | Who holds the key | Where to find the SHA-256 | In `assetlinks.json` |
 | --- | --- | --- | --- |
 | Upload key | The owner, outside this repository | `keytool -list -v` on the upload keystore | Yes, since 13 Nov 2026 |
-| App signing key | Google Play | Play Console > Test and release > App integrity > App signing | Not yet: add it after the first upload |
+| App signing key | Google Play | Play Console > Test and release > App integrity > App signing (`.../keymanagement`) | Yes, since 14 Nov 2026 |
 
 Apps installed from Play are signed with Google's app-signing key, so until that fingerprint is in
 the file and deployed, Play installs open with Chrome's address bar and without location delegation.
