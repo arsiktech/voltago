@@ -234,6 +234,12 @@ using synthetic responses. Set `VOLTA_LIVE_QA_OUT` to retain screenshots.
 - `button[aria-controls="data-honesty-panel"]` `Data honesty`, with `aria-expanded`. It is
   pinned below the result scroller, never after the last card: focusing an item at the end
   of the virtual list would scroll past every result.
+- `nav[aria-label="Legal and support"]` follows Data honesty in the same footer row, with
+  plain same-origin links `Privacy` (`/privacy`), `Terms` (`/terms`) and `Support`
+  (`/support`). No `target`: the Android Trusted Web Activity keeps them in the app, and
+  each page's `Volta Go` link returns to the map. On a phone they share the second footer
+  row with Data honesty; on a desktop they take their own row. Google Play requires the
+  privacy policy to be reachable inside the app.
 
 ## Map extras
 

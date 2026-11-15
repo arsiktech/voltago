@@ -16,6 +16,9 @@ const SHELL_URLS = [
   '/brand/volta-icon.png',
 ]
 const OFFLINE_WARNING = 'Offline — showing previously cached source-backed leads. Nothing is live.'
+// Paths the server answers with the app itself. Static pages such as /privacy or
+// /coverage/ are HTML too, but must never replace the offline app.
+const APP_SHELL_PATHS = new Set(['/', '/matrix'])
 
 async function putBestEffort(cache, key, response) {
   try {
@@ -206,7 +209,7 @@ function isCacheableShellNavigation(request, response) {
   return (
     request.mode === 'navigate' &&
     url.origin === self.location.origin &&
-    !url.pathname.startsWith('/api/') &&
+    APP_SHELL_PATHS.has(url.pathname.replace(/(.)\/+$/, '$1')) &&
     response.ok &&
     contentType.includes('text/html')
   )
