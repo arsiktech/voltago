@@ -779,6 +779,27 @@ export function statusTrustSummary(args: {
 }
 
 /**
+ * Shown totals for the results heading and leads badge.
+ * A missing response is not zero. Zero means that read succeeded and was empty.
+ */
+export function resultReadout(args: {
+  data?: ChargersResponse
+  shown: number
+  scopeLabel: string
+  overview: boolean
+  badge: string
+}): { heading: string | null; badge: string | null; headingCount: number | null; scope: string } {
+  const scope = args.overview ? args.scopeLabel : 'nearby'
+  if (args.data == null) return { heading: null, badge: null, headingCount: null, scope }
+  return {
+    heading: `${args.shown} ${scope}`,
+    badge: args.badge,
+    headingCount: args.shown,
+    scope,
+  }
+}
+
+/**
  * Time-of-use tariff info — only when the station has GENUINE time-bound pricing
  * (a window with valid_from/valid_until/days). A flat always-on price returns null:
  * showing a clock chip for it would imply a schedule that doesn't exist.
