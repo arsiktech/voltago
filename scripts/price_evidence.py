@@ -624,7 +624,9 @@ class Collector:
         grid = defaultdict(list)
         for row in rows:
             if in_spain(row):
-                grid[(math.floor(row['lat'] * 200), math.floor(row['lon'] * 200))].append(row)
+                lat_val, lon_val = number(row.get('lat')), number(row.get('lon'))
+                if lat_val is not None and lon_val is not None:
+                    grid[(math.floor(lat_val * 200), math.floor(lon_val * 200))].append(row)
 
         def nearby(candidate):
             gx, gy = math.floor(candidate['lat'] * 200), math.floor(candidate['lon'] * 200)
@@ -642,7 +644,8 @@ class Collector:
             values, _, list_stale = self.cached(source + '_tile_' + str(tile_index), url, source, 'list', lambda body: list_rows(json.loads(body), source))
             for candidate in values or []:
                 key = candidate.get('id')
-                if not key or not (s <= (candidate.get('lat') or -90) <= n and w <= (candidate.get('lon') or -180) <= e):
+                clat, clon = candidate.get('lat'), candidate.get('lon')
+                if not key or clat is None or clon is None or not (s <= clat <= n and w <= clon <= e):
                     continue
                 if key in candidates and distance(candidates[key][0], candidate) > 1:
                     collisions.add(key)

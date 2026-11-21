@@ -20,9 +20,11 @@ import secrets
 import sqlite3
 import threading
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
+import math
 
 ROOT = Path(__file__).resolve().parent
 _DB_PATH = Path(os.environ.get("VOLTA_COMMUNITY_DB", str(ROOT / "data" / "community.db")))
@@ -77,6 +79,7 @@ def configure(db_path: Optional[Path] = None, photos_dir: Optional[Path] = None)
     with _lock:
         _summary_cache["ts"] = 0.0
         _summary_cache["data"] = None
+        _summary_cache["gen"] += 1
 
 
 def now_iso() -> str:
@@ -98,11 +101,15 @@ def _parse_iso(value: Any) -> Optional[datetime]:
 def _connect() -> sqlite3.Connection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH), timeout=5.0)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    _migrate(conn)
-    return conn
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _migrate(conn)
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -326,9 +333,13 @@ def record_suggestion(
     clean_name = _clean_text(name, NAME_MAX)
     if len(clean_name) < 3:
         raise CommunityError(400, "bad_name", "Give the point a name of at least 3 characters.")
+    if isinstance(lat, bool) or isinstance(lon, bool):
+        raise CommunityError(400, "bad_coordinates", "lat and lon must be numbers.")
     try:
         lat_f, lon_f = float(lat), float(lon)
     except (TypeError, ValueError):
+        raise CommunityError(400, "bad_coordinates", "lat and lon must be numbers.")
+    if not (math.isfinite(lat_f) and math.isfinite(lon_f)):
         raise CommunityError(400, "bad_coordinates", "lat and lon must be numbers.")
     south, west, north, east = SPAIN_BBOX
     if not (south <= lat_f <= north and west <= lon_f <= east):
@@ -351,6 +362,8 @@ def record_suggestion(
 
 def moderate(kind: str, item_id: Any, action: str) -> Dict[str, Any]:
     """Owner moderation (server gates this behind VOLTA_ADMIN_TOKEN)."""
+    if isinstance(item_id, bool):
+        raise CommunityError(400, "bad_id", "id must be an integer.")
     try:
         item_int = int(item_id)
     except (TypeError, ValueError):
@@ -492,7 +505,7 @@ def apply_community_evidence(item: Dict[str, Any], summary: Optional[Dict[str, A
     """
     if not summary:
         return item
-    item["community"] = summary
+    item["community"] = deepcopy(summary)
     decision = item.get("decision") or {}
     if (
         summary.get("recent_failure")

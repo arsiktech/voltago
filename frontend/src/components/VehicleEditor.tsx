@@ -13,19 +13,32 @@ export function VehicleEditor({ vehicle, onDone }: { vehicle: Vehicle | null; on
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const form = new FormData(event.currentTarget)
-    const number = (key: string) => form.get(key)?.toString().trim() ? Number(form.get(key)) : null
-    const capacity = number('capacity')
-    const batteryPercent = number('battery')
+    const parseNumber = (key: string, min: number, max: number): { value: number | null; invalid: boolean } => {
+      const raw = form.get(key)?.toString().trim() ?? ''
+      if (!raw) return { value: null, invalid: false }
+      const n = Number(raw)
+      if (!Number.isFinite(n) || n < min || n > max) return { value: null, invalid: true }
+      return { value: n, invalid: false }
+    }
+    const battery = parseNumber('battery', 0, 100)
+    const range = parseNumber('range', 0, 1500)
+    const capacity = parseNumber('capacity', 1, 300)
+    const ac = parseNumber('ac', 0.1, 100)
+    const dc = parseNumber('dc', 0.1, 1000)
+    if ((!live && (battery.invalid || range.invalid)) || capacity.invalid || ac.invalid || dc.invalid) {
+      setError('Enter valid numeric values within the supported ranges.')
+      return
+    }
     const spec: VehicleSpecs = {
-      batteryCapacityKwh: capacity, maxAcKw: number('ac'), maxDcKw: number('dc'),
+      batteryCapacityKwh: capacity.value, maxAcKw: ac.value, maxDcKw: dc.value,
       connectors: connectors as VehicleConnector[],
     }
-    if (!live && batteryPercent === null) { setError('Enter your current battery percentage.'); return }
+    if (!live && battery.value === null) { setError('Enter your current battery percentage.'); return }
     if (live && vehicle) garage.saveSpecs(vehicle.id, spec)
     else garage.saveManual({
       id: 'manual', make: null, model: String(form.get('name') || '').trim() || 'My EV', year: null,
-      batteryPercent, rangeKm: number('range'), batteryCapacityKwh: capacity,
-      usableEnergyKwh: capacity !== null && batteryPercent !== null ? capacity * batteryPercent / 100 : null,
+      batteryPercent: battery.value, rangeKm: range.value, batteryCapacityKwh: capacity.value,
+      usableEnergyKwh: capacity.value !== null && battery.value !== null ? capacity.value * battery.value / 100 : null,
       chargePowerKw: null, chargingState: null,
       maxAcKw: spec.maxAcKw, maxDcKw: spec.maxDcKw, connectors,
       source: { provider: 'You', mode: 'manual' }, observedAt: new Date().toISOString(),

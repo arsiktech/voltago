@@ -399,7 +399,7 @@ plutil -extract UISupportedInterfaceOrientations json -o - "$APP/Info.plist"
 plutil -p "$APP/Info.plist" | rg 'NSAppTransportSecurity|NSAllowsArbitraryLoads|NSLocalNetworkUsageDescription'
 find "$APP" -path '*.lproj/InfoPlist.strings' -print -exec plutil -p {} \;
 find "$APP" -name '*.storekit' -o -name '*UITest*' -o -name '*TestHarness*'
-strings "$APP/Volta" | rg 'VoltaUITest|VoltaPaywallDebugState|127\.0\.0\.1|100\.84\.44\.96|NSAllowsArbitraryLoads'
+strings "$APP/Volta" | rg 'VoltaUITest|VoltaPaywallDebugState|127\.0\.0\.1|100\.64\.|NSAllowsArbitraryLoads'
 
 [ "$(plutil -extract CFBundleShortVersionString raw "$APP/Info.plist")" = "$RELEASE_VERSION" ]
 [ "$(plutil -extract CFBundleVersion raw "$APP/Info.plist")" = "$RELEASE_BUILD" ]

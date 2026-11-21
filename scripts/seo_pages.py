@@ -36,6 +36,8 @@ def slugify(text: Any) -> str:
 def source_families(record: Dict[str, Any]) -> List[str]:
     names = []
     for source in record.get("sources") or []:
+        if not isinstance(source, dict):
+            continue
         name = str(source.get("name") or "").split(" (")[0].strip()
         if name and name not in names:
             names.append(name)
@@ -58,7 +60,8 @@ def station_slug(record: Dict[str, Any]) -> str:
 
 def in_spain(record: Dict[str, Any]) -> bool:
     """Spanish pages only: an explicit other country, or a point outside Spain, is skipped."""
-    raw = record.get("raw") or {}
+    raw = record.get("raw")
+    raw = raw if isinstance(raw, dict) else {}
     country = str(record.get("country_code") or record.get("country") or raw.get("country_code") or "").upper()
     if country and country not in {"ES", "ESP"}:
         return False
@@ -255,8 +258,9 @@ def render_station(index: SiteIndex, digest: str) -> Optional[str]:
         evidence = f"<details><summary>Detalle de la fuente (en inglés)</summary>{_e(source.get('evidence'))}</details>" \
             if source.get("evidence") else ""
         sources.append(f"<li>{link}<span class=\"muted\">{attribution}{licence}{fetched}</span>{evidence}</li>")
-    directions = ((record.get("navigation") or {}).get("google")
-                  or f"https://www.google.com/maps/search/?api=1&query={record['lat']:.6f},{record['lon']:.6f}")
+    raw_directions = str((record.get("navigation") or {}).get("google") or "")
+    directions = (raw_directions if raw_directions.startswith("https://")
+                  else f"https://www.google.com/maps/search/?api=1&query={record['lat']:.6f},{record['lon']:.6f}")
     body = (f"<p class=\"muted\">{city_html}</p><h1>{_e(name)}</h1>"
             f"<p>{_e(record.get('address') or '')}</p>"
             f'<div class="card"><p><strong>Precio:</strong> {_e(price_text(record))}</p>'

@@ -92,7 +92,7 @@
 .ev-privacy p { font-size: 11px; line-height: 1.6; }
 .ev-notice { padding: 12px 14px; border: 1px solid var(--border-strong); border-radius: 12px; color: var(--fg-soft);
   font-size: 12px; line-height: 1.6; margin: 12px 0; }
-.ev-editor, .vehicle-editor { display: flex; flex-direction: column; gap: 16px; }
+.vehicle-editor { display: flex; flex-direction: column; gap: 16px; }
 .ev-back { align-self: flex-start; }
 .vehicle-editor h3 { font-size: 21px; font-weight: 700; }
 .vehicle-editor label { display: flex; flex-direction: column; gap: 8px; font-size: 12px; font-weight: 600; }

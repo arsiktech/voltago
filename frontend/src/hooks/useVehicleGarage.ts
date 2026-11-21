@@ -44,9 +44,10 @@ export function useGarageState() {
   const vehicle = vehicles.find((item) => item.id === selectedId) || vehicles[0] || null
 
   useEffect(() => {
+    if (vehicles.length === 0) return
     const timer = setInterval(() => setNow(Date.now()), 30000)
     return () => clearInterval(timer)
-  }, [])
+  }, [vehicles.length])
 
   const refresh = useCallback(async () => {
     if (refreshing.current) return

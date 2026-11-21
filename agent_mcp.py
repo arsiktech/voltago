@@ -41,8 +41,6 @@ MAX_BODY_BYTES = 65_536
 MODERN_VERSIONS = ("2026-07-28",)
 LEGACY_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 SUPPORTED_VERSIONS = MODERN_VERSIONS + LEGACY_VERSIONS
-# Streamable HTTP clients older than 2025-06-18 send no version header.
-LEGACY_HEADERLESS_VERSION = "2025-03-26"
 
 META_VERSION = "io.modelcontextprotocol/protocolVersion"
 META_CAPABILITIES = "io.modelcontextprotocol/clientCapabilities"
@@ -58,20 +56,17 @@ UNSUPPORTED_VERSION = -32022
 
 CONNECTOR_TYPES = ("Type 2", "CCS2", "Type 1", "CCS1", "NACS", "GB/T AC", "GB/T DC", "CHAdeMO", "Tesla", "Schuko")
 _CONNECTOR_ALIASES = {
-    "ccs1": "ccs1", "ccs combo 1": "ccs1", "combo 1": "ccs1",
+    "ccs1": "ccs1", "ccs combo 1": "ccs1", "combo 1": "ccs1", "ccs type 1": "ccs1",
+    "ccs2": "ccs2", "ccs combo 2": "ccs2", "combo 2": "ccs2", "ccs type 2": "ccs2",
+    "tesla ccs": "tesla", "supercharger": "tesla", "tesla": "tesla",
+    "ccs": "ccs2",
     "type 1": "type 1", "type1": "type 1", "j1772": "type 1",
     "nacs": "nacs", "j3400": "nacs",
     "gb/t ac": "gb/t ac", "gb/t dc": "gb/t dc", "gbt ac": "gb/t ac", "gbt dc": "gb/t dc",
     "type 2": "type 2",
     "type2": "type 2",
     "mennekes": "type 2",
-    "ccs2": "ccs2",
-    "ccs": "ccs2",
-    "ccs combo 2": "ccs2",
     "chademo": "chademo",
-    "tesla": "tesla",
-    "tesla ccs": "tesla",
-    "supercharger": "tesla",
     "schuko": "schuko",
 }
 PRICE_ANY = 5.0  # the clients' broad-discovery sentinel: unknown tariffs stay in
@@ -787,48 +782,52 @@ _STATUS_LOCK = threading.Lock()
 
 def get_data_status(args: Mapping[str, Any], backend: Any) -> Dict[str, Any]:
     _reject_unknown(args, "get_data_status")
+    now = time.monotonic()
     with _STATUS_LOCK:
-        cached = _STATUS_CACHE["value"]
-        if cached is None or time.time() - _STATUS_CACHE["ts"] > STATUS_CACHE_SECONDS:
-            health = backend.source_health_summary()
-            intel = health.get("intelligence") or {}
-            live_cache = health.get("live_cache") or {}
-            cached = {
-                "scope": "worldwide directory coverage; regional live feeds in Spain",
-                "dataset": {
-                    "built_at": intel.get("generated_at"),
-                    "records": intel.get("total_records"),
-                    "deduplicated_chargers": intel.get("deduped_leads"),
-                    "map_eligible": intel.get("map_eligible_records"),
-                    "by_evidence_tier": {tier: row.get("total") for tier, row in (intel.get("by_tier") or {}).items()},
-                    "top_sources": dict(list((intel.get("by_source") or {}).items())[:12]),
-                    "by_country": intel.get("by_country") or {},
-                    "source_manifest": health.get("source_manifest") or {},
-                },
-                "live_sources": {
-                    name: {
-                        **{k: info.get(k) for k in ("name", "status", "policy") if k in info},
-                        "has_payload": info.get("has_payload") is True,
-                        "age_seconds": info.get("age_seconds"),
-                        "fresh": info.get("fresh") is True,
-                        "stale": info.get("stale") is True,
-                        "error": info.get("error"),
-                    }
-                    for name, info in live_cache.items()
-                    if isinstance(info, dict)
-                },
-                "policy": (health.get("policy") or {}).get("summary"),
-                "decision_levels": {
-                    "go": "Live data: free or cheap, compatible and available now.",
-                    "check": "Promising, but one live fact needs confirming (price window, parking, stale feed).",
-                    "verify": "Good non-live evidence; confirm before driving.",
-                    "lead": "Known charger; price or status unconfirmed.",
-                    "avoid": "Do not route here (out of service or incompatible).",
-                },
-                "evidence_levels": ["live", "official", "official-lead", "directory", "community", "unverified"],
-            }
-            _STATUS_CACHE.update({"ts": time.time(), "value": cached})
-    result = dict(cached, as_of=backend.now_iso())
+        cached = _STATUS_CACHE["value"] if _STATUS_CACHE.get("backend") is backend else None
+        fresh = cached is not None and now - _STATUS_CACHE["ts"] <= STATUS_CACHE_SECONDS
+    if not fresh:
+        health = backend.source_health_summary()
+        intel = health.get("intelligence") or {}
+        live_cache = health.get("live_cache") or {}
+        cached = {
+            "scope": "worldwide directory coverage; regional live feeds in Spain",
+            "dataset": {
+                "built_at": intel.get("generated_at"),
+                "records": intel.get("total_records"),
+                "deduplicated_chargers": intel.get("deduped_leads"),
+                "map_eligible": intel.get("map_eligible_records"),
+                "by_evidence_tier": {tier: row.get("total") for tier, row in (intel.get("by_tier") or {}).items()},
+                "top_sources": dict(list((intel.get("by_source") or {}).items())[:12]),
+                "by_country": intel.get("by_country") or {},
+                "source_manifest": health.get("source_manifest") or {},
+            },
+            "live_sources": {
+                name: {
+                    **{k: info.get(k) for k in ("name", "status", "policy") if k in info},
+                    "has_payload": info.get("has_payload") is True,
+                    "age_seconds": info.get("age_seconds"),
+                    "fresh": info.get("fresh") is True,
+                    "stale": info.get("stale") is True,
+                    "error": info.get("error"),
+                }
+                for name, info in live_cache.items()
+                if isinstance(info, dict)
+            },
+            "policy": (health.get("policy") or {}).get("summary"),
+            "decision_levels": {
+                "go": "Live data: free or cheap, compatible and available now.",
+                "check": "Promising, but one live fact needs confirming (price window, parking, stale feed).",
+                "verify": "Good non-live evidence; confirm before driving.",
+                "lead": "Known charger; price or status unconfirmed.",
+                "avoid": "Do not route here (out of service or incompatible).",
+            },
+            "evidence_levels": ["live", "official", "official-lead", "directory", "community", "unverified"],
+        }
+        with _STATUS_LOCK:
+            _STATUS_CACHE.update({"ts": time.monotonic(), "value": cached, "backend": backend})
+    result = deepcopy(cached)
+    result["as_of"] = backend.now_iso()
     dataset = result["dataset"]
     text = (
         f"Volta Go covers {result['scope']}. Dataset built {dataset.get('built_at')}: "
@@ -866,7 +865,17 @@ def origin_allowed(origin: Optional[str], extra_allowed: Tuple[str, ...] = ()) -
     origin = origin.strip()
     if origin in extra_allowed:
         return True
-    parsed = urllib.parse.urlsplit(origin)
+    if any(ord(ch) <= 32 for ch in origin) or "\\" in origin:
+        return False
+    try:
+        parsed = urllib.parse.urlsplit(origin)
+        port = parsed.port
+    except ValueError:
+        return False
+    if parsed.username is not None or parsed.password is not None or parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
+        return False
+    if port is not None and not 1 <= port <= 65535:
+        return False
     if parsed.scheme == "https" and parsed.hostname:
         return True
     return parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
@@ -899,7 +908,8 @@ def _server_info() -> Dict[str, str]:
 
 def _call_tool(params: Mapping[str, Any], backend: Any, rate_limit: Callable[[], Tuple[bool, float]], modern: bool) -> Dict[str, Any]:
     name = str(params.get("name"))
-    arguments = params.get("arguments") or {}
+    raw_arguments = params.get("arguments")
+    arguments = {} if raw_arguments is None else raw_arguments
     if not isinstance(arguments, dict):
         raise ToolInputError("`arguments` must be an object.")
     allowed, retry_after = rate_limit()
@@ -942,7 +952,8 @@ def handle_message(
     method = message["method"]
     request_id = message.get("id")
     is_notification = "id" not in message
-    params = message.get("params") or {}
+    raw_params = message.get("params")
+    params = {} if raw_params is None else raw_params
     if not isinstance(params, dict):
         return 400, _error(request_id, INVALID_PARAMS, "`params` must be an object.")
     raw_meta = params.get("_meta")

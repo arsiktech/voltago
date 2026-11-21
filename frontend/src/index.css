@@ -350,30 +350,6 @@
     border-color: color-mix(in oklab, var(--danger) 36%, transparent);
   }
 
-  /* Icon buttons */
-  .icon-btn {
-    display: inline-grid;
-    place-items: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    border-radius: 0.85rem;
-    color: var(--fg);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow-sm);
-    transition:
-      border-color 0.16s ease,
-      background-color 0.16s ease,
-      scale 0.12s ease;
-  }
-  .icon-btn:hover {
-    border-color: var(--border-strong);
-    background: var(--surface-2);
-  }
-  .icon-btn:active {
-    scale: 0.96;
-  }
-
   .live-dot {
     width: 0.5rem;
     height: 0.5rem;

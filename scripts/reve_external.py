@@ -198,15 +198,19 @@ def reserve_request(*, now: Optional[float] = None) -> None:
         raise SourcePolicyBlocked("REVE quota clock is invalid")
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     quota_path = STATE_PATH.with_suffix(".quota.sqlite3")
-    with sqlite3.connect(quota_path, timeout=5) as connection:
-        connection.execute("CREATE TABLE IF NOT EXISTS requests (reserved_at REAL NOT NULL)")
-        connection.execute("BEGIN IMMEDIATE")
-        connection.execute("DELETE FROM requests WHERE reserved_at <= ?", (current - 3600,))
-        # Future events remain charged when the local clock moves backward.
-        count = connection.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
-        if count >= MAX_REQUESTS_PER_HOUR:
-            raise SourcePolicyBlocked("REVE external API quota exhausted (5 requests/hour); retry later")
-        connection.execute("INSERT INTO requests (reserved_at) VALUES (?)", (current,))
+    connection = sqlite3.connect(quota_path, timeout=5)
+    try:
+        with connection:
+            connection.execute("CREATE TABLE IF NOT EXISTS requests (reserved_at REAL NOT NULL)")
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute("DELETE FROM requests WHERE reserved_at <= ?", (current - 3600,))
+            # Future events remain charged when the local clock moves backward.
+            count = connection.execute("SELECT COUNT(*) FROM requests").fetchone()[0]
+            if count >= MAX_REQUESTS_PER_HOUR:
+                raise SourcePolicyBlocked("REVE external API quota exhausted (5 requests/hour); retry later")
+            connection.execute("INSERT INTO requests (reserved_at) VALUES (?)", (current,))
+    finally:
+        connection.close()
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):

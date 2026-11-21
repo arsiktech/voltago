@@ -382,13 +382,13 @@ def validate_field_evidence(payload: Dict[str, Any] | None, expected_app_url: st
     require_http_url(payload, "provider_source_url", missing, failures)
 
     tariff = payload.get("tariff_eur_per_kwh")
-    if not isinstance(tariff, (int, float)):
+    if isinstance(tariff, bool) or not isinstance(tariff, (int, float)):
         missing.append("tariff_eur_per_kwh")
     elif tariff > 0.25:
         failures.append(f"tariff_eur_per_kwh={tariff} exceeds 0.25")
 
     parking_cost = payload.get("parking_cost_eur")
-    if not isinstance(parking_cost, (int, float)):
+    if isinstance(parking_cost, bool) or not isinstance(parking_cost, (int, float)):
         missing.append("parking_cost_eur")
     elif parking_cost > 0 and payload.get("parking_cost_disclosed_in_volta") is not True:
         failures.append("paid parking was observed but not marked as disclosed in Volta")

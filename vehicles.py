@@ -654,7 +654,8 @@ class VehicleConnections:
                 raise ProviderError(502, "invalid_provider_data")
             row.update(make=_text(payload.get("make")), model=_text(payload.get("model")))
             year = payload.get("year")
-            row["year"] = int(year) if isinstance(year, (str, int)) and len(str(year)) == 4 and str(year).isdigit() and 1900 <= int(year) <= 2200 else None
+            year_text = str(year)
+            row["year"] = int(year_text) if isinstance(year, (str, int)) and not isinstance(year, bool) and len(year_text) == 4 and year_text.isascii() and year_text.isdigit() and 1900 <= int(year_text) <= 2200 else None
         elif endpoint == "battery":
             fraction = _number(payload.get("percentRemaining"), 0, 1)
             # The request explicitly asks for metric. A contradictory unit header

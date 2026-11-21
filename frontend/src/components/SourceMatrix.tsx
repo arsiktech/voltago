@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FeedbackButton } from './FeedbackButton'
 import { useTheme } from '../hooks/useTheme'
 import { useQuery } from '@tanstack/react-query'
 import { getJSON, useGeocode } from '../lib/api'
+import { publicWebUrl } from '../lib/format'
 import type { GeocodeResult } from '../types'
 import {
   DEFAULT_RADIUS_KM,
@@ -66,13 +67,16 @@ function CellDetail({ column, location, cell }: { column: MatrixColumn; location
               <div key={key}>
                 <dt>{key.replaceAll('_', ' ')}</dt>
                 <dd>
-                  {typeof value === 'string' && /^https:\/\//.test(value) ? (
-                    <a href={value} target="_blank" rel="noopener noreferrer">
-                      {value}
-                    </a>
-                  ) : (
-                    String(value)
-                  )}
+                  {(() => {
+                    const href = typeof value === 'string' ? publicWebUrl(value) : null
+                    return href ? (
+                      <a href={href} target="_blank" rel="noopener noreferrer">
+                        {value}
+                      </a>
+                    ) : (
+                      String(value)
+                    )
+                  })()}
                 </dd>
               </div>
             ))}
@@ -140,9 +144,15 @@ export function MatrixTable({ data }: { data: MatrixResponse }) {
 export default function SourceMatrix() {
   const { theme } = useTheme()
   const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
   const [place, setPlace] = useState<GeocodeResult | null>(null)
   const [radiusKm, setRadiusKm] = useState(DEFAULT_RADIUS_KM)
-  const geocode = useGeocode(place ? '' : query)
+  useEffect(() => {
+    const next = place ? '' : query.trim()
+    const timer = window.setTimeout(() => setDebouncedQuery(next), next ? 200 : 0)
+    return () => window.clearTimeout(timer)
+  }, [place, query])
+  const geocode = useGeocode(place || !query.trim() ? '' : debouncedQuery)
   const area = place ? searchArea(place, radiusKm) : null
   const bbox = area?.bbox ?? null
   const choosePlace = (result: GeocodeResult) => {
@@ -187,8 +197,8 @@ export default function SourceMatrix() {
         />
         {!place && (geocode.data?.results?.length ?? 0) > 0 && (
           <ul className="matrix-suggestions">
-            {geocode.data!.results.slice(0, 5).map((result) => (
-              <li key={`${result.lat},${result.lon}`}>
+            {geocode.data!.results.slice(0, 5).map((result, index) => (
+              <li key={`${result.lat},${result.lon}-${index}`}>
                 <button type="button" onClick={() => choosePlace(result)}>
                   {result.label}
                 </button>
@@ -229,8 +239,10 @@ export default function SourceMatrix() {
           <p className="matrix-meta">
             {matrix.data.locations.length} locations nearest first in {areaText(area)}
             {area.capped ? ', the largest area one search covers' : ''}
-            {matrix.data.truncated ? ' (more exist; search closer to narrow)' : ''}. Data built{' '}
-            {matrix.data.generated_at?.slice(0, 16).replace('T', ' ') ?? 'at an unknown time'} UTC.
+            {matrix.data.truncated ? ' (more exist; search closer to narrow)' : ''}.{' '}
+            {matrix.data.generated_at
+              ? `Data built ${matrix.data.generated_at.slice(0, 16).replace('T', ' ')} UTC.`
+              : 'Data build time unknown.'}
           </p>
           <MatrixTable data={matrix.data} />
         </>

@@ -85,4 +85,16 @@ describe('named exact station source actions', () => {
     expect(sourceName('https://example.org/charger/123', 'City directory')).toBe('City directory')
     expect(sourceName('https://example.org/charger/123', 'Directory page')).toBe('example.org')
   })
+
+  it('prefers an exact start_page over an earlier directory page and rejects encoded traversal', () => {
+    const startUrl = 'https://partner-next.gaiacharge.com/cpo/jump/site/connector'
+    expect(stationSource(row({
+      source_url: 'https://www.openstreetmap.org/node/123',
+      sources: [{ name: 'Gaia', url: startUrl }],
+    }))).toMatchObject({ url: startUrl, kind: 'start_page' })
+    expect(stationSource(row({
+      source_url: 'https://example.org/station/%2e%2e/secret',
+      sources: [{ name: 'Provider', url: 'https://example.org/station/%2e%2e/secret', kind: 'station_page' }],
+    }))).toBeNull()
+  })
 })

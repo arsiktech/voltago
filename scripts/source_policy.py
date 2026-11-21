@@ -196,12 +196,11 @@ def matching_exclusion_ids(value: Any, policy: Dict[str, Any]) -> List[str]:
             value,
             permitted_price_evidence_kinds=exclusion.get("permitted_price_evidence_kinds") or (),
         )
-        terms = [normalize_policy_text(term) for term in exclusion.get("source_family_terms") or []]
+        terms = [t for t in (normalize_policy_text(term) for term in exclusion.get("source_family_terms") or []) if t]
         family_match = any(
             _canonical_family_matches(origin, exclusion)
-            or (term and term in normalize_policy_text(origin))
+            or any(term in normalize_policy_text(origin) for term in terms)
             for origin in origin_values["families"]
-            for term in terms
         )
         allowed_hosts = {normalize_policy_text(host).strip(".") for host in exclusion.get("origin_hosts") or []}
         url_match = False
@@ -253,6 +252,8 @@ def strip_blocked_reference_metadata(value: Any, policy: Dict[str, Any]) -> Any:
 def partition_records(
     rows: Iterable[Dict[str, Any]], policy: Dict[str, Any]
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    if not (policy.get("exclusions") or []):
+        return list(rows), []
     allowed: List[Dict[str, Any]] = []
     excluded: List[Dict[str, Any]] = []
     for row in rows:

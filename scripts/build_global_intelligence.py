@@ -60,28 +60,40 @@ def directory_modules():
 
 def atomic_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
-        temp = Path(handle.name)
-        json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
-        handle.write("\n")
-    os.replace(temp, path)
+    temp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+            temp = Path(handle.name)
+            json.dump(payload, handle, ensure_ascii=False, indent=2, allow_nan=False)
+            handle.write("\n")
+        os.replace(temp, path)
+        temp = None
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def write_candidate(path: Path, metadata: dict, store: gs.CandidateStore) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
-        temp = Path(handle.name)
-        # Serialise one station at a time; never rebuild the global list in RAM.
-        handle.write(json.dumps(metadata, ensure_ascii=False, separators=(",", ":"), allow_nan=False)[:-1])
-        handle.write(',"records":[')
-        first = True
-        for row in store.rows():
-            if not first:
-                handle.write(",")
-            json.dump(row, handle, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
-            first = False
-        handle.write("]}\n")
-    os.replace(temp, path)
+    temp: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+            temp = Path(handle.name)
+            # Serialise one station at a time; never rebuild the global list in RAM.
+            handle.write(json.dumps(metadata, ensure_ascii=False, separators=(",", ":"), allow_nan=False)[:-1])
+            handle.write(',"records":[')
+            first = True
+            for row in store.rows():
+                if not first:
+                    handle.write(",")
+                json.dump(row, handle, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+                first = False
+            handle.write("]}\n")
+        os.replace(temp, path)
+        temp = None
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
 
 
 def source_manifest(source_id: str, scope: str) -> dict:
@@ -220,19 +232,20 @@ def run_osm(args: argparse.Namespace, countries: set[str] | None, store: gs.Cand
             manifest["fetches"].append(fetched.artifact.as_evidence())
             payload = json.loads(fetched.path.read_text(encoding="utf-8"))
             elements = gs.parse_osm_payload(payload)
-            for element in elements:
-                manifest["seen"] += 1
-                try:
-                    row = gs.normalize_osm(element, fetched.artifact, country)
-                except (TypeError, ValueError, AttributeError, KeyError):
-                    row = None
-                if row is None:
-                    manifest["rejected"] += 1
-                    continue
-                result = store.add(row)
-                manifest["accepted"] += result == "added"
-                manifest["duplicates"] += result == "duplicate"
-                manifest["rejected"] += result in {"excluded", "invalid"}
+            with store.source_transaction():
+                for element in elements:
+                    manifest["seen"] += 1
+                    try:
+                        row = gs.normalize_osm(element, fetched.artifact, country)
+                    except (TypeError, ValueError, AttributeError, KeyError):
+                        row = None
+                    if row is None:
+                        manifest["rejected"] += 1
+                        continue
+                    result = store.add(row)
+                    manifest["accepted"] += result == "added"
+                    manifest["duplicates"] += result == "duplicate"
+                    manifest["rejected"] += result in {"excluded", "invalid"}
             manifest["status"] = "stale" if fetched.artifact.stale else "ok"
         except Exception as exc:
             manifest["status"] = "failed"

@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 PATTERNS = {
     "home directory path": re.compile(r"/Users/[A-Za-z0-9._-]+/|/home/[a-z][a-z0-9_-]+/"),
-    "Tailscale address": re.compile(r"\b100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}\b"),
+    "Tailscale address": re.compile(r"\b100\\?\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\\?\.[0-9]{1,3}\\?\.[0-9]{1,3}\b"),
     "Tailscale network name": re.compile(r"[a-z0-9-]+\.ts\.net\b"),
     "private tracker link": re.compile(r"app\.notion\.com/|notion\.so/|linear\.app/"),
     "agent session link": re.compile(r"claude\.ai/code/session_|chatgpt\.com/c/"),

@@ -75,9 +75,15 @@ def finalize_index(source: str | Path, output: str | Path, *, policy_path: str |
     temporary = Path(temporary)
     try:
         shutil.copyfile(source, temporary)
-        with sqlite3.connect(temporary) as connection:
+        connection = sqlite3.connect(temporary)
+        try:
             connection.execute("UPDATE metadata SET value=? WHERE key='catalogue'", (json.dumps(metadata, ensure_ascii=False),))
             connection.execute("UPDATE metadata SET value=? WHERE key='summaries'", (json.dumps(summaries, ensure_ascii=False),))
+            connection.commit()
+            if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise ValueError("Finalized intelligence index failed SQLite integrity check")
+        finally:
+            connection.close()
         if file_sha256(policy_path) != metadata["index_manifest"]["policy_sha256"] or (file_sha256(seeds_path) if seeds_path.exists() else None) != metadata["index_manifest"]["seeds_sha256"]:
             raise ValueError("Source policy or seed catalogue changed during summary construction")
         with temporary.open("rb") as handle:

@@ -131,7 +131,7 @@ enum VehiclePlug: String, CaseIterable, Identifiable, Hashable {
 
     init?(label: String) {
         switch ConnectorKind.canonical(label) {
-        case "ccs2", "ccscombo2", "iec621963", "iec62196t3combo": self = .ccs2
+        case "ccs2", "ccscombo2", "iec621963", "iec62196t2combo": self = .ccs2
         case "ccs1", "ccscombo1", "iec62196t1combo": self = .ccs1
         case "type2", "iec62196t2": self = .type2
         case "type1", "iec62196t1": self = .type1

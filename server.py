@@ -32,7 +32,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from copy import deepcopy
-from datetime import datetime, time as dt_time, timezone
+from datetime import datetime, time as dt_time, timedelta, timezone
 from html.parser import HTMLParser
 try:
     from zoneinfo import ZoneInfo
@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - Python <3.9 fallback is not expected her
     ZoneInfo = None
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Deque, Dict, Iterable, List, Optional, Tuple
 
 import hmac
 
@@ -60,9 +60,9 @@ from station_truth import (
     normalize_connector_label,
     normalize_public_source_url,
     primary_source_for,
+    public_web_url,
     repair_osm_connector_power,
     station_source_for,
-    source_candidates,
 )
 
 import agent_mcp
@@ -485,12 +485,15 @@ def live_coverage_profile(stations: List[Dict[str, Any]], leads: List[Dict[str, 
     return profile
 
 
+LIVE_FRESHNESS_MAX_MINUTES = 180
+
+
 def haversine_km(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
     r = 6371.0
     p1, p2 = math.radians(a_lat), math.radians(b_lat)
     dp = math.radians(b_lat - a_lat)
     dl = math.radians(b_lon - a_lon)
-    x = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    x = min(1.0, max(0.0, math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2))
     return 2 * r * math.atan2(math.sqrt(x), math.sqrt(1 - x))
 
 
@@ -597,12 +600,6 @@ def freshness_timestamp(item: Dict[str, Any]) -> Any:
     return min(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
 
 
-def text_key(value: Any) -> str:
-    text = unicodedata.normalize("NFKD", str(value or ""))
-    text = "".join(ch for ch in text if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
-
-
 def compact_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
@@ -625,7 +622,7 @@ def resolve_public_url(base_url: str, maybe_path: Any) -> Optional[str]:
     if not maybe_path:
         return None
     url = urllib.parse.urljoin(base_url, str(maybe_path))
-    return url if urllib.parse.urlparse(url).scheme in {"http", "https"} else None
+    return public_web_url(url)
 
 
 def normalize_status(value: Any) -> str:
@@ -989,9 +986,9 @@ def decision_for(item: Dict[str, Any], *, live: bool, vehicle_neutral: bool = Fa
     known_connectors = [str(label) for label in labels if label and "unspecified" not in str(label).lower()
                         and str(label).lower() not in {"unknown", "other"}]
     connector_ok = bool(known_connectors) if vehicle_neutral else item.get("tesla_ok") is True
-    available = bool(item.get("available", 0) > 0 or item.get("status") == "AVAILABLE")
+    available = bool((safe_int(item.get("available")) or 0) > 0 or item.get("status") == "AVAILABLE")
     stale_mins = age_minutes(freshness_timestamp(item))
-    stale_live = live and stale_mins is not None and stale_mins > 180
+    stale_live = live and stale_mins is not None and stale_mins > LIVE_FRESHNESS_MAX_MINUTES
     if item.get("live_status"):
         stale_live = not item["live_status"].get("valid")
         if access.get("level") in {"restricted", "unknown"}:
@@ -1226,7 +1223,7 @@ def recommendation_score(item: Dict[str, Any]) -> float:
         score += 16
     elif item.get("is_cheap"):
         score += 10
-    if item.get("available", 0) > 0:
+    if (safe_int(item.get("available")) or 0) > 0:
         score += 18
     if item.get("fast"):
         score += 8
@@ -1349,6 +1346,9 @@ def clock_to_minutes(value: Any) -> Optional[int]:
     return parsed.hour * 60 + parsed.minute
 
 
+_WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
 def day_allowed(days: Any, now: datetime) -> bool:
     if not days:
         return True
@@ -1359,19 +1359,15 @@ def day_allowed(days: Any, now: datetime) -> bool:
     if not day_values:
         return True
     normalized = {str(d).strip().upper()[:3] for d in day_values if str(d).strip()}
-    today = now.strftime("%a").upper()[:3]
-    aliases = {"TUE": "TUE", "THU": "THU", "MON": "MON", "WED": "WED", "FRI": "FRI", "SAT": "SAT", "SUN": "SUN"}
-    return aliases.get(today, today) in normalized
+    return _WEEKDAYS[now.weekday()] in normalized
 
 
 def pricing_window_is_current(window: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     local_now = (now or datetime.now(MADRID_TZ)).astimezone(MADRID_TZ)
-    if not day_allowed(window.get("days"), local_now):
-        return False
     start = clock_to_minutes(window.get("valid_from") or window.get("start_time"))
     end = clock_to_minutes(window.get("valid_until") or window.get("end_time"))
     if start is None and end is None:
-        return True
+        return day_allowed(window.get("days"), local_now)
     minute = local_now.hour * 60 + local_now.minute
     if start is None:
         start = 0
@@ -1380,10 +1376,15 @@ def pricing_window_is_current(window: Dict[str, Any], now: Optional[datetime] = 
     if end == 0:
         end = 24 * 60
     if start == end:
-        return True
+        return day_allowed(window.get("days"), local_now)
     if start < end:
-        return start <= minute < end
-    return minute >= start or minute < end
+        return day_allowed(window.get("days"), local_now) and start <= minute < end
+    # Overnight window (e.g. 22:00-06:00): post-midnight minutes belong to the previous day's window.
+    if minute >= start:
+        return day_allowed(window.get("days"), local_now)
+    if minute < end:
+        return day_allowed(window.get("days"), local_now - timedelta(days=1))
+    return False
 
 
 def pricing_window_label(window: Dict[str, Any]) -> str:
@@ -1443,7 +1444,7 @@ def connector_pricing_windows(connector: Dict[str, Any], *, price_cap: float = P
         restrictions = comp.get("restrictions") or {}
         raw = {
             "price": comp.get("price"),
-            "currency": comp.get("currency") or "EUR",
+            "currency": comp.get("currency") or default_currency,
             "unit": "kWh",
             "valid_from": restrictions.get("start_time") or restrictions.get("startTime"),
             "valid_until": restrictions.get("end_time") or restrictions.get("endTime"),
@@ -1451,16 +1452,16 @@ def connector_pricing_windows(connector: Dict[str, Any], *, price_cap: float = P
             "source": "OCPI tariff",
             "human": "; ".join(str(h) for h in comp.get("human") or [] if h),
         }
-        normalized = normalize_pricing_window(raw)
+        normalized = normalize_pricing_window(raw, default_currency=default_currency)
         if normalized:
             windows.append(normalized)
     if not windows:
         for p in connector.get("energy_prices") or []:
-            normalized = normalize_pricing_window({"price": p, "source": "connector price"})
+            normalized = normalize_pricing_window({"price": p, "source": "connector price"}, default_currency=default_currency)
             if normalized:
                 windows.append(normalized)
     if not windows and re.search(r"\bfree\b|gratis|gratuit[ao]", str(connector.get("price") or ""), re.I):
-        normalized = normalize_pricing_window({"price": 0, "source": "connector label", "label": connector.get("price")})
+        normalized = normalize_pricing_window({"price": 0, "source": "connector label", "label": connector.get("price")}, default_currency=default_currency)
         if normalized:
             windows.append(normalized)
     for window in windows:
@@ -1916,7 +1917,7 @@ def build_gaia_station(seed: Dict[str, Any], connectors: List[Dict[str, Any]], f
         "id": seed["id"],
         "name": seed.get("name") or next((c.get("source_title") for c in connectors if c.get("source_title")), "Gaia Green Tech charger"),
         "address": seed.get("address"),
-        "postal_code": "46120",
+        "postal_code": seed.get("postal_code") or "46120",
         "city": seed.get("city") or "Alboraia",
         "country": "ESP",
         "lat": seed.get("lat"),
@@ -2018,11 +2019,6 @@ def fetch_gaia_live(force: bool = False) -> Dict[str, Any]:
                 if stale:
                     payload["warning"] = "Gaia public-page refresh is slow; serving the last successful Gaia cache. Verify in the provider page before routing."
                 return payload
-
-        if cached and not force and cached.get("key") == cache_key and now - cached.get("ts", 0) < CACHE_TTL_SECONDS:
-            payload = deepcopy(cached["payload"])
-            payload["cache"] = {"hit": True, "age_seconds": round(now - cached["ts"], 1), "ttl_seconds": GAIA_CACHE_TTL_SECONDS, "populated_at": cached.get("ts")}
-            return payload
 
     fetched_at = now_iso()
     started_at = time.time()
@@ -2303,10 +2299,17 @@ def merge_public_live_stations(stations: List[Dict[str, Any]], incoming: List[Di
         previous_fresh = (not previous.get("lead") and not previous.get("cache_stale")
                           and not previous.get("_volta_stale_live_cache")
                           and (bool(previous_status.get("valid")) if previous_status
-                               else previous_age is not None and previous_age <= 180)
+                               else previous_age is not None and previous_age <= LIVE_FRESHNESS_MAX_MINUTES)
                           and previous.get("reliability") in {"official-live", "official-live-public-page", "official-live-status"})
         if previous_fresh and not (row.get("live_status") or {}).get("valid"):
-            previous["sources"] = source_rows_union(previous, row)
+            updated = deepcopy(previous)
+            updated["sources"] = source_rows_union(previous, row)
+            updated["source_count"] = len(updated["sources"])
+            if previous in merged:
+                merged[merged.index(previous)] = updated
+            else:
+                merged.append(updated)
+            candidates[position] = updated
             continue
         combined = deepcopy(previous)
         previous_verification = previous.get("live_claim_verification")
@@ -2641,8 +2644,10 @@ def electromaps_connector_label(token: Any) -> str:
 
 def _electromaps_id(lead: Dict[str, Any]) -> Optional[str]:
     raw = lead.get("raw") or {}
-    if raw.get("electromaps_id"):
-        return str(raw["electromaps_id"])
+    if raw.get("electromaps_id") is not None:
+        candidate = str(raw["electromaps_id"]).strip()
+        if re.fullmatch(r"\d+", candidate):
+            return candidate
     urls = [lead.get("source_url")] + [s.get("url") for s in (lead.get("sources") or []) if isinstance(s, dict)]
     for url in urls:
         m = re.search(r"/p/(\d+)", str(url or "")) or re.search(r"electromaps\.com/.*?/(\d{4,})\b", str(url or ""))
@@ -2679,10 +2684,12 @@ def _electromaps_detail(loc_id: str) -> Optional[Dict[str, Any]]:
             return cached["detail"]
     if not _electromaps_rate_allows():
         return cached["detail"] if cached else None
+    if not re.fullmatch(r"\d+", str(loc_id or "")):
+        return None
     url = f"{ELECTROMAPS_MAPI}/locations/{loc_id}?skipAuthTokenValidation=true"
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=ELECTROMAPS_HEADERS), timeout=ELECTROMAPS_FETCH_BUDGET) as resp:
-            detail = json.loads(resp.read().decode("utf-8", "replace"))
+            detail = json.loads(resp.read(1_000_000).decode("utf-8", "replace"))
     except Exception:
         return cached["detail"] if cached else None
     with _CACHE_LOCKS["electromaps"]:
@@ -2824,11 +2831,11 @@ def fetch_electromaps_live(targets: List[Dict[str, Any]], *, max_price: float, f
                 dead.add(loc_id)  # the live feed now says every connector is out of service
 
     # Return by the deadline so a cold fan-out cannot hold the live response.
-    # Threads already in flight keep filling ELECTROMAPS_CACHE after we return.
+    # Reuse one bounded module-level pool so concurrent requests cannot leak unbounded threads.
     deadline = time.monotonic() + max(0.1, ELECTROMAPS_LIVE_DEADLINE)
-    pool = concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(pairs)))
+    pool = _electromaps_executor()
+    pending = {pool.submit(work, pair) for pair in pairs}
     try:
-        pending = {pool.submit(work, pair) for pair in pairs}
         while pending and time.monotonic() < deadline:
             done, pending = concurrent.futures.wait(
                 pending,
@@ -2841,8 +2848,22 @@ def fetch_electromaps_live(targets: List[Dict[str, Any]], *, max_price: float, f
                 except Exception:
                     continue
     finally:
-        pool.shutdown(wait=False, cancel_futures=True)
+        for future in pending:
+            future.cancel()
     return {"stations": stations, "checked_ids": checked, "promoted_ids": promoted, "dead_ids": dead}
+
+
+_ELECTROMAPS_EXECUTOR: Optional[concurrent.futures.ThreadPoolExecutor] = None
+
+
+def _electromaps_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _ELECTROMAPS_EXECUTOR
+    with _CACHE_LOCKS["electromaps"]:
+        if _ELECTROMAPS_EXECUTOR is None:
+            _ELECTROMAPS_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
+                max_workers=8, thread_name_prefix="volta-electromaps"
+            )
+        return _ELECTROMAPS_EXECUTOR
 
 
 # Spanish province by postal-code prefix (first two digits) — honest province-level labels
@@ -3873,12 +3894,23 @@ def _intel_enriched_pool() -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str,
     return intel_records, intel_coords, seed_records, seed_coords
 
 
+_RAW_SEEDS_CACHE: Dict[str, Any] = {"key": None, "rows": []}
+
+
 def _raw_seed_records() -> List[Dict[str, Any]]:
     path = DATA / "seed_leads.json"
     if not path.exists():
         return []
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size, id(SOURCE_POLICY_EXCLUSIONS))
+    with _CACHE_LOCKS["intel"]:
+        if _RAW_SEEDS_CACHE["key"] == key:
+            return _RAW_SEEDS_CACHE["rows"]
     with path.open(encoding="utf-8") as handle:
-        return [row for row in json.load(handle) if source_policy_record_allowed(row)]
+        rows = [row for row in json.load(handle) if source_policy_record_allowed(row)]
+    with _CACHE_LOCKS["intel"]:
+        _RAW_SEEDS_CACHE.update(key=key, rows=rows)
+    return rows
 
 
 def _scoped_intelligence_pool(bbox: Optional[Dict[str, float]]) -> Tuple[List[Dict[str, Any]], Coords, List[Dict[str, Any]], Coords]:
@@ -4079,9 +4111,14 @@ def _catalogue_row(identifier: str) -> Optional[Tuple[Dict[str, Any], str]]:
             rows = connection.execute(
                 "SELECT payload FROM stations WHERE identifier=? ORDER BY seq LIMIT 2", (identifier,),
             ).fetchall()
-        if len(rows) != 1:
+        if len(rows) == 1:
+            return records.index.decode(rows[0][0]), "free/cheap intelligence DB"
+        if len(rows) > 1:
             return None
-        return records.index.decode(rows[0][0]), "free/cheap intelligence DB"
+        seeds = [row for row in _raw_seed_records() if str(row.get("id") or "") == identifier]
+        if len(seeds) == 1:
+            return seeds[0], "manual research lead"
+        return None
     matches = [row for row in records if str(row.get("id") or "") == identifier]
     if len(matches) == 1:
         return matches[0], "free/cheap intelligence DB"
@@ -4096,9 +4133,10 @@ def saved_chargers_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str
 
     At most 25 ids. Catalogue only: no live fetch, so this cannot slow first paint.
     """
-    ids = [value for value in (params.get("ids") or [""])[0].split(",") if value]
-    if not ids or len(ids) > 25:
+    raw_ids = [value for value in (params.get("ids") or [""])[0].split(",") if value]
+    if not raw_ids or len(raw_ids) > 25:
         return 400, {"error": "invalid_ids"}
+    ids = list(dict.fromkeys(raw_ids))
     snapshot = catalogue_detail_snapshot()
     stations: List[Dict[str, Any]] = []
     for identifier in ids:
@@ -4354,7 +4392,7 @@ def _nominatim_raw(search_q: str) -> List[Dict[str, Any]]:
         headers={"User-Agent": GEOCODE_UA, "Accept": "application/json", "Accept-Language": "es,en"},
     )
     with urllib.request.urlopen(req, timeout=8) as resp:
-        return json.loads(resp.read().decode("utf-8", "replace"))
+        return json.loads(resp.read(1_000_000).decode("utf-8", "replace"))
 
 
 def _town_fallback(q: str) -> List[Dict[str, Any]]:
@@ -4741,6 +4779,10 @@ def overview_response(params: Dict[str, List[str]], max_price: float, fast_only:
     out: List[Dict[str, Any]] = []
     user_lat = safe_float((params.get("lat") or [None])[0])
     user_lon = safe_float((params.get("lon") or [None])[0])
+    if user_lat is not None and not -90.0 <= user_lat <= 90.0:
+        user_lat = None
+    if user_lon is not None and not -180.0 <= user_lon <= 180.0:
+        user_lon = None
     origin = (user_lat, user_lon) if user_lat is not None and user_lon is not None and -90 <= user_lat <= 90 and -180 <= user_lon <= 180 else None
     candidates, candidate_count = overview_candidates(bbox, price_cap, fast_only, origin)
     for lead in candidates:
@@ -5188,6 +5230,10 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
         payload["warning"] = f"{existing_warning} {gaia_payload['warning']}".strip() if existing_warning else gaia_payload["warning"]
     user_lat = safe_float((params.get("lat") or [None])[0])
     user_lon = safe_float((params.get("lon") or [None])[0])
+    if user_lat is not None and not -90.0 <= user_lat <= 90.0:
+        user_lat = None
+    if user_lon is not None and not -180.0 <= user_lon <= 180.0:
+        user_lon = None
 
     # plans/007 step 4: assembled-payload reuse. A MapaREVE raw-cache hit (cache_fresh)
     # still re-ran every merge/dedup/enrich stage on every request -- nearly as expensive
@@ -5615,9 +5661,9 @@ def live_response(params: Dict[str, List[str]]) -> Tuple[int, Dict[str, Any]]:
     payload["electromaps"] = {
         "status": PRICE_EVIDENCE_SOURCE_STATUS,
         "price_evidence_records": payload["price_evidence_counts"]["electromaps_community"],
-        "checked_leads": 0,
-        "promoted_live": 0,
-        "out_of_service_dropped": 0,
+        "checked_leads": len(em_info.get("checked_ids") or ()),
+        "promoted_live": len(em_info.get("promoted_ids") or ()),
+        "out_of_service_dropped": len(em_info.get("dead_ids") or ()),
         "runtime_live_enabled": ELECTROMAPS_DIRECT_ENABLED,
         "source_url": "https://www.electromaps.com/",
         "policy": PRICE_EVIDENCE_POLICY + " Community prices retain the source update date; a fresh fetch is not a new observation. Live status is on, cached per location, rate-limited, and capped so it does not hold first paint.",
@@ -5713,12 +5759,6 @@ def source_health_country(item: Dict[str, Any]) -> str:
     return "UNKNOWN"
 
 
-def source_health_outside_spain(item: Dict[str, Any]) -> bool:
-    lat = safe_float(item.get("lat"))
-    lon = safe_float(item.get("lon"))
-    return lat is not None and lon is not None and not in_bbox(lat, lon, SPAIN_BBOX)
-
-
 def source_health_has_exact_directory_location(item: Dict[str, Any]) -> bool:
     if source_health_tier(item) != "directory":
         return False
@@ -5784,14 +5824,23 @@ def source_health_cache_status(name: str, cache: Dict[str, Any], ttl_seconds: in
 
 
 _SOURCE_INVENTORY: Dict[str, Any] = {}
+_HEALTH_FINGERPRINT_CACHE: Dict[str, Any] = {"key": None, "value": ""}
 
 
 def intelligence_health_fingerprint() -> str:
     """Bind offline evidence aggregates to the code that classifies their rows."""
+    names = ("server.py", "station_truth.py", "scripts/global_source_catalog.py")
+    key = tuple((name, (ROOT / name).stat().st_mtime_ns, (ROOT / name).stat().st_size) for name in names)
+    with _CACHE_LOCKS["intel"]:
+        if _HEALTH_FINGERPRINT_CACHE["key"] == key:
+            return _HEALTH_FINGERPRINT_CACHE["value"]
     digest = hashlib.sha256()
-    for name in ("server.py", "station_truth.py", "scripts/global_source_catalog.py"):
+    for name in names:
         digest.update((ROOT / name).read_bytes())
-    return digest.hexdigest()
+    value = digest.hexdigest()
+    with _CACHE_LOCKS["intel"]:
+        _HEALTH_FINGERPRINT_CACHE.update(key=key, value=value)
+    return value
 
 
 def _validate_index_summaries(intel: Dict[str, Any]) -> None:
@@ -5850,9 +5899,10 @@ def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = F
         if not isinstance(summary, dict):
             raise ValueError("Intelligence index requires --health-summary for source health")
         return deepcopy(summary)
-    key = (id(intel), seeds.stat().st_mtime_ns if seeds.exists() else None)
-    if _SOURCE_INVENTORY.get("key") == key:
-        return deepcopy(_SOURCE_INVENTORY["value"])
+    key = (id(intel), intel.get("recordset_sha256"), seeds.stat().st_mtime_ns if seeds.exists() else None)
+    with _CACHE_LOCKS["intel"]:
+        if _SOURCE_INVENTORY.get("key") == key:
+            return deepcopy(_SOURCE_INVENTORY["value"])
     leads = _health_leads(intel)
     by_tier: Dict[str, Dict[str, int]] = {}
     by_reliability: Dict[str, int] = {}
@@ -5921,7 +5971,8 @@ def source_health_inventory(intel: Dict[str, Any], *, allow_index_scan: bool = F
         "coordinate_issues": coordinate_issues,
         "source_link_issues": source_link_issues,
     }
-    _SOURCE_INVENTORY.update({"key": key, "value": result})
+    with _CACHE_LOCKS["intel"]:
+        _SOURCE_INVENTORY.update({"key": key, "value": result})
     return deepcopy(result)
 
 
@@ -6033,8 +6084,10 @@ def _named_source_count(records: Any, needle: str) -> int:
 def global_source_counts(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     if isinstance(records, IndexedRecords):
         return deepcopy(records.index.summaries["global_source_counts"])
-    if _GLOBAL_SOURCE_COUNTS.get("records") is records:
-        return _GLOBAL_SOURCE_COUNTS["counts"]
+    key = (id(records), len(records))
+    with _CACHE_LOCKS["intel"]:
+        if _GLOBAL_SOURCE_COUNTS.get("key") == key:
+            return deepcopy(_GLOBAL_SOURCE_COUNTS["counts"])
     counts: Dict[str, Any] = {"gaia_total": 0, "gaia_free": 0, "adapters": {}}
     gaia_pattern = re.compile(r"\bgaia\b", re.I)
     for row in records:
@@ -6047,8 +6100,9 @@ def global_source_counts(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         if gaia_pattern.search(text):
             counts["gaia_total"] += 1
             counts["gaia_free"] += bool(row.get("is_free"))
-    _GLOBAL_SOURCE_COUNTS.update({"records": records, "counts": counts})
-    return counts
+    with _CACHE_LOCKS["intel"]:
+        _GLOBAL_SOURCE_COUNTS.update({"key": key, "counts": counts})
+    return deepcopy(counts)
 
 
 def global_adapter_catalog() -> List[Dict[str, Any]]:
@@ -6272,6 +6326,7 @@ def _sanitize_log_line(message: str) -> str:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "Volta/2.0"
+    timeout = 15
     # Plan 005 hardening of the plan-004 do_GET/do_HEAD 500-recovery guard (the guard
     # that fixed D-144, the originally-unguarded-handler defect -- NOT D-146, which is
     # the unrelated tzdata boot-crash defect). Fresh Handler instance per request
@@ -6375,10 +6430,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self._headers_sent = True
-        try:
-            self.wfile.write(out)
-        except BrokenPipeError:
-            return
+        if self.command != "HEAD":
+            try:
+                self.wfile.write(out)
+            except BrokenPipeError:
+                return
 
     def do_HEAD(self) -> None:
         try:
@@ -6414,31 +6470,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self._headers_sent = True
             return
-        safe = Path(os.path.normpath(path.lstrip("/")))
-        if ".." in safe.parts:
-            self.send_error(403)
-            return
-        file_path = web_root() / safe
-        if file_path.is_dir():
-            file_path = file_path / "index.html"
-        if not file_path.exists() or not file_path.is_file():
-            if is_spa_client_route(safe):
-                file_path = web_root() / "index.html"
-            if not file_path.exists() or not file_path.is_file():
-                self.send_error(404)
-                return
-        mime = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
-        self.send_response(200)
-        self.send_header("Content-Type", mime)
-        self.send_header("Cache-Control", "no-cache")
-        self.send_header("Content-Length", str(file_path.stat().st_size))
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("X-Frame-Options", "DENY")
-        if VOLTA_CSP and file_path.name == "index.html":
-            self.send_header("Content-Security-Policy", VOLTA_CSP)
-        self.end_headers()
-        self._headers_sent = True
+        self.serve_static(path)
 
     def do_GET(self) -> None:
         try:
@@ -6559,17 +6591,18 @@ class Handler(BaseHTTPRequestHandler):
             # "assembled" is reduced to a small scalar summary (ts/key/counts) here; every
             # OTHER cache dict is unaffected (still stripped of "payload" only, as before)
             # -- never dump station/lead arrays into health regardless of cache shape.
-            cache_snapshot = {k: v for k, v in CACHE.items() if k not in ("payload", "assembled", "recent")}
-            assembled = CACHE.get("assembled")
-            if assembled:
-                cache_snapshot["assembled"] = {
-                    "ts": assembled.get("ts"),
-                    "key": assembled.get("key"),
-                    "include_leads": assembled.get("include_leads"),
-                    "electromaps_did_work": assembled.get("electromaps_did_work"),
-                    "stations_count": len(assembled.get("stations") or []),
-                    "leads_count": len(assembled.get("leads") or []),
-                }
+            with _CACHE_LOCKS["live"]:
+                cache_snapshot = {k: v for k, v in CACHE.items() if k not in ("payload", "assembled", "recent")}
+                assembled = CACHE.get("assembled")
+                if assembled:
+                    cache_snapshot["assembled"] = {
+                        "ts": assembled.get("ts"),
+                        "key": assembled.get("key"),
+                        "include_leads": assembled.get("include_leads"),
+                        "electromaps_did_work": assembled.get("electromaps_did_work"),
+                        "stations_count": len(assembled.get("stations") or []),
+                        "leads_count": len(assembled.get("leads") or []),
+                    }
             return self.send_json(200, {"ok": True, "time": now_iso(), "cache": cache_snapshot})
         if path == "/api/intel":
             return self.send_json(200, intelligence_response(params))
@@ -6587,7 +6620,10 @@ class Handler(BaseHTTPRequestHandler):
             bbox = parse_bbox_param(params)
             if bbox is None:
                 return self.send_json(400, {"error": "bbox=south,west,north,east is required"})
-            if (bbox["latitude_ne"] - bbox["latitude_sw"]) > 0.2 or (bbox["longitude_ne"] - bbox["longitude_sw"]) > 0.3:
+            lon_span = bbox["longitude_ne"] - bbox["longitude_sw"]
+            if lon_span < 0:
+                lon_span += 360.0
+            if (bbox["latitude_ne"] - bbox["latitude_sw"]) > 0.2 or lon_span > 0.3:
                 return self.send_json(400, {"error": "Zoom in: the area is limited to about 20 km."})
             return self.send_json(200, source_matrix.build_matrix(load_intelligence_meta(), bbox))
         if path == "/api/geocode":
@@ -6953,6 +6989,9 @@ class Handler(BaseHTTPRequestHandler):
             if not file_path.exists() or not file_path.is_file():
                 self.send_error(404)
                 return
+        if not file_path.resolve().is_relative_to(root.resolve()):
+            self.send_error(403)
+            return
         mime = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
         body = file_path.read_bytes()
         # gzip text assets (the hashed maplibre chunk alone is ~1 MB -> ~270 KB); compressed
@@ -6995,10 +7034,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
         self._headers_sent = True
-        try:
-            self.wfile.write(out)
-        except BrokenPipeError:
-            return
+        if self.command != "HEAD":
+            try:
+                self.wfile.write(out)
+            except BrokenPipeError:
+                return
 
 
 class VoltaHTTPServer(ThreadingHTTPServer):

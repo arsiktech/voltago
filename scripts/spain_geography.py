@@ -34,7 +34,14 @@ def _edge_index():
 
 
 def point_in_spain(lat, lon):
-    if lat is None or lon is None or not math.isfinite(lat) or not math.isfinite(lon):
+    if (
+        isinstance(lat, bool)
+        or isinstance(lon, bool)
+        or not isinstance(lat, (int, float))
+        or not isinstance(lon, (int, float))
+        or not math.isfinite(lat)
+        or not math.isfinite(lon)
+    ):
         return False
     if not (27.5 <= lat <= 44.0 and -18.3 <= lon <= 4.4):
         return False

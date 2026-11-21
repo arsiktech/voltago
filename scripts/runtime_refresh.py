@@ -325,7 +325,7 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
                 del payload, baseline_payload
             candidate_sha = shared.sha256_file(candidate)
             receipt["candidate_sha256"] = candidate_sha
-            payload = imported_meta if imported_meta is not None else dataset_summary(candidate)
+            payload = dataset_summary(candidate)
             if selected == "global" and not is_global_dataset(payload):
                 raise RuntimeError("global refresh requires a candidate with explicit global provenance")
             receipt["candidate_records"] = payload["record_count"]

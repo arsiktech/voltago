@@ -197,8 +197,14 @@ async function navigationResponse(request) {
     return response
   } catch (error) {
     if (!cache) throw error
-    const cached = await cache.match('/')
-    if (cached) return cached
+    const url = new URL(request.url)
+    if (
+      url.origin === self.location.origin &&
+      APP_SHELL_PATHS.has(url.pathname.replace(/(.)\/+$/, '$1'))
+    ) {
+      const cached = await cache.match('/')
+      if (cached) return cached
+    }
     throw error
   }
 }

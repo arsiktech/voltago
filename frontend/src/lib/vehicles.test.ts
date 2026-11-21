@@ -65,6 +65,10 @@ describe('station charging plans', () => {
     expect(plan.minimumMinutes).toBe(5)
     expect(chargingEstimate({ ...car, connectors: ['Type 2'] }, 80, station, now).minimumMinutes).toBe(74)
     expect(chargingEstimate(car, 80, { ...station, connectors: [{ type: 'Type 2', power_kw: 11 }, { type: 'CHAdeMO', power_kw: 350 }] }, now).minimumMinutes).toBe(74)
+    expect(chargingEstimate(car, 80, { ...station, connectors: [{ type: 'IEC_62196_T2_COMBO', power_kw: 250 }] }, now)).toMatchObject({
+      compatibility: 'compatible',
+      minimumMinutes: 5,
+    })
   })
   it('leaves unknown compatibility, car limits, and aggregate-only power uncertain', () => {
     expect(chargingEstimate({ ...car, connectors: null }, 80, station, now).minimumMinutes).toBeNull()

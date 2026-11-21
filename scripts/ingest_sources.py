@@ -1711,6 +1711,7 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
             connectors.append(connector_ref(label, count=count_int(connector.get("count"), default=1), power_kw=power_kw, source_url=station_url))
         address = str(marker.get("direccion") or "").strip()
         name = str(marker.get("nombre_punto") or "Punto de recarga").strip()
+        before = len(out)
         add_record(
             out,
             source="Feníe Energía public map (Gratuitos)",
@@ -1741,7 +1742,7 @@ def fenie_records_from_markers(markers: List[Dict[str, Any]], *, source_artifact
             port_count=len(connectors) or None,
             source_artifact=source_artifact,
         )
-        if out:
+        if len(out) > before:
             out[-1]["sources"][0]["attribution"] = "Feníe Energía — Red de recarga (public map)"
             out[-1]["sources"][0]["transformation"] = "Volta ingests only Feníe's own gratuito=1 stations from its public map; out-of-service markers stay listed as unavailable and no live status is inferred from this weekly snapshot."
             if out_of_service:
@@ -2023,9 +2024,11 @@ def source_osm(records: List[Dict[str, Any]]) -> None:
             matching = [k for k in tags if k == key or k.startswith(key + ":")]
             if not matching:
                 continue
+            raw_count = tags.get(key)
+            if str(raw_count or "").strip().lower() in {"no", "0", "false"}:
+                continue
             if label not in labels:
                 labels.append(label)
-            raw_count = tags.get(key)
             count = count_int(raw_count, default=1)
             output = tags.get(key + ":output")
             parsed = parse_osm_socket_output(output, label)
@@ -3012,7 +3015,7 @@ def electromaps_existing_photo_match(records: List[Dict[str, Any]], detail: Dict
     for existing in records:
         if record_source_family(existing) == "electromaps":
             continue
-        if not existing.get("is_free") or existing.get("access", {}).get("limited"):
+        if not existing.get("is_free") or (existing.get("access") or {}).get("level") == "restricted":
             continue
         if ((existing.get("media") or {}).get("photo_status") == "public_photo_available"):
             continue
@@ -3815,7 +3818,7 @@ def dedupe(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     rank = RELIABILITY_RANK
     parking_rank = PARKING_KIND_RANK
     for _, items in groups.items():
-        items.sort(key=lambda r: (rank.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, -len(r.get("sources", []))), reverse=True)
+        items.sort(key=lambda r: (rank.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, len(r.get("sources", []))), reverse=True)
         base = dict(items[0])
         sources = []
         for it in items:
@@ -4333,7 +4336,7 @@ def merge_cross_source_duplicates(records: List[Dict[str, Any]], *, radius_km: f
             merged.append(items[0])
             continue
         merge_count += len(items) - 1
-        items.sort(key=lambda r: (RELIABILITY_RANK.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, -len(r.get("sources", []))), reverse=True)
+        items.sort(key=lambda r: (RELIABILITY_RANK.get(r.get("reliability"), 50), 1 if r.get("is_free") else 0, len(r.get("sources", []))), reverse=True)
         base = dict(items[0])
         seen_srcs: Dict[Tuple[Any, Any], int] = {}
         srcs: List[Dict[str, Any]] = []
@@ -4922,7 +4925,12 @@ def parse_navarra_idena(payload: Dict[str, Any], *, source_artifact: Optional[Fe
         for feature in payload.get("features") or []:
             props = feature.get("properties") or {}
             coords = (feature.get("geometry") or {}).get("coordinates") or [None, None]
-            power = str(props.get("POTENCIA") or "").replace("kW", "").replace(".", "").replace(",", ".").strip()
+            raw_power = re.sub(r"\bkw\b", "", str(props.get("POTENCIA") or ""), flags=re.I).strip()
+            if "," in raw_power and "." in raw_power:
+                raw_power = raw_power.replace(".", "").replace(",", ".")
+            else:
+                raw_power = raw_power.replace(",", ".")
+            power = raw_power
             yield {"lat": coords[1], "lon": coords[0], "operator": props.get("OPERADOR"), "address": props.get("DIRECCION"),
                    "city": props.get("MUNICIPIO"), "connectors": _split_connectors(props.get("CONEXION")),
                    "power_kw": power, "row_id": props.get("FEATURE"), "hours": props.get("HORARIO")}

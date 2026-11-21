@@ -36,7 +36,7 @@ WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT
 
 echo "== backend: py_compile =="
-python3 -m py_compile server.py scripts/*.py
+python3 -m py_compile server.py agent_mcp.py community.py watches.py station_truth.py google_maps.py vehicles.py scripts/*.py
 echo "py_compile OK"
 echo
 

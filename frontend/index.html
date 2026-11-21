@@ -38,7 +38,7 @@
         try {
           const stored = localStorage.getItem('volta-theme');
           const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          theme = stored ? stored : prefersDark ? 'dark' : 'light';
+          theme = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
         } catch (_) {
           // Storage is blocked: keep the light default.
         }

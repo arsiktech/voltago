@@ -330,7 +330,7 @@ function popupHTML(st: Station): string {
   const total = cs?.total ?? st.total_evse ?? st.connector_count ?? (st.connectors?.length || null)
   let avail: string
   const stale = st.cache_stale === true
-  const notLive = st.lead || stale
+  const notLive = st.lead || stale || st.verification?.live_verified === false
   if (!notLive && cs && cs.available != null) {
     const parts = [`${cs.available} free`]
     if ((cs.busy ?? 0) > 0) parts.push(`${cs.busy} in use`)
@@ -355,7 +355,7 @@ function popupHTML(st: Station): string {
   const googleMaps = googleMapsLink(st)
   const source = stationSourceAction(st)
   const provenance = source?.name || sourceName(st.primary_source?.url || st.source_url, st.primary_source?.name || st.source)
-  const kicker = stale ? 'Cached · not live' : st.lead ? 'Not live' : avail
+  const kicker = stale ? 'Cached · not live' : notLive ? 'Not live' : avail
   const kickerColor = notLive ? 'var(--muted)' : 'var(--brand-strong)'
   const city = [st.address, st.city].filter(Boolean).join(' · ')
   const access = accessNote || (notLive ? 'Verify on site' : 'Public')
@@ -392,7 +392,7 @@ function popupHTML(st: Station): string {
     `<p style="font-size:11px;line-height:1.4;color:var(--muted);margin:0 0 10px">${
       stale
         ? 'Cached, not live. Check source before driving.'
-        : st.lead
+        : notLive
         ? 'Not live. Confirm price and access before driving.'
         : 'Live public data. Provider app and onsite signs still win.'
     }</p>` +
@@ -651,8 +651,9 @@ export const MapView = memo(function MapView({
       })
     }
     map.on('click', (e) => {
-
-      const hits = map.queryRenderedFeatures(e.point, { layers: ['station-dot', 'station-price'] })
+      if (!readyRef.current) return
+      const queryLayers = ['station-dot', 'station-price'].filter((id) => Boolean(map.getLayer(id)))
+      const hits = queryLayers.length ? map.queryRenderedFeatures(e.point, { layers: queryLayers }) : []
       if (hits.length) return
       popup.remove()
       onSelectRef.current(null)
@@ -806,6 +807,8 @@ export const MapView = memo(function MapView({
       const closingPopup = popupRef.current
       popupRef.current = null
       closingPopup?.remove()
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
       setFeedbackMap(null)
       map.remove()
       mapRef.current = null

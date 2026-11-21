@@ -89,8 +89,14 @@ function VehicleReadings({ vehicle, onEdit }: { vehicle: Vehicle; onEdit: () => 
       <div><Metric value={vehicle.batteryPercent === null ? '—' : `${Math.round(vehicle.batteryPercent)}`} unit="%" /><span className="ev-hero-label">Battery</span></div>
       <div className="ev-range"><Metric value={vehicle.rangeKm === null ? '—' : `${Math.round(vehicle.rangeKm)}`} unit="km" /><span className="ev-hero-label">Range</span></div>
     </div>
-    <div className="ev-battery-track" role="meter" aria-label="Battery state of charge" aria-valuemin={0} aria-valuemax={100}
-      aria-valuenow={vehicle.batteryPercent ?? undefined} aria-valuetext={vehicle.batteryPercent === null ? 'Unknown' : `${vehicle.batteryPercent}%`}>
+    <div
+      className="ev-battery-track"
+      role={vehicle.batteryPercent === null ? 'img' : 'meter'}
+      aria-label={vehicle.batteryPercent === null ? 'Battery state of charge: Unknown' : 'Battery state of charge'}
+      {...(vehicle.batteryPercent === null
+        ? {}
+        : { 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': vehicle.batteryPercent, 'aria-valuetext': `${vehicle.batteryPercent}%` })}
+    >
       <motion.span initial={false} animate={{ width: `${vehicle.batteryPercent || 0}%` }} transition={reduce ? { duration: 0 } : quickEase} />
     </div>
     <dl className="ev-stats">
@@ -150,7 +156,7 @@ export default function VehiclePanel({ onClose, callbackError }: { onClose: () =
     <div className="ev-panel-content">
       {callbackError && <p className="ev-notice" role="alert">Your car wasn’t connected. Try again, or enter your battery manually.</p>}
       {garage.actionError && <p className="ev-notice" role="status">{garage.actionError}</p>}
-      {editing ? <VehicleEditor vehicle={garage.vehicle} onDone={() => setEditing(false)} /> : garage.vehicle ? <VehicleReadings vehicle={garage.vehicle} onEdit={() => setEditing(true)} /> : <>
+      {editing ? <VehicleEditor key={garage.vehicle?.id ?? 'new'} vehicle={garage.vehicle} onDone={() => setEditing(false)} /> : garage.vehicle ? <VehicleReadings vehicle={garage.vehicle} onEdit={() => setEditing(true)} /> : <>
         <VehiclePortrait vehicle={null} />
         <div className="ev-empty-intro"><h3>Your car, in the loop.</h3><p>Know what’s in your battery.<br />Find a stop that fits your charge.</p></div>
         <div className="ev-benefit"><BatteryCharging size={20} /><div><strong>Your battery at a glance</strong><p>State of charge, available energy and range.</p></div></div>

@@ -534,12 +534,6 @@ export function isPrivateAccess(st: Station): boolean {
   return privateAccess(st) != null
 }
 
-export function tripTimeText(st: Station): string {
-  const drive = st.drive_eta_min_est
-  if (drive == null) return ''
-  return durationText(drive)
-}
-
 export interface AvailabilityInfo {
   live: boolean
   available: number | null

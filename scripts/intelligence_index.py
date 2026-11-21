@@ -31,6 +31,8 @@ def file_sha256(path: str | Path) -> str:
 
 
 def finite_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
     try:
         result = float(value.strip().replace(",", ".") if isinstance(value, str) else value)
         return result if math.isfinite(result) else None
@@ -125,11 +127,11 @@ class IntelligenceIndex:
     def connection(self):
         uri = f"file:{urllib.parse.quote(str(self.path), safe='/')}?mode=ro&immutable=1"
         connection = sqlite3.connect(uri, uri=True)
-        connection.execute("PRAGMA query_only=ON")
-        connection.execute("PRAGMA cache_size=-2048")
-        connection.execute("PRAGMA mmap_size=0")
-        connection.create_function("station_distance", 4, _distance, deterministic=True)
         try:
+            connection.execute("PRAGMA query_only=ON")
+            connection.execute("PRAGMA cache_size=-2048")
+            connection.execute("PRAGMA mmap_size=0")
+            connection.create_function("station_distance", 4, _distance, deterministic=True)
             yield connection
         finally:
             connection.close()

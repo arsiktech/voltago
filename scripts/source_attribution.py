@@ -5,6 +5,7 @@ attribution line on each row, shown in charger detail. Existing text is kept.
 """
 from __future__ import annotations
 
+import unicodedata
 from typing import Any, Optional
 
 # Longer, more specific needles first. Match source name and URL only.
@@ -44,12 +45,18 @@ _RULES = (
 )
 
 
+def _fold_text(text: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", text)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).casefold()
+
+
 def attribution_for(*parts: Any) -> Optional[str]:
     blob = " ".join(str(part or "") for part in parts).casefold()
     if not blob.strip():
         return None
+    folded = _fold_text(blob)
     for needle, line in _RULES:
-        if needle in blob:
+        if needle in blob or needle in folded:
             return line
     return None
 

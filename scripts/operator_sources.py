@@ -25,7 +25,10 @@ except ImportError:
     from spain_geography import point_in_spain
 from station_truth import normalize_connector_label as connector_label_from_token
 
-fnum = gs.finite_number
+def fnum(value: Any) -> Optional[float]:
+    if isinstance(value, str):
+        value = value.strip().replace(",", ".")
+    return gs.finite_number(value)
 
 def likely_in_spain(lat: Optional[float], lon: Optional[float]) -> bool:
     return point_in_spain(lat, lon)

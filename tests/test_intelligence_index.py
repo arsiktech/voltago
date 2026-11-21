@@ -151,8 +151,12 @@ class IntelligenceIndexTests(unittest.TestCase):
 
     def test_non_index_or_inconsistent_manifest_is_rejected(self):
         self.build()
-        with sqlite3.connect(self.output) as connection:
+        connection = sqlite3.connect(self.output)
+        try:
             connection.execute("DELETE FROM stations WHERE seq=0")
+            connection.commit()
+        finally:
+            connection.close()
         with self.assertRaisesRegex(ValueError, "record count"):
             IntelligenceIndex(self.output)
 

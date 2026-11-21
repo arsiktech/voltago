@@ -82,7 +82,8 @@ def load_retirements(path: Path, *, required: bool = False) -> dict[str, dict[st
         raise RetirementError(f"retirement list is not readable JSON: {exc}") from None
     if not isinstance(payload, dict) or set(payload) - TOP_LEVEL_KEYS:
         raise RetirementError(f"retirement list must be an object with only {sorted(TOP_LEVEL_KEYS)}")
-    if payload.get("version") != VERSION:
+    version = payload.get("version")
+    if isinstance(version, bool) or version != VERSION:
         raise RetirementError(f"retirement list version must be {VERSION}")
     items = payload.get("retirements")
     if not isinstance(items, list):

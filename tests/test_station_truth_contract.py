@@ -58,6 +58,11 @@ class StationTruthContractTests(unittest.TestCase):
             with self.subTest(case=case["id"]):
                 self.assertEqual(server.route_ready_now(case["station"]), case["expected"])
 
+    def test_public_web_url_rule_executes_shared_cases(self) -> None:
+        for case in CORPUS["public_web_urls"]:
+            with self.subTest(value=case["value"]):
+                self.assertEqual(station_truth.public_web_url(case["value"]) is not None, case["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()

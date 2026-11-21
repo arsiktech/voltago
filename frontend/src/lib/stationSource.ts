@@ -28,13 +28,22 @@ export function sourceName(url?: string | null, suggested?: string | null): stri
 
 function exactSource(candidate: SourceRef): { name: string; url: string; kind: string } | null {
   if (typeof candidate.url !== 'string' || candidate.url.length > 4096 || [...candidate.url.trim()].some(c => c === '\\' || c.charCodeAt(0) <= 32 || c.charCodeAt(0) === 127)) return null
+  const rawUrl = candidate.url.trim()
+  const rawPath = rawUrl.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, '').split(/[?#]/, 1)[0]
+  let rawDecodedPath = rawPath
+  try {
+    rawDecodedPath = decodeURIComponent(rawPath)
+  } catch {
+    return null
+  }
+  if ([...rawDecodedPath].some(c => c === '\\' || c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) || rawDecodedPath.split('/').some(part => part === '.' || part === '..')) return null
   const href = publicWebUrl(candidate.url)
   if (!href) return null
   const url = new URL(href)
   if (url.port && !['80', '443'].includes(url.port)) return null
   const host = url.hostname.toLowerCase().replace(/^www\./, '')
   const path = url.pathname
-  let kind = candidate.kind || ''
+  let kind = (candidate.kind || '').toLowerCase()
   if (host === 'canariasterecarga.com') {
     if (url.search || !/^\/(?:es|en)\/(?:(?:mapa\/)?p\d{1,10}|punto-de-recarga-[a-z0-9-]+)\/?$/.test(path)) return null
     kind = 'station_page'
@@ -85,7 +94,7 @@ function sourceCandidates(st: Station): SourceRef[] {
   return [
     st.station_source || {}, st.primary_source || {},
     { name: st.source_details?.source_name, url: st.source_details?.source_url },
-    { name: st.charge_claim?.source, url: st.tariff_details?.source_url },
+    { name: st.source, url: st.tariff_details?.source_url },
     { name: st.charge_claim?.source, url: st.charge_claim?.url || undefined },
     { name: st.source, url: st.source_url }, ...(st.sources || []),
     ...(st.connectors || []).map(c => ({ name: st.source, url: c.source_url || undefined })),
@@ -94,11 +103,12 @@ function sourceCandidates(st: Station): SourceRef[] {
 
 export function stationSource(st: Station): { name: string; url: string; kind: string } | null {
   if (st.station_source !== undefined) return st.station_source ? exactSource(st.station_source) : null
+  const exact: { name: string; url: string; kind: string }[] = []
   for (const candidate of sourceCandidates(st)) {
     const source = exactSource(candidate)
-    if (source) return source
+    if (source) exact.push(source)
   }
-  return null
+  return exact.find(source => source.kind === 'start_page') ?? exact[0] ?? null
 }
 
 /** Keep each fact's source identity while upgrading a generic reference to its existing charger page. */

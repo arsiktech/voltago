@@ -612,7 +612,12 @@ export default function App() {
   const scopeLabel = resultScopeLabel(filters)
   const firstRouteReady = routeReadyRows[0]
   const areaMotionKey = overview ? 'overview' : committedBbox ? bboxKey(committedBbox) : 'nearby'
-  const flowHint: FlowHintProps | null = overview && geo.status === 'locating'
+  const flowHintAction = overview && (geo.status === 'denied' || geo.status === 'unavailable')
+    ? requestLocation
+    : liveFailed
+      ? () => query.refetch()
+      : undefined
+  const flowHint: Omit<FlowHintProps, 'onAction'> | null = overview && geo.status === 'locating'
     ? {
         icon: 'loading',
         tone: 'brand',
@@ -626,7 +631,6 @@ export default function App() {
           title: 'Location is unavailable',
           message: 'Enter your home address or city above to search from there instead.',
           actionLabel: 'Try location again',
-          onAction: requestLocation,
         }
       : liveFailed
     ? {
@@ -635,7 +639,6 @@ export default function App() {
         title: 'Live data unavailable',
         message: 'Saved chargers are not live. Check the source before driving.',
         actionLabel: 'Try live again',
-        onAction: () => query.refetch(),
       }
     : usingInstant
       ? {
@@ -1116,7 +1119,7 @@ export default function App() {
                 <span>Search a city or use your location to check nearby chargers.</span>
                 <ArrowUpRight size={16} aria-hidden="true" />
               </div>
-            ) : <FlowHint {...flowHint} />)}
+            ) : <FlowHint {...flowHint} onAction={flowHintAction} />)}
           </div>
 
           <div ref={bodyRef} className="results-body">

@@ -101,7 +101,7 @@ const collect = () => {
     h1: txt(h1),
     count: countSpan ? parseInt(txt(countSpan), 10) : NaN,
     // NB: the label is CSS-uppercased in innerText — match the home-first copy case-insensitively.
-    modeLabel: /explore spain/i.test(panel ? panel.innerText : ""),
+    modeLabel: /explore chargers/i.test(panel ? panel.innerText : ""),
     chips,
     filterRailFits: chipRow ? chipRow.scrollWidth <= chipRow.clientWidth + 1 : false,
     quickChips: chipRow ? [...chipRow.querySelectorAll("button.chip")].filter((button) => !button.closest("dialog")).map(txt) : [],
@@ -314,7 +314,7 @@ async function main() {
   }
   if (!/^\d+ public chargers$/.test(result.h1)) failures.push(`overview h1 is not "N public chargers" (got "${result.h1}")`);
   if (!(result.count > 0)) failures.push("header count is not a positive number");
-  if (!result.modeLabel) failures.push("mode label 'Explore Spain' missing on default view");
+  if (!result.modeLabel) failures.push("mode label 'Explore chargers' missing on default view");
   const chipLabels = result.chips.map((c) => c.label);
   if (CHIP_LABELS.some((l) => !chipLabels.includes(l))) failures.push(`filter chips incomplete: ${JSON.stringify(chipLabels)}`);
   if (!result.filterRailFits) failures.push("quick filters overflow the mobile panel");

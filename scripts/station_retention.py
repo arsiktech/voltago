@@ -23,9 +23,14 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
-from source_matrix import FUTURE_TOLERANCE, absence_proof, absence_unproven
-from source_policy import partition_records, recordset_sha256, value_is_excluded
-from station_identity import distance_m, identity_keys
+try:
+    from .source_matrix import FUTURE_TOLERANCE, absence_proof, absence_unproven
+    from .source_policy import partition_records, recordset_sha256, value_is_excluded
+    from .station_identity import distance_m, identity_keys
+except ImportError:
+    from source_matrix import FUTURE_TOLERANCE, absence_proof, absence_unproven
+    from source_policy import partition_records, recordset_sha256, value_is_excluded
+    from station_identity import distance_m, identity_keys
 
 RETAINED_KEY = "retained_records"
 RETIRED_KEY = "auto_retired"
@@ -155,7 +160,7 @@ def apply_retention(baseline: dict, candidate: dict, *, retirements: dict | None
     fresh_ids = {str(row.get("id")) for row in records}
 
     def allowed(row: dict) -> bool:
-        if policy is not None and not partition_records([row], policy)[0]:
+        if policy is not None and value_is_excluded(row, policy):
             return False
         entry = reviewed.get(row.get("id"))
         # A reviewed retirement the gate can honor wins. An unmet successor retires nothing.

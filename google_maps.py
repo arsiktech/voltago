@@ -30,7 +30,7 @@ def google_listing_url(value: Any) -> str | None:
     value = value.strip()
     try:
         parsed = urlsplit(value)
-        if (parsed.scheme != "https" or parsed.username or parsed.password
+        if (parsed.scheme != "https" or parsed.username is not None or parsed.password is not None
                 or parsed.port not in (None, 443)):
             return None
         host = (parsed.hostname or "").lower()
@@ -100,8 +100,8 @@ def attach_google_maps_navigation(station: dict[str, Any]) -> None:
     else:
         primary = station.get("primary_source") or {}
         curated = next((entry.get("url") for entry in _CURATED_LINKS
-                        if station.get("id") == entry.get("station_id")
-                        or station.get("source_url") == entry.get("source_url")), None)
+                        if (station.get("id") and station.get("id") == entry.get("station_id"))
+                        or (station.get("source_url") and station.get("source_url") == entry.get("source_url"))), None)
         listing = next((safe for candidate in (
             curated,
             navigation.get("google_listing"), station.get("google_maps_url"), metadata.get("url"),

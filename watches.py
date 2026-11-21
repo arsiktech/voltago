@@ -43,8 +43,8 @@ PURGE_AFTER_SECONDS = 24 * 3600
 MAX_ACTIVE_PER_DEVICE = 3
 MAX_ACTIVE_TOTAL = int(os.environ.get("VOLTA_WATCH_MAX_ACTIVE", "500"))
 STATION_ID_MAX = 200
-_TOKEN_RE = re.compile(r"^[0-9a-fA-F]{64,200}$")
-_WATCH_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+_TOKEN_RE = re.compile(r"^[0-9a-fA-F]{64,200}\Z")
+_WATCH_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}\Z")
 
 AVAILABLE = "AVAILABLE"
 _NOT_A_STATE = {"", "UNKNOWN", None}
@@ -71,30 +71,34 @@ def configure(db_path: Path) -> None:
 def _connect() -> sqlite3.Connection:
     _DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(_DB_PATH), timeout=10)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS watches (
-            id TEXT PRIMARY KEY,
-            station_id TEXT NOT NULL,
-            station_name TEXT,
-            lat REAL NOT NULL,
-            lon REAL NOT NULL,
-            connector_types TEXT NOT NULL,
-            device_token TEXT,
-            created_at REAL NOT NULL,
-            expires_at REAL NOT NULL,
-            active INTEGER NOT NULL DEFAULT 1,
-            baseline TEXT,
-            last_fresh_at REAL,
-            ended_at REAL,
-            end_reason TEXT,
-            alert TEXT,
-            delivery TEXT
-        )"""
-    )
-    conn.execute("CREATE INDEX IF NOT EXISTS watches_active ON watches(active, device_token)")
-    return conn
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS watches (
+                id TEXT PRIMARY KEY,
+                station_id TEXT NOT NULL,
+                station_name TEXT,
+                lat REAL NOT NULL,
+                lon REAL NOT NULL,
+                connector_types TEXT NOT NULL,
+                device_token TEXT,
+                created_at REAL NOT NULL,
+                expires_at REAL NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1,
+                baseline TEXT,
+                last_fresh_at REAL,
+                ended_at REAL,
+                end_reason TEXT,
+                alert TEXT,
+                delivery TEXT
+            )"""
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS watches_active ON watches(active, device_token)")
+        return conn
+    except Exception:
+        conn.close()
+        raise
 
 
 def _iso(epoch: Optional[float]) -> Optional[str]:
@@ -128,8 +132,11 @@ def ineligible_reason(row: Optional[Mapping[str, Any]]) -> Optional[str]:
 def _compatible(connector: Mapping[str, Any], types: Sequence[str], key_for: Callable[[Any], Optional[str]]) -> bool:
     if not types:
         return True
+    # Normalize requested types through key_for as well: API callers pass display names
+    # like "CCS2" while key_for may return lowercase keys like "ccs2".
+    wanted = {k for k in (key_for(item) for item in types) if k is not None} | set(types)
     # Never guess: a connector whose type is unknown does not match a requested type.
-    return key_for(connector.get("label") or connector.get("type")) in types
+    return key_for(connector.get("label") or connector.get("type")) in wanted
 
 
 def connector_states(row: Mapping[str, Any], types: Sequence[str],
@@ -285,10 +292,14 @@ def create_watch(body: Mapping[str, Any], *, lookup: Callable[[str, float, float
     if not isinstance(station_id, str) or not station_id.strip() or len(station_id) > STATION_ID_MAX:
         raise WatchError(400, "bad_station_id", "station_id is required.")
     token = body.get("device_token")
-    if not isinstance(token, str) or not _TOKEN_RE.match(token):
+    if not isinstance(token, str) or not _TOKEN_RE.fullmatch(token):
         raise WatchError(400, "bad_device_token", "device_token must be the hexadecimal APNs token.")
+    token = token.lower()
+    raw_lat, raw_lon = body.get("lat"), body.get("lon")
+    if isinstance(raw_lat, bool) or isinstance(raw_lon, bool):
+        raise WatchError(400, "bad_coordinates", "lat and lon of the charger are required.")
     try:
-        lat, lon = float(body.get("lat")), float(body.get("lon"))
+        lat, lon = float(raw_lat), float(raw_lon)
     except (TypeError, ValueError):
         raise WatchError(400, "bad_coordinates", "lat and lon of the charger are required.")
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
@@ -337,7 +348,7 @@ def create_watch(body: Mapping[str, Any], *, lookup: Callable[[str, float, float
 
 
 def get_watch(watch_id: str) -> Dict[str, Any]:
-    if not isinstance(watch_id, str) or not _WATCH_ID_RE.match(watch_id):
+    if not isinstance(watch_id, str) or not _WATCH_ID_RE.fullmatch(watch_id):
         raise WatchError(404, "not_found", "No such watch.")
     with _lock:
         conn = _connect()
@@ -351,28 +362,46 @@ def get_watch(watch_id: str) -> Dict[str, Any]:
 
 
 def _end(conn: sqlite3.Connection, watch_id: str, reason: str, now: float, *,
-         alert: Optional[Mapping[str, Any]] = None, delivery: Optional[str] = None) -> None:
-    conn.execute(
+         alert: Optional[Mapping[str, Any]] = None, delivery: Optional[str] = None) -> int:
+    cursor = conn.execute(
         """UPDATE watches SET active = 0, device_token = NULL, ended_at = ?, end_reason = ?,
            alert = COALESCE(?, alert), delivery = COALESCE(?, delivery) WHERE id = ? AND active = 1""",
         (now, reason, json.dumps(alert) if alert else None, delivery, watch_id),
     )
+    return cursor.rowcount
+
+
+def _expire_elapsed(conn: sqlite3.Connection, now: float) -> int:
+    cursor = conn.execute(
+        """UPDATE watches SET active = 0, device_token = NULL, ended_at = ?, end_reason = 'expired'
+           WHERE active = 1 AND expires_at <= ?""",
+        (now, now),
+    )
+    return cursor.rowcount
 
 
 def cancel_watch(watch_id: str, now: Optional[float] = None) -> Dict[str, Any]:
     now = time.time() if now is None else now
-    get_watch(watch_id)
+    if not isinstance(watch_id, str) or not _WATCH_ID_RE.fullmatch(watch_id):
+        raise WatchError(404, "not_found", "No such watch.")
     with _lock:
         conn = _connect()
         try:
+            existing = conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()
+            if existing is None:
+                raise WatchError(404, "not_found", "No such watch.")
             _end(conn, watch_id, "cancelled", now)
             conn.commit()
+            record = conn.execute("SELECT * FROM watches WHERE id = ?", (watch_id,)).fetchone()
         finally:
             conn.close()
-    return get_watch(watch_id)
+    if record is None:
+        raise WatchError(404, "not_found", "No such watch.")
+    return public_view(_row_to_watch(record))
 
 
 def purge(conn: sqlite3.Connection, now: float) -> None:
+    _expire_elapsed(conn, now)
     conn.execute("DELETE FROM watches WHERE active = 0 AND ended_at < ?", (now - PURGE_AFTER_SECONDS,))
 
 
@@ -405,7 +434,15 @@ def run_once(*, lookup: Callable[[str, float, float], Optional[Dict[str, Any]]],
     now = time.time() if now is None else now
     counts = {"checked": 0, "alerted": 0, "ended": 0}
     rows: Dict[Tuple[str, float, float], Optional[Dict[str, Any]]] = {}
-    for watch in active_watches():
+    with _lock:
+        conn = _connect()
+        try:
+            conn.execute("DELETE FROM watches WHERE active = 0 AND ended_at < ?", (now - PURGE_AFTER_SECONDS,))
+            conn.commit()
+            watches = [_row_to_watch(r) for r in conn.execute("SELECT * FROM watches WHERE active = 1 ORDER BY created_at")]
+        finally:
+            conn.close()
+    for watch in watches:
         counts["checked"] += 1
         key = (watch["station_id"], watch["lat"], watch["lon"])
         if key not in rows:
@@ -417,8 +454,21 @@ def run_once(*, lookup: Callable[[str, float, float], Optional[Dict[str, Any]]],
         delivery = None
         reason = step["end_reason"]
         if step["alert"]:
-            outcome = sender.send(watch["device_token"], alert_payload(watch, step["alert"]),
-                                  expires_at=float(watch["expires_at"]), collapse_id=watch["id"])
+            with _lock:
+                conn = _connect()
+                try:
+                    still_active = conn.execute(
+                        "SELECT device_token FROM watches WHERE id = ? AND active = 1", (watch["id"],)
+                    ).fetchone()
+                finally:
+                    conn.close()
+            if still_active is None or not still_active["device_token"]:
+                continue
+            try:
+                outcome = sender.send(still_active["device_token"], alert_payload(watch, step["alert"]),
+                                      expires_at=float(watch["expires_at"]), collapse_id=watch["id"])
+            except Exception:
+                outcome = "delivery_error"
             delivery = outcome
             if outcome == "invalid_token":
                 reason = "invalid_token"
@@ -427,8 +477,8 @@ def run_once(*, lookup: Callable[[str, float, float], Optional[Dict[str, Any]]],
             conn = _connect()
             try:
                 if reason:
-                    _end(conn, watch["id"], reason, now, alert=step["alert"], delivery=delivery)
-                    counts["ended"] += 1
+                    if _end(conn, watch["id"], reason, now, alert=step["alert"], delivery=delivery) > 0:
+                        counts["ended"] += 1
                 else:
                     conn.execute(
                         "UPDATE watches SET baseline = ?, last_fresh_at = ? WHERE id = ? AND active = 1",

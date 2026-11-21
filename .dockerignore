@@ -5,11 +5,17 @@ frontend/node_modules
 frontend/dist
 node_modules
 data/cache
+data/community
+data/community.db*
+data/watches.db*
 data/*.candidate.json
 data/*.candidate.manifest.json
 data/*.sqlite
 data/*.sqlite-*
 data/source_probe
+ios
+android
+plans
 qa
 tests
 docs

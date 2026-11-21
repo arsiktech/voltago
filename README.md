@@ -19,7 +19,7 @@ and runbook](docs/global-coverage.md) for additional adapters, validation and lo
 
 ## Run locally
 
-Use Python **3.14.8**, Node.js **26.10.0** and npm **12.2.0**, matching the CI and
+Use Python **3.14.8**, Node.js **26.12.1** and npm **12.2.0**, matching the CI and
 Docker toolchains. `.python-version`, `.node-version` and the package manifests
 record these versions. Node 26 is the stable Current release line; Xcode 27 with
 the iOS 27 SDK is the native toolchain. The backend needs no Python packages.

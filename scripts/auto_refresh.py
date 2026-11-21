@@ -106,16 +106,20 @@ def atomic_json(path: Path, payload: Dict[str, Any]) -> None:
     data = (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
     descriptor = os.open(str(temp), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        with os.fdopen(descriptor, "wb", closefd=False) as handle:
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-    finally:
-        os.close(descriptor)
-    os.chmod(temp, 0o600)
-    os.replace(temp, path)
-    os.chmod(path, 0o600)
-    fsync_directory(path.parent)
+        try:
+            with os.fdopen(descriptor, "wb", closefd=False) as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        finally:
+            os.close(descriptor)
+        os.chmod(temp, 0o600)
+        os.replace(temp, path)
+        os.chmod(path, 0o600)
+        fsync_directory(path.parent)
+    except Exception:
+        temp.unlink(missing_ok=True)
+        raise
 
 
 def parse_last_json_object(text: str) -> Dict[str, Any]:
@@ -296,7 +300,7 @@ def parse_reexec_state(
     if state.get("root") != str(root) or state.get("lock_path") != str(lock_path):
         raise ValueError("reexec state root or lock path does not match")
     lock_fd = state.get("lock_fd")
-    if not isinstance(lock_fd, int) or lock_fd < 0:
+    if isinstance(lock_fd, bool) or not isinstance(lock_fd, int) or lock_fd < 0:
         raise ValueError("reexec state lock descriptor is invalid")
     expected_head = state.get("expected_head")
     if not isinstance(expected_head, str) or not expected_head:

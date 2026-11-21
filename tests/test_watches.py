@@ -231,12 +231,22 @@ class StoreAndWatcherTests(unittest.TestCase):
         with self.assertRaises(watches.WatchError) as ctx:
             self.create(connector_types=["CCS2"])
         self.assertEqual(ctx.exception.code, "no_compatible_connector")
+        # Positive connector_types match with lowercase key_for (agent_mcp._connector_key).
+        self.current = row({"c1": "CHARGING"}, labels={"c1": "CCS2"})
+        matched = self.create(connector_types=["CCS2"])
+        self.assertEqual(matched["connector_types"], ["CCS2"])
+        watches.cancel_watch(matched["id"], now=T0)
+        # Trailing newline in device token must be rejected.
+        with self.assertRaises(watches.WatchError) as ctx:
+            self.create(device_token=("a" * 64) + "\n")
+        self.assertEqual(ctx.exception.code, "bad_device_token")
 
     def test_per_device_limit_and_purge(self) -> None:
         self.current = row({"c1": "CHARGING"})
         ids = [self.create()["id"] for _ in range(watches.MAX_ACTIVE_PER_DEVICE)]
+        # Case variants of the same hex token share the per-device cap.
         with self.assertRaises(watches.WatchError) as ctx:
-            self.create()
+            self.create(device_token=TOKEN.upper())
         self.assertEqual(ctx.exception.code, "too_many_watches")
         watches.cancel_watch(ids[0], now=T0)
         with closing(watches._connect()) as conn:

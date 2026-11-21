@@ -49,6 +49,16 @@ class GoogleMapsTests(unittest.TestCase):
         other = self.station(source_url="https://canariasterecarga.com/es/p00262")
         attach_google_maps_navigation(other)
         self.assertNotIn("google_listing", other["navigation"])
+        # Missing source_url on both a curated entry and a station must never match None == None.
+        import google_maps as gm
+        original = gm._CURATED_LINKS
+        try:
+            gm._CURATED_LINKS = [{"station_id": "only-this-id", "url": "https://maps.app.goo.gl/YXKoYi8GzoUeYwiF7"}]
+            unrelated = self.station(id="different-id")
+            attach_google_maps_navigation(unrelated)
+            self.assertNotIn("google_listing", unrelated["navigation"])
+        finally:
+            gm._CURATED_LINKS = original
 
     def test_identified_google_url_formats(self):
         for url in (

@@ -15,7 +15,7 @@ foreign-currency prices, and worldwide place search does not imply live coverage
 - **TanStack Query** — live data with 60s refresh, `keepPreviousData`, stale handling
 - **MapLibre GL 6** — keyless, theme-aware OpenFreeMap basemap; WebGL2 is required
   for the map. Search and the list stay usable when graphics are unavailable.
-- **Framer Motion** — card/detail transitions; **lucide-react** icons; **Inter** (bundled via `@fontsource`)
+- **Framer Motion** — card/detail transitions; **lucide-react** icons; **Manrope** (bundled via `@fontsource-variable/manrope`)
 
 ## Develop
 
@@ -49,7 +49,7 @@ actionable error at startup if it isn't built (no fallback), so a production run
 
 - `src/App.tsx` — orchestrator: map backdrop + glass panel, filters, search, geolocation, state
 - `src/components/` — `MapView`, `StationCard`, `SourceProvenance`, `DecisionPill`, `FilterRail`,
-  `SearchBar`, `CoverageBanner`, `ConnectorChips`, `Badge`
+  `SearchBar`, `CoverageBanner`, `ConnectorChips`
 - `src/lib/api.ts` — query hooks; `src/lib/format.ts` — formatting + client-side filters; `src/types.ts` — API types
 - `src/lib/discovery.ts` — map inventory and selected-station/list continuity
 - `src/index.css`, `src/lib/motion.ts` — shared light/dark tokens and reduced-motion-aware transitions

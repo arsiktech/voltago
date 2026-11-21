@@ -332,8 +332,8 @@ async function main() {
   // Phase 1 — national overview: honestly labeled source-backed (the old "preview" state).
   const overviewState = await readPhase(page, "overview");
   assertPhaseA11y(overviewState, failures);
-  if (overviewState.placeLabel !== "Explore Spain") {
-    failures.push(`overview: mode label should be "Explore Spain" (got "${overviewState.placeLabel}")`);
+  if (overviewState.placeLabel !== "Explore chargers") {
+    failures.push(`overview: mode label should be "Explore chargers" (got "${overviewState.placeLabel}")`);
   }
   if (!/public chargers/.test(overviewState.h1)) {
     failures.push(`overview: heading should read "<N> public chargers" (got "${overviewState.h1}")`);

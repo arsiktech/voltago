@@ -88,7 +88,8 @@ def fetch_detail(url: str, cache: Path, engine, *, timeout: float = 12,
                 raise ValueError("Charger page exceeds size limit")
             chunks, size = [], 0
             while True:
-                if time.monotonic() - started >= timeout:
+                now_mono = time.monotonic()
+                if now_mono - started >= timeout or now_mono >= deadline:
                     raise TimeoutError("Charger page exceeded time limit")
                 chunk = response.read(min(65536, MAX_BYTES + 1 - size))
                 if not chunk:

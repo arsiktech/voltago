@@ -12,7 +12,10 @@ import re
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from source_policy import recordset_sha256
+try:
+    from .source_policy import recordset_sha256
+except ImportError:
+    from source_policy import recordset_sha256
 
 
 def identity_keys(row: dict) -> set[tuple]:

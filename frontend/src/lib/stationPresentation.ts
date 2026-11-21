@@ -59,7 +59,7 @@ export function mapPinPreview(st: Station): { price: string; detail: string } | 
 function publishedTariffText(st: Station): string | null {
   const text = st.tariff_details?.text?.trim()
   if (!text) return null
-  const freeStatement = /^(?:(?:tariff|tarifa|charging|charge|energy|rate)\s*[:\-]?\s*)?(?:free|gratis|gratuit[oa]s?)\b|^first\s+(?:hour|\d+\s*(?:minutes?|hours?))\s+free\b/i.test(text)
+  const freeStatement = /^(?:(?:tariff|tarifa|charging|charge|energy|rate)\s*[:-]?\s*)?(?:free|gratis|gratuit[oa]s?)\b|^first\s+(?:hour|\d+\s*(?:minutes?|hours?))\s+free\b/i.test(text)
   const explicitRate = /(?:€\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:€|eur(?:os?)?))\s*(?:\/|per\s+)\s*(?:kwh|hours?|horas?|h|minutes?|minutos?|min|sessions?|sesión)\b/i.test(text)
   return freeStatement || explicitRate ? text : null
 }

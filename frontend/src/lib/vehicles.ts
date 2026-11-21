@@ -118,12 +118,12 @@ export function energyToTarget(vehicle: Vehicle, target: number, now = Date.now(
 
 function normalizeConnector(label: string): VehicleConnector | null {
   const key = label.toLowerCase().replace(/[^a-z0-9]/g, '')
-  if (['ccs2', 'ccscombo2', 'combo2', 'iec621963', 'iec62196t3combo'].includes(key)) return 'CCS2'
-  if (['type2', 'mennekes', 'iec621962', 'iec62196t2'].includes(key)) return 'Type 2'
+  if (['ccs2', 'ccs', 'ccscombo2', 'combo2', 'iec621963', 'iec62196t2combo'].includes(key)) return 'CCS2'
+  if (['type2', 'tipo2', 't2', 'mennekes', 'iec621962', 'iec62196t2'].includes(key)) return 'Type 2'
   if (['chademo'].includes(key)) return 'CHAdeMO'
-  if (['nacs', 'saej3400'].includes(key)) return 'NACS'
+  if (['nacs', 'j3400', 'saej3400'].includes(key)) return 'NACS'
   if (['ccs1', 'ccscombo1', 'combo1', 'iec62196t1combo'].includes(key)) return 'CCS1'
-  if (['type1', 'j1772', 'saej1772', 'iec62196t1'].includes(key)) return 'Type 1'
+  if (['type1', 'tipo1', 't1', 'j1772', 'saej1772', 'iec62196t1'].includes(key)) return 'Type 1'
   return null
 }
 

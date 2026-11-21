@@ -43,6 +43,10 @@ function FeedbackComposer({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const noteRef = useRef<HTMLTextAreaElement>(null)
   const [open, setOpen] = useState(false)
+  const openRef = useRef(false)
+  useEffect(() => {
+    openRef.current = open
+  }, [open])
   const [draft, setDraft] = useState('')
   const [mood, setMood] = useState<FeedbackMood | null>(null)
   const [shot, setShot] = useState<FeedbackCapture | null>(null)
@@ -51,10 +55,12 @@ function FeedbackComposer({
   const [toast, setToast] = useState<string | null>(null)
   const allowShot = config.screenshots && feedbackCaptureAllowed(config.capture, window.location.pathname)
   const closePopover = useCallback(() => {
+    const wasOpen = openRef.current
+    openRef.current = false
     setOpen(false)
     setShot(null)
     setDropped(false)
-    buttonRef.current?.focus()
+    if (wasOpen) buttonRef.current?.focus()
   }, [])
 
   useEffect(() => {

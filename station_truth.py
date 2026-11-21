@@ -206,6 +206,37 @@ def normalize_public_source_url(url: Any) -> str:
     return value
 
 
+def public_web_url(url: Any) -> Optional[str]:
+    """Validate a public http(s) web URL without credentials, loopback, or IP literals."""
+    if not isinstance(url, str):
+        return None
+    value = normalize_public_source_url(url)
+    if not value or len(value) > 4096 or re.search(r"[\s\\\x00-\x1f\x7f]", value):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if (
+            parsed.scheme not in {"https", "http"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or (port is not None and not (1 <= port <= 65535))
+            or not host
+            or ":" in host
+            or host == "localhost"
+            or host.endswith((".local", ".localhost", ".internal", ".home.arpa"))
+            or len(host) > 253
+            or "." not in host
+            or all(part.isdigit() for part in host.split("."))
+            or not all(re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", part) for part in host.split("."))
+        ):
+            return None
+    except (ValueError, AttributeError):
+        return None
+    return value
+
+
 def source_candidates(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     """Collect and de-duplicate public source candidates from one station record."""
     candidates: List[Dict[str, Any]] = []
@@ -213,8 +244,8 @@ def source_candidates(item: Dict[str, Any]) -> List[Dict[str, Any]]:
     def push(name: Any, url: Any, evidence: Any = "") -> None:
         if not url:
             return
-        value = normalize_public_source_url(url)
-        if not value.startswith(("https://", "http://")):
+        value = public_web_url(url)
+        if not value:
             return
         candidates.append(
             {

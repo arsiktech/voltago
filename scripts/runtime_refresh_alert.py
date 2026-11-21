@@ -78,8 +78,18 @@ def check(state_dir: Path, target: str, hermes: str, *, service_result: str | No
     path = state_dir / "alert-state.json"
     with (state_dir / "alert.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        state = json.loads(path.read_text()) if path.exists() else {}
-        receipt = json.loads((state_dir / "last.json").read_text()) if (state_dir / "last.json").exists() else {}
+        try:
+            state = json.loads(path.read_text()) if path.exists() else {}
+            if not isinstance(state, dict):
+                state = {}
+        except (OSError, ValueError):
+            state = {}
+        try:
+            receipt = json.loads((state_dir / "last.json").read_text()) if (state_dir / "last.json").exists() else {}
+            if not isinstance(receipt, dict):
+                receipt = {}
+        except (OSError, ValueError):
+            receipt = {}
         ok = service_result == "success" if service_result is not None else receipt.get("ok") is True
         event = (receipt.get("run_id"), service_result)
         now = time.time()

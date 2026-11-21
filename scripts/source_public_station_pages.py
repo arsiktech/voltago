@@ -64,7 +64,7 @@ _AD_POSTCODE = re.compile(r"\bAD\d{3}\b", re.I)
 
 _ANDORRA_BOX = (42.42, 42.66, 1.40, 1.80)
 
-_SPAIN_BOXES = ((35.8, 43.9, -9.4, 4.4), (27.5, 29.5, -18.5, -13.3), (35.8, 35.95, -2.99, -2.9))
+_SPAIN_BOXES = ((35.8, 43.9, -9.4, 4.4), (27.5, 29.5, -18.5, -13.3), (35.25, 35.33, -2.98, -2.91))
 
 def _in_box(lat: float, lon: float, box: Tuple[float, float, float, float]) -> bool:
     return box[0] <= lat <= box[1] and box[2] <= lon <= box[3]
@@ -354,6 +354,9 @@ def parse_elektrum_public_points(page_html: Any) -> List[Dict[str, Any]]:
             for connector in connectors:
                 if connector not in previous["connectors"]:
                     previous["connectors"].append(connector)
+            all_powers = [c["power_kw"] for c in previous["connectors"] if isinstance(c.get("power_kw"), (int, float)) and c["power_kw"] > 0]
+            previous["power_kw_max"] = max(all_powers) if all_powers else None
+            previous["has_fast_charging"] = any(power >= 43 for power in all_powers)
             continue
         seen[source_id] = row
         rows.append(row)

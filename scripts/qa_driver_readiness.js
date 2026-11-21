@@ -278,7 +278,7 @@ async function main() {
 
   expect(defaultState.cards.length > 0, "default: view rendered no cards");
   expect(/^\d+ public chargers$/.test(defaultState.h1), `default: header is not the broad overview count: "${defaultState.h1}"`);
-  expect(defaultState.modeLabel === "Explore Spain", `default: mode label is not "Explore Spain": "${defaultState.modeLabel}"`);
+  expect(defaultState.modeLabel === "Explore chargers", `default: mode label is not "Explore chargers": "${defaultState.modeLabel}"`);
   expect(/^\d+ leads · not live$/.test(defaultState.badgeText), "default: source-backed/not-live count badge is missing");
   for (const [label, want] of [
     ["Open now", false],

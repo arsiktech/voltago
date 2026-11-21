@@ -282,6 +282,7 @@ def fetch_document(url, previous=None):
         response = public_live_urlopen(request, timeout=TIMEOUT)
     except urllib.error.HTTPError as exc:
         if exc.code != 304 or not previous:
+            exc.close()
             raise
         try:
             now = time.time()
