@@ -19,6 +19,8 @@ final class DiscoveryHeaderUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-voltaBaseURL", server.baseURLString,
+            // Keep permission prompts and real GPS callbacks out of header geometry checks.
+            "-VoltaUITestLocationState", "denied",
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
             "-VoltaUITestDiscoveryAppearance", style,
             "-UIPreferredContentSizeCategoryName", category,
