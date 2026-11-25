@@ -228,6 +228,62 @@
       "reason": "Etecnic no longer lists \"Vilalta Greenergy Wallbox EdRSR 1\" in its public charger feed, so this baseline ID has no match and blocks every refresh. It has no successor. Physical status is unknown.",
       "evidence": "On 2026-11-06 at 23:04 UTC the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,912 chargers) had no charger with this name at these coordinates and none within 470 m; other Vilalta Greenergy chargers are listed near 41.9, 3.2. MapaREVE's live feed still lists VILALTA GREENERGY APARCAMIENTO at these coordinates (last seen 2026-11-03 08:41 UTC), so only Etecnic's row is retired. Dry-run candidate 20261106T223313Z-206bc1fe (2026-11-06 22:33 UTC) lacked it, with no other gate failure; the 18:38 UTC build still had it. This is one candidate and one feed check, so the absence may be temporary. Community references and links saved on devices were not checked; a saved link to this ID stops resolving.",
       "approved_by": "repository owner, 2026-11-06"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-services-spain-s-l-carretera-de-zaragoza-km-3_42.79188_-1.64062",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the Wenea Services Spain, S.L. row at Carretera de Zaragoza, Km 3 (Galar), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. No IDENA row and no baseline record of any source lies within 100 m of these coordinates. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-services-spain-s-l-aralar-kalea-8_42.91913_-1.83126",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the Wenea Services Spain, S.L. row at Aralar Kalea 8 (Irurtzun), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. A different row, TotalEnergies Charging Services España at Hotel Plazaola, Aralar Kalea, is listed 5 m away and the baseline already holds that location under its own record. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-emobility-services-s-l-calle-aoiz-17_42.80951_-1.63335",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the WENEA EMOBILITY SERVICES S.L. row at Calle Aoiz 17 (Pamplona), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. No IDENA row and no baseline record of any source lies within 100 m of these coordinates. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-emobility-services-s-l-ctra-na-660-pk-13-4_42.26353_-1.73875",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the WENEA EMOBILITY SERVICES S.L. row at Ctra. Na-660, Pk 13.4 (Villafranca), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. No IDENA row and no baseline record of any source lies within 100 m of these coordinates. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-emobility-services-s-l-ctra-zaragoza-km-9_42.73663_-1.63292",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the WENEA EMOBILITY SERVICES S.L. row at Ctra. Zaragoza, Km 9 (Beriáin), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. A different row, TotalEnergies Charging Services España at Ctra. Zaragoza Km 9, is listed 16 m away and the baseline already holds that location under its own record. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-emobility-services-s-l-calle-san-pedro-s-n_42.72005_-1.93918",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the WENEA EMOBILITY SERVICES S.L. row at Calle San Pedro S/N (Guesálaz), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. A different row, TotalEnergies Charging Services España at Calle San Pedro 16, is listed 56 m away and the baseline already holds that location under its own record. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_navarra-idena-charging-points-open-data_wenea-emobility-services-s-l-calle-iru-eko-etorbidea-s-n_42.91683_-2.03687",
+      "retired_on": "2026-11-25",
+      "reason": "Navarra's IDENA charging-point layer no longer lists the WENEA EMOBILITY SERVICES S.L. row at Calle Iruñeko Etorbidea S/N (Arbizu), so this baseline ID has no match. Seven such rows left in one build, above the Navarra cap of 5, and that blocks every refresh. It has no successor ID. Physical status is unknown.",
+      "evidence": "On 2026-11-25 at 21:33 UTC the live IDENA feed (idena.navarra.es WFS layer INFRAE_Sym_PuntosRecarga) answered HTTP 200 with 786 rows, and the current parser yields no row with this ID. The host's journal shows 11 consecutive refresh runs failing at the delta stage from 2026-11-23 00:44 UTC; the 2026-11-25 18:33 UTC run's retained detail shows these gate failures and no collector errors. A different row, TotalEnergies Charging Services España at Iruñeko Etorbidea 11, is listed 3 m away and the baseline already holds that location under its own record. The feed carries no stable per-row identifier (FEATURE is the constant 8000071 on all 786 rows), so the gate cannot prove a rename. Absence from the feed is not proof the charger was removed; saved links to this ID stop resolving.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
+    },
+    {
+      "id": "intel_etecnic-public-charger-map_etecnic-cargador-demo_41.11338_1.21758",
+      "retired_on": "2026-11-25",
+      "reason": "Etecnic renamed the chargers it listed as \"Cargador DEMO\" at Carrer D, 3, Tarragona to \"CARGADORES LOW COST 1\" to \"CARGADORES LOW COST 9\", and Etecnic-derived IDs include the name, so this old alias ID no longer resolves and the gate counts a lost merged-ID alias. The station itself is not gone: the baseline record that carried this alias (the DGT registry record intel_dgt-national-access-point-charging-registry_etecnic-movilidad-electrica-srl-cargadores-low-cost-supercharger_41.11338_1.21758) is still present, so only this alias is retired. It has no successor ID because a successor must be a new station, and the renamed Etecnic rows merge into that existing record.",
+      "evidence": "On 2026-11-25 the live Etecnic feed (https://etecnic.net/api/v1/chargers/index.json, 6,882 chargers) lists nine chargers named \"CARGADORES LOW COST 1\" to \"CARGADORES LOW COST 9\" (feed IDs 25357 to 25365) at \"Carrer D, 3\", 6 to 12 m from these coordinates, and none named \"Cargador DEMO\" within 400 m. A separate \"Cargador DEMO\" (feed ID 21364, BASTIDA, about 11 km away) is unrelated. The 2026-11-13 baseline lists ten Etecnic chargers at this site. Saved links to the old alias ID stop resolving; the station's other IDs are unchanged.",
+      "approved_by": "Arseny Ovsyannikov, 2026-11-25"
     }
   ]
 }
