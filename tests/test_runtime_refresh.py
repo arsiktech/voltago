@@ -1,5 +1,7 @@
 """Runtime refresh safety fixtures. No upstream or production operations."""
+import contextlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -141,6 +143,35 @@ class RuntimeRefreshTests(unittest.TestCase):
         self.assertFalse(receipt["promoted"])
         self.assertEqual(receipt["stage"], "build")
         self.assertIn("fixture upstream failure", receipt["error"])
+
+    def test_journal_summary_line_includes_gate_failures_for_a_rejected_delta(self):
+        (self.root / "data/free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture-only"}]}))
+        reason = "fixture-source: 9 stations left in one build, above the cap 5"
+
+        def stage(root, run, name, argv, timeout):
+            if name == "build":
+                (run / "free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture-only"}], "generated_at": "fixture"}))
+                return subprocess.CompletedProcess(argv, 0, "{}", "")
+            (run / "delta.stdout.log").write_text(json.dumps({"ok": False, "failures": [reason]}))
+            raise RuntimeError("delta exited 1; see retained run logs")
+
+        out = io.StringIO()
+        with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+             mock.patch.object(refresh, "run_stage", side_effect=stage), \
+             contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 1)
+        summary = json.loads(out.getvalue().strip().splitlines()[-1])
+        self.assertEqual(summary["stage"], "delta")
+        self.assertFalse(summary["ok"])
+        self.assertEqual(summary["gate_failures"], [reason])
+
+    def test_journal_summary_line_has_no_gate_failures_when_none_were_recorded(self):
+        out = io.StringIO()
+        with mock.patch.object(refresh, "source_identity", return_value={"head": "fixture"}), \
+             mock.patch.object(refresh, "run_stage", side_effect=RuntimeError("fixture upstream failure")), \
+             contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(refresh.refresh(self.root, self.state, 1), 1)
+        self.assertNotIn("gate_failures", json.loads(out.getvalue().strip().splitlines()[-1]))
 
     def test_successful_fixture_pipeline_publishes_bound_bundle(self):
         (self.root / "data/free_intelligence.json").write_text(json.dumps({"records": [{"id": "fixture-only"}]}))
