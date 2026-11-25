@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+import qa_ingestion_delta as delta  # noqa: E402
 from station_retirements import RetirementError, load_retirements  # noqa: E402
 
 OLD = "intel_fenie_old_40.4379_-3.6264"
@@ -96,6 +97,43 @@ class RepositoryRetirementsTests(unittest.TestCase):
         )
         for item in loaded.values():
             self.assertTrue(item["reason"] and item["evidence"] and item["approved_by"])
+
+    def test_navarra_wenea_rows_and_renamed_etecnic_alias_pass_the_delta_gate(self) -> None:
+        """2026-11-25 candidate: 7 Navarra rows and one Etecnic alias left one build and blocked refresh."""
+        navarra = "intel_navarra-idena-charging-points-open-data_"
+        gone = [
+            navarra + slug
+            for slug in (
+                "wenea-services-spain-s-l-carretera-de-zaragoza-km-3_42.79188_-1.64062",
+                "wenea-services-spain-s-l-aralar-kalea-8_42.91913_-1.83126",
+                "wenea-emobility-services-s-l-calle-aoiz-17_42.80951_-1.63335",
+                "wenea-emobility-services-s-l-ctra-na-660-pk-13-4_42.26353_-1.73875",
+                "wenea-emobility-services-s-l-ctra-zaragoza-km-9_42.73663_-1.63292",
+                "wenea-emobility-services-s-l-calle-san-pedro-s-n_42.72005_-1.93918",
+                "wenea-emobility-services-s-l-calle-iru-eko-etorbidea-s-n_42.91683_-2.03687",
+            )
+        ]
+        alias = "intel_etecnic-public-charger-map_etecnic-cargador-demo_41.11338_1.21758"
+        holder_id = (
+            "intel_dgt-national-access-point-charging-registry_"
+            "etecnic-movilidad-electrica-srl-cargadores-low-cost-supercharger_41.11338_1.21758"
+        )
+        baseline = [{"id": holder_id, "merged_ids": [alias]}, {"id": "intel_kept"}] + [{"id": row_id} for row_id in gone]
+        rebuilt = [{"id": holder_id, "merged_ids": []}, {"id": "intel_kept"}]
+
+        unreviewed = delta.id_delta(baseline, rebuilt, {})
+        self.assertEqual(unreviewed["missing_ids"], 7)
+        self.assertEqual(unreviewed["missing_aliases"], 1)
+
+        committed = load_retirements(ROOT / "data" / "station_id_retirements.json", required=True)
+        for row_id in [*gone, alias]:
+            self.assertIn(row_id, committed)
+            self.assertIsNone(committed[row_id].get("successor_id"), row_id)
+        reviewed = delta.id_delta(baseline, rebuilt, committed)
+        self.assertEqual(reviewed["missing_ids"], 0)
+        self.assertEqual(reviewed["missing_aliases"], 0)
+        self.assertEqual(reviewed["retirements_unmet"], [])
+        self.assertEqual(sorted(item["id"] for item in reviewed["retired_sample"]), sorted(gone))
 
 
 if __name__ == "__main__":
