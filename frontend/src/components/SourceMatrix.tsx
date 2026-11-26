@@ -71,7 +71,7 @@ function CellDetail({ column, location, cell }: { column: MatrixColumn; location
                     const href = typeof value === 'string' ? publicWebUrl(value) : null
                     return href ? (
                       <a href={href} target="_blank" rel="noopener noreferrer">
-                        {value}
+                        {String(value)}
                       </a>
                     ) : (
                       String(value)
