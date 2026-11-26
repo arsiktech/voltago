@@ -403,7 +403,10 @@ def refresh(root: Path, state: Path, timeout: float, *, dry_run: bool = False,
             except OSError as exc:
                 receipt["retention_error"] = type(exc).__name__
             shared.atomic_json(state / ("dry-run-last.json" if dry_run else "last.json"), receipt)
-            print(json.dumps({k: receipt.get(k) for k in ("run_id", "ok", "promoted", "stage", "records", "error")}))
+            # Journal summary: include the gate's own reasons so a rejected candidate is diagnosable
+            # from `journalctl` without opening the retained run logs.
+            print(json.dumps({k: receipt.get(k) for k in ("run_id", "ok", "promoted", "stage", "records", "error", "gate_failures")
+                              if k in receipt}))
         return exit_code
 
 
